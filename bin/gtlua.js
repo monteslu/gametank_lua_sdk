@@ -99,6 +99,8 @@ function build(entry, outPath) {
   const cc = (src, dst) => run(tc.cc65, [...CFLAGS, "-o", dst, src]);
   cc(cPath, path.join(buildDir, `${name}.s`));
   cc(path.join(SDK, "gt_api.c"), path.join(buildDir, "gt_api.s"));
+  cc(path.join(SDK, "gt_fixed.c"), path.join(buildDir, "gt_fixed.s"));
+  cc(path.join(SDK, "gt_math.c"), path.join(buildDir, "gt_math.s"));
 
   // 3. assemble everything
   const AFLAGS = ["--cpu", "W65C02"];
@@ -109,6 +111,8 @@ function build(entry, outPath) {
   as(path.join(SDK, "vectors.s"), path.join(buildDir, "vectors.o"));
   as(path.join(SDK, "interrupt.s"), path.join(buildDir, "interrupt.o"));
   as(path.join(buildDir, "gt_api.s"), path.join(buildDir, "gt_api.o"));
+  as(path.join(buildDir, "gt_fixed.s"), path.join(buildDir, "gt_fixed.o"));
+  as(path.join(buildDir, "gt_math.s"), path.join(buildDir, "gt_math.o"));
   as(path.join(buildDir, `${name}.s`), path.join(buildDir, `${name}.o`));
 
   // 4. link -> flat 32 KB .gtr

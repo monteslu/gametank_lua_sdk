@@ -1,15 +1,12 @@
-// gtlua parser — recursive descent over the token stream, producing a plain
-// object AST. Cut Lua features fail HERE with the diagnostic the spec
-// promises, not with a generic syntax error, wherever we can see them coming.
-
-/**
- * @typedef {import('./lexer.js').Token} Token
- * @typedef {{file:string,line:number,col:number,severity:string,message:string}} Diagnostic
- */
+// gtlua parser — recursive descent, PICO-8-flavored Lua.
+//
+// Dialect (PICO8.md): one-line `if (cond) stmt [else stmt]` / `while (cond)
+// stmt` shorthand (parens required, newline ends the body), `\` floor
+// division, `!=`, multiple assignment, bitwise operators. Cut Lua features
+// fail here with the diagnostic the spec promises.
 
 export function parse(tokens, file) {
   let pos = 0;
-  /** @type {Diagnostic[]} */
   const diagnostics = [];
 
   const peek = (o = 0) => tokens[Math.min(pos + o, tokens.length - 1)];
@@ -27,7 +24,6 @@ export function parse(tokens, file) {
     return peek();
   }
 
-  // Skip tokens until one of the given types (error recovery).
   function sync(types) {
     while (!at("eof") && !types.includes(peek().type)) pos++;
   }
@@ -40,7 +36,19 @@ export function parse(tokens, file) {
       const before = pos;
       const s = statement();
       if (s) stmts.push(s);
-      if (pos === before) pos++; // never wedge
+      if (pos === before) pos++;
+    }
+    return { kind: "block", stmts };
+  }
+
+  // statements until end-of-line `line` (for the one-line if/while shorthand)
+  function lineBlock(line, extraEnders = []) {
+    const stmts = [];
+    while (!at("eof") && peek().line === line && !extraEnders.includes(peek().type)) {
+      const before = pos;
+      const s = statement();
+      if (s) stmts.push(s);
+      if (pos === before) pos++;
     }
     return { kind: "block", stmts };
   }
@@ -58,9 +66,13 @@ export function parse(tokens, file) {
       case "return": {
         next();
         let value = null;
-        if (!at("end") && !at("eof") && !at("else") && !at("elseif") && !at("until")) {
-          value = expression();
-          if (at(",")) error("multiple return values are not supported yet");
+        if (!at("end") && !at("eof") && !at("else") && !at("elseif") && !at("until") &&
+            peek().line === tok.line || (peek().line !== tok.line &&
+            !at("end") && !at("eof") && !at("else") && !at("elseif") && !at("until") && !isStatementStart(peek()))) {
+          if (!at("end") && !at("eof") && !at("else") && !at("elseif") && !at("until")) {
+            value = expression();
+            if (at(",")) error("multiple return values are not supported yet");
+          }
         }
         return { kind: "return", value, line: tok.line, col: tok.col };
       }
@@ -72,7 +84,7 @@ export function parse(tokens, file) {
         return { kind: "do", body, line: tok.line, col: tok.col };
       }
       case "goto":
-        error("goto is not supported");
+        error("goto is not supported (the runtime owns the main loop; use _draw())");
         sync(["end", "eof"]);
         return null;
       default:
@@ -80,21 +92,32 @@ export function parse(tokens, file) {
     }
   }
 
+  function isStatementStart(tok) {
+    return ["local", "function", "if", "while", "for", "repeat", "return",
+            "break", "do", "goto", "name", ";"].includes(tok.type);
+  }
+
   function localStmt() {
     const tok = expect("local");
     if (at("function")) {
-      // `local function f()` — accept, same as `function f()` in our model
       next();
       return functionBody(expect("name", "function name"), tok);
     }
-    const name = expect("name", "variable name");
-    if (at(",")) {
-      error("multiple assignment is not supported yet; declare one variable per 'local'");
-      sync(["=", "local", "function", "eof"]);
+    const names = [expect("name", "variable name").value];
+    while (at(",")) {
+      next();
+      names.push(expect("name", "variable name").value);
     }
-    let init = null;
-    if (at("=")) { next(); init = expression(); }
-    return { kind: "local", name: name.value, init, line: tok.line, col: tok.col };
+    const inits = [];
+    if (at("=")) {
+      next();
+      inits.push(expression());
+      while (at(",")) { next(); inits.push(expression()); }
+    }
+    if (inits.length > names.length) {
+      error(`${names.length} variable(s) but ${inits.length} value(s)`);
+    }
+    return { kind: "local", names, inits, line: tok.line, col: tok.col };
   }
 
   function functionStmt() {
@@ -114,7 +137,7 @@ export function parse(tokens, file) {
     const params = [];
     if (!at(")")) {
       for (;;) {
-        if (at(".")) { // `...`
+        if (at(".")) {
           error("variadic functions (...) are not supported");
           next(); if (at(".")) next(); if (at(".")) next();
         } else {
@@ -127,16 +150,37 @@ export function parse(tokens, file) {
     expect(")");
     const body = block(["end"]);
     expect("end");
-    return {
-      kind: "function", name: nameTok.value, params, body,
-      line: tok.line, col: tok.col,
-    };
+    return { kind: "function", name: nameTok.value, params, body, line: tok.line, col: tok.col };
   }
 
   function ifStmt() {
     const tok = expect("if");
+    const parenCond = at("(");
+    const cond = expression();
+
+    // PICO-8 one-line shorthand: `if (cond) stmt [else stmt]` — parenthesized
+    // condition, no `then`, body ends at end of line.
+    if (parenCond && !at("then")) {
+      if (peek().line !== tok.line || at("eof")) {
+        error("expected 'then' (or a same-line statement for the `if (cond) stmt` shorthand)");
+        return { kind: "if", clauses: [{ cond, body: { kind: "block", stmts: [] } }], elseBody: null, line: tok.line, col: tok.col };
+      }
+      const body = lineBlock(tok.line, ["else", "elseif", "end", "until"]);
+      let elseBody = null;
+      if (at("else") && peek().line === tok.line) {
+        next();
+        elseBody = lineBlock(tok.line, ["end", "until"]);
+      }
+      if (at("elseif") && peek().line === tok.line) {
+        error("'elseif' is not allowed in the one-line if shorthand; use a full if/then/end");
+      }
+      if (body.stmts.length === 0 && !elseBody) {
+        error("the one-line if shorthand needs a statement on the same line", tok);
+      }
+      return { kind: "if", clauses: [{ cond, body }], elseBody, line: tok.line, col: tok.col };
+    }
+
     const clauses = [];
-    let cond = expression();
     expect("then");
     let body = block(["elseif", "else", "end"]);
     clauses.push({ cond, body });
@@ -144,10 +188,10 @@ export function parse(tokens, file) {
     for (;;) {
       if (at("elseif")) {
         next();
-        cond = expression();
+        const c = expression();
         expect("then");
         body = block(["elseif", "else", "end"]);
-        clauses.push({ cond, body });
+        clauses.push({ cond: c, body });
         continue;
       }
       if (at("else")) {
@@ -162,7 +206,17 @@ export function parse(tokens, file) {
 
   function whileStmt() {
     const tok = expect("while");
+    const parenCond = at("(");
     const cond = expression();
+    if (parenCond && !at("do")) {
+      // one-line shorthand: `while (cond) stmt`
+      if (peek().line !== tok.line || at("eof")) {
+        error("expected 'do' (or a same-line statement for the `while (cond) stmt` shorthand)");
+        return { kind: "while", cond, body: { kind: "block", stmts: [] }, line: tok.line, col: tok.col };
+      }
+      const body = lineBlock(tok.line, ["end", "until", "else", "elseif"]);
+      return { kind: "while", cond, body, line: tok.line, col: tok.col };
+    }
     expect("do");
     const body = block(["end"]);
     expect("end");
@@ -198,14 +252,34 @@ export function parse(tokens, file) {
     return { kind: "fornum", name: name.value, from, to, step, body, line: tok.line, col: tok.col };
   }
 
+  const ASSIGN_OPS = ["=", "+=", "-=", "*=", "/=", "\\=", "%=", "..=", "^="];
+
   function exprStatement() {
     const tok = peek();
     const target = expression();
-    if (at("=") || at("+=") || at("-=") || at("*=") || at("//=") || at("/=") || at("%=")) {
-      const op = next();
-      if (op.type === "/=") {
-        error("'/=' is not supported (no general division); use '//=' with a power-of-two constant");
+
+    // multiple assignment: a, b = e1, e2
+    if (at(",")) {
+      const targets = [target];
+      while (at(",")) {
+        next();
+        targets.push(expression());
       }
+      const eq = expect("=", "'=' in multiple assignment");
+      const values = [expression()];
+      while (at(",")) { next(); values.push(expression()); }
+      if (values.length !== targets.length) {
+        error(`${targets.length} target(s) but ${values.length} value(s)`, eq);
+      }
+      for (const t of targets) {
+        if (t.kind !== "name") error("cannot assign to this expression", eq);
+      }
+      return { kind: "multiassign", targets, values, line: tok.line, col: tok.col };
+    }
+
+    if (ASSIGN_OPS.includes(peek().type)) {
+      const op = next();
+      if (op.type === "^=") error("'^=' (exponent) is not supported");
       const value = expression();
       if (target.kind !== "name" && target.kind !== "index") {
         error("cannot assign to this expression", op);
@@ -219,15 +293,19 @@ export function parse(tokens, file) {
     return null;
   }
 
-  // ---- expressions (precedence climbing) -----------------------------------
+  // ---- expressions (precedence climbing, Lua 5.3 ladder + P8 ops) ----------
 
   const BINARY = [
-    { ops: ["or"], },
-    { ops: ["and"], },
-    { ops: ["<", ">", "<=", ">=", "~=", "=="], },
-    { ops: [".."], },
-    { ops: ["+", "-"], },
-    { ops: ["*", "/", "//", "%"], },
+    { ops: ["or"] },
+    { ops: ["and"] },
+    { ops: ["<", ">", "<=", ">=", "~=", "=="] },
+    { ops: ["|"] },
+    { ops: ["^^"] },
+    { ops: ["&"] },
+    { ops: ["<<", ">>", ">>>"] },
+    { ops: [".."] },
+    { ops: ["+", "-"] },
+    { ops: ["*", "/", "\\", "%"] },
   ];
 
   function expression(level = 0) {
@@ -245,10 +323,17 @@ export function parse(tokens, file) {
     const tok = peek();
     if (at("not")) { next(); return { kind: "not", expr: unary(), line: tok.line, col: tok.col }; }
     if (at("-")) { next(); return { kind: "neg", expr: unary(), line: tok.line, col: tok.col }; }
+    if (at("~")) { next(); return { kind: "bnot", expr: unary(), line: tok.line, col: tok.col }; }
     if (at("#")) {
       next();
-      error("'#' (length) is not supported yet", tok);
-      return { kind: "number", value: 0, line: tok.line, col: tok.col };
+      error("'#' (length) is not supported yet (arrays land in the next release)", tok);
+      return { kind: "number", value: 0, fixed: 0, isInt: true, line: tok.line, col: tok.col };
+    }
+    if (at("@") || at("$")) {
+      error(`'${tok.type}' (memory peek) is not supported`, tok);
+      next();
+      unary();
+      return { kind: "number", value: 0, fixed: 0, isInt: true, line: tok.line, col: tok.col };
     }
     return power();
   }
@@ -307,38 +392,46 @@ export function parse(tokens, file) {
   function primary() {
     const tok = peek();
     switch (tok.type) {
-      case "number": next(); return { kind: "number", value: tok.value, line: tok.line, col: tok.col };
+      case "number":
+        next();
+        return { kind: "number", value: tok.value, fixed: tok.fixed, isInt: tok.isInt, line: tok.line, col: tok.col };
       case "true": next(); return { kind: "bool", value: true, line: tok.line, col: tok.col };
       case "false": next(); return { kind: "bool", value: false, line: tok.line, col: tok.col };
       case "nil":
         next();
         error("nil is not supported (no dynamic typing); initialize with a value", tok);
-        return { kind: "number", value: 0, line: tok.line, col: tok.col };
+        return { kind: "number", value: 0, fixed: 0, isInt: true, line: tok.line, col: tok.col };
       case "string":
         next();
-        error("strings are not supported yet (the text API lands in a later release)", tok);
-        return { kind: "number", value: 0, line: tok.line, col: tok.col };
+        error("strings are not supported yet (print/strings land in a later release)", tok);
+        return { kind: "number", value: 0, fixed: 0, isInt: true, line: tok.line, col: tok.col };
       case "name": next(); return { kind: "name", name: tok.value, line: tok.line, col: tok.col };
       case "(": {
         next();
         const e = expression();
         expect(")");
+        e.parenthesized = true;
         return e;
       }
       case "{":
-        error("table constructors are not supported yet (structs/arrays land in a later release)", tok);
+        error("table constructors are not supported yet (structs/arrays land in the next release)", tok);
         sync(["}", "eof"]);
         if (at("}")) next();
-        return { kind: "number", value: 0, line: tok.line, col: tok.col };
+        return { kind: "number", value: 0, fixed: 0, isInt: true, line: tok.line, col: tok.col };
       case "function":
         error("anonymous functions are not supported (no closures); define a named function at top level", tok);
         sync(["end", "eof"]);
         if (at("end")) next();
-        return { kind: "number", value: 0, line: tok.line, col: tok.col };
+        return { kind: "number", value: 0, fixed: 0, isInt: true, line: tok.line, col: tok.col };
+      case "?":
+        error("'?' print shorthand is not supported yet (print lands with strings)", tok);
+        next();
+        sync(["eof"]);
+        return { kind: "number", value: 0, fixed: 0, isInt: true, line: tok.line, col: tok.col };
       default:
         error(`unexpected '${tok.value || tok.type}' in expression`, tok);
         next();
-        return { kind: "number", value: 0, line: tok.line, col: tok.col };
+        return { kind: "number", value: 0, fixed: 0, isInt: true, line: tok.line, col: tok.col };
     }
   }
 

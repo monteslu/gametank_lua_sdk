@@ -1,0 +1,62 @@
+// gtlua builtin functions — the PICO-8 global API surface (v0.2 slice) plus
+// the gt.* GameTank extras.
+//
+// Param kinds:
+//   coord — pixel coordinate/radius: C int; fixed args are floored (>>16)
+//   num   — 16.16 number: C long; int args are promoted (<<16)
+//   int   — small integer (button index, player): C int; fixed args floored
+//   color — PICO-8 color 0-15 or gt.rgb() raw; optional -> -1 sentinel
+// Ret kinds: fixed | int | bool | void | same (polymorphic with args)
+
+export const BUILTINS = {
+  // ---- graphics -------------------------------------------------------------
+  cls:      { params: [["color", true]], ret: "void", c: "gt_p8_cls" },
+  camera:   { params: [["coord", true], ["coord", true]], ret: "void", c: "gt_p8_camera" },
+  color:    { params: [["color", false]], ret: "void", c: "gt_p8_color" },
+  pset:     { params: [["coord", false], ["coord", false], ["color", true]], ret: "void", c: "gt_p8_pset" },
+  rect:     { params: [["coord", false], ["coord", false], ["coord", false], ["coord", false], ["color", true]], ret: "void", c: "gt_p8_rect" },
+  rectfill: { params: [["coord", false], ["coord", false], ["coord", false], ["coord", false], ["color", true]], ret: "void", c: "gt_p8_rectfill" },
+  circ:     { params: [["coord", false], ["coord", false], ["coord", false], ["color", true]], ret: "void", c: "gt_p8_circ" },
+  circfill: { params: [["coord", false], ["coord", false], ["coord", false], ["color", true]], ret: "void", c: "gt_p8_circfill" },
+  line:     { params: [["coord", false], ["coord", false], ["coord", false], ["coord", false], ["color", true]], ret: "void", c: "gt_p8_line" },
+  pal:      { params: [["int", true], ["color", true]], ret: "void", c: "gt_p8_pal" },
+
+  // ---- input ---------------------------------------------------------------
+  btn:      { params: [["int", false], ["int", true]], ret: "bool", c: "gt_p8_btn" },
+  btnp:     { params: [["int", false], ["int", true]], ret: "bool", c: "gt_p8_btnp" },
+
+  // ---- math ------------------------------------------------------------------
+  flr:   { params: [["num", false]], ret: "int", c: null, special: "flr" },
+  ceil:  { params: [["num", false]], ret: "int", c: null, special: "ceil" },
+  abs:   { params: [["num", false]], ret: "same", c: null, special: "abs" },
+  sgn:   { params: [["num", false]], ret: "int", c: null, special: "sgn" },
+  min:   { params: [["num", false], ["num", true]], ret: "same", c: null, special: "min" },
+  max:   { params: [["num", false], ["num", true]], ret: "same", c: null, special: "max" },
+  mid:   { params: [["num", false], ["num", false], ["num", false]], ret: "same", c: null, special: "mid" },
+  sqrt:  { params: [["num", false]], ret: "fixed", c: "gt_fsqrt" },
+  sin:   { params: [["num", false]], ret: "fixed", c: "gt_fsin" },
+  cos:   { params: [["num", false]], ret: "fixed", c: "gt_fcos" },
+  atan2: { params: [["num", false], ["num", false]], ret: "fixed", c: "gt_fatan2" },
+  rnd:   { params: [["num", true]], ret: "fixed", c: "gt_p8_rnd" },
+  srand: { params: [["num", false]], ret: "void", c: "gt_p8_srand" },
+  t:     { params: [], ret: "fixed", c: "gt_p8_time", isValue: false },
+  time:  { params: [], ret: "fixed", c: "gt_p8_time" },
+};
+
+// gt.* extras (GameTank-specific)
+export const GT_MEMBERS = {
+  rgb:    { kind: "fn", params: [["int", false]], ret: "int", special: "rgb" }, // raw palette byte -> color value
+  ticks:  { kind: "fn", params: [], ret: "int", c: "(int)gt_ticks", isValue: true },
+  border: { kind: "fn", params: [["color", false]], ret: "void", c: "gt_p8_border" },
+};
+
+// PICO-8 color indices 0-15 -> GameTank CAPTURE-palette bytes.
+// Computed by nearest-match (redmean) against the emulator palette, then
+// hand-tuned: black/greys/white pinned to the neutral ramp, brown moved off
+// the red row, yellow moved to the yellow-green row.
+export const P8_PALETTE = [
+  0x00, 0xA9, 0x5A, 0xDB, 0x33, 0x03, 0x06, 0x07,
+  0x5B, 0x3E, 0x1F, 0xFE, 0xBE, 0x8C, 0x5E, 0x2F,
+];
+
+export const CALLBACKS = ["_init", "_update", "_update60", "_draw"];

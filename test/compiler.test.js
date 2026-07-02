@@ -8,7 +8,7 @@ import { compile } from "../compiler/index.js";
 
 const REPO = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
-const UPDATE = "function update()\nend\n";
+const LOOP = "function _update60()\nend\nfunction _draw()\nend\n";
 
 function errorsOf(src) {
   return compile(src, "t.lua").diagnostics
@@ -22,76 +22,128 @@ function cOf(src) {
   return r.c;
 }
 
-// ---- things that must compile ------------------------------------------------
+// ---- examples ------------------------------------------------------------------
 
-test("pad-square example compiles", () => {
-  const src = readFileSync(path.join(REPO, "examples/pad-square/main.lua"), "utf8");
-  const r = compile(src, "main.lua");
-  assert.equal(r.ok, true, JSON.stringify(r.diagnostics, null, 2));
-  assert.match(r.c, /void main\(void\)/);
-  assert.match(r.c, /gt_update_inputs\(\);/);
+for (const ex of ["pad-square", "orbit", "mathcheck"]) {
+  test(`example ${ex} compiles`, () => {
+    const src = readFileSync(path.join(REPO, `examples/${ex}/main.lua`), "utf8");
+    const r = compile(src, "main.lua");
+    assert.equal(r.ok, true, JSON.stringify(r.diagnostics, null, 2));
+    assert.match(r.c, /void main\(void\)/);
+  });
+}
+
+// ---- PICO-8 dialect --------------------------------------------------------------
+
+test("// is a comment, backslash is floor division", () => {
+  const c = cOf("local x = 8 // like this\nfunction _update60()\n  x = x \\ 2\nend\n" + "function _draw()\nend\n");
+  assert.match(c, /gtl_x >> 1/);
 });
 
-test("module locals become exported C ints", () => {
-  const c = cOf("local score = 10\n" + UPDATE);
-  assert.match(c, /^int gtl_score = 10;$/m);
+test("!= is ~=", () => {
+  const c = cOf("local x = 1\nfunction _update60()\n  if x != 2 then\n    x = 2\n  end\nend\nfunction _draw()\nend\n");
+  assert.match(c, /gtl_x != 2/);
 });
 
-test("compound assignment lowers to C compound assignment", () => {
-  const c = cOf("local x = 0\nfunction update()\n  x += 3\n  x *= 2\nend\n");
-  assert.match(c, /gtl_x \+= 3;/);
-  assert.match(c, /gtl_x \*= 2;/);
+test("one-line if shorthand", () => {
+  const c = cOf("local x = 0\nfunction _update60()\n  if (btn(0)) x -= 1\n  if (btn(1)) x += 1 else x = 0\nend\nfunction _draw()\nend\n");
+  assert.match(c, /gt_p8_btn\(0, 0\)/);
+  assert.match(c, /} else \{/);
 });
 
-test("floor division by power of two lowers to a shift", () => {
-  const c = cOf("local x = 64\nfunction update()\n  x = x // 8\nend\n");
-  assert.match(c, /gtl_x >> 3/);
+test("one-line while shorthand", () => {
+  const c = cOf("local x = 10\nfunction _update60()\n  while (x > 0) x -= 1\nend\nfunction _draw()\nend\n");
+  assert.match(c, /while \(\(gtl_x > 0\)\)/);
 });
 
-test("modulo by power of two lowers to a mask", () => {
-  const c = cOf("local x = 64\nfunction update()\n  x = x % 16\nend\n");
-  assert.match(c, /gtl_x & 15/);
+test("button glyphs lex as indices", () => {
+  const c = cOf("local x = 0\nfunction _update60()\n  if (btnp(🅾️)) x += 1\n  if (btnp(❎)) x -= 1\nend\nfunction _draw()\nend\n");
+  assert.match(c, /gt_p8_btnp\(4, 0\)/);
+  assert.match(c, /gt_p8_btnp\(5, 0\)/);
 });
 
-test("numeric for evaluates the limit once", () => {
-  const c = cOf("local n = 5\nfunction update()\n  for i = 1, n do\n    n += 1\n  end\nend\n");
-  assert.match(c, /int L_lim0 = gtl_n;/);
-  assert.match(c, /gtl_i <= L_lim0/);
+test("multiple assignment evaluates RHS first (swap works)", () => {
+  const c = cOf("local a, b = 1, 2\nfunction _update60()\n  a, b = b, a\nend\nfunction _draw()\nend\n");
+  assert.match(c, /int L_t0 = gtl_b;/);
+  assert.match(c, /gtl_a = L_t0;/);
 });
 
-test("gt constants and functions map to the runtime", () => {
-  const c = cOf("function update()\n  if gt.btn(gt.LEFT) then\n    gt.cls(0)\n  end\nend\n");
-  assert.match(c, /gt_btn\(GT_LEFT\)/);
-  assert.match(c, /gt_cls\(0\)/);
+// ---- number model ----------------------------------------------------------------
+
+test("fractional literals make a variable fixed (long)", () => {
+  const c = cOf("local v = 1.5\nlocal n = 3\n" + LOOP);
+  assert.match(c, /^long gtl_v = 98304L;/m);
+  assert.match(c, /^int gtl_n = 3;$/m);
 });
 
-test("mid-block local opens a nested C89 block", () => {
-  const c = cOf("function update()\n  gt.cls(0)\n  local t = 3\n  gt.box(t, t, 4, 4, 7)\nend\n");
-  // declaration must not follow a statement at the same block level
-  assert.match(c, /\{ int gtl_t = 3;/);
+test("kind inference widens through assignment", () => {
+  const c = cOf("local v = 1\nfunction _update60()\n  v += 0.5\nend\nfunction _draw()\nend\n");
+  assert.match(c, /^long gtl_v = 65536L;/m);
 });
 
-// ---- the walls: every cut feature refuses loudly ------------------------------
+test("/ always produces fixed; general / uses gt_fdiv", () => {
+  const c = cOf("local a = 3\nlocal b = 2\nlocal r = 0.0\nfunction _update60()\n  r = a / b\nend\nfunction _draw()\nend\n");
+  assert.match(c, /gt_fdiv\(/);
+});
+
+test("/ by power-of-two constant becomes a shift", () => {
+  const c = cOf("local a = 3.5\nlocal r = 0.0\nfunction _update60()\n  r = a / 4\nend\nfunction _draw()\nend\n");
+  assert.match(c, /gtl_a >> 2/);
+  assert.doesNotMatch(c, /gt_fdiv/);
+});
+
+test("fixed multiply goes through gt_fmul; int multiply stays native", () => {
+  const c = cOf("local f = 1.5\nlocal i = 3\nlocal r = 0.0\nlocal s = 0\nfunction _update60()\n  r = f * f\n  s = i * i\nend\nfunction _draw()\nend\n");
+  assert.match(c, /gt_fmul\(gtl_f, gtl_f\)/);
+  assert.match(c, /\(gtl_i \* gtl_i\)/);
+});
+
+test("% by power of two masks; general int % is floored", () => {
+  const c = cOf("local a = 9\nlocal b = 4\nlocal r = 0\nfunction _update60()\n  r = a % 8\n  r = a % b\nend\nfunction _draw()\nend\n");
+  assert.match(c, /gtl_a & 7/);
+  assert.match(c, /gt_ifmod\(gtl_a, gtl_b\)/);
+});
+
+test("polymorphic min/mid pick int or fixed variants", () => {
+  const c = cOf("local i = 1\nlocal f = 0.5\nlocal r = 0\nlocal q = 0.0\nfunction _update60()\n  r = min(i, 3)\n  q = mid(0, f, 1)\nend\nfunction _draw()\nend\n");
+  assert.match(c, /gt_mini\(gtl_i, 3\)/);
+  assert.match(c, /gt_midf\(0L, gtl_f, 65536L\)/);
+});
+
+test("flr of fixed floors via shift; ceil adds the fraction", () => {
+  const c = cOf("local f = 2.5\nlocal r = 0\nfunction _update60()\n  r = flr(f)\n  r = ceil(f)\nend\nfunction _draw()\nend\n");
+  assert.match(c, /\(int\)\(gtl_f >> 16\)/);
+  assert.match(c, /0xFFFFL\) >> 16\)/);
+});
+
+// ---- callbacks & harness -----------------------------------------------------------
+
+test("_update() selects 30fps mode in the harness", () => {
+  const c = cOf("function _update()\nend\nfunction _draw()\nend\n");
+  assert.match(c, /gt_p8_fps30\(\);/);
+});
+
+test("_update60 harness runs at 60 (no fps30)", () => {
+  const c = cOf(LOOP);
+  assert.doesNotMatch(c, /gt_p8_fps30/);
+});
 
 const CASES = [
-  ["update is required", "local x = 1\n", /must define 'function update\(\)'/],
-  ["fractional literals", "local x = 1.5\n" + UPDATE, /fixed point.*not supported yet|fractional/i],
-  ["general division", UPDATE + "local y = 1\nfunction f()\n  y = y / 2\nend\n", /no divide hardware/],
-  ["floor div by non-power-of-two", UPDATE + "local y = 9\nfunction f()\n  y = y // 3\nend\n", /power-of-two/],
-  ["tables", "local t = { x = 1 }\n" + UPDATE, /table constructors are not supported yet/],
-  ["nil", UPDATE + "local z = nil\n", /nil is not supported/],
-  ["strings", UPDATE + 'local s = "hi"\n', /strings are not supported yet/],
-  ["anonymous functions", "local f = function() end\n" + UPDATE, /anonymous functions are not supported/],
-  ["nested functions", "function update()\n  function inner() end\nend\n", /cannot be defined inside functions|no closures/],
-  ["int condition", "local x = 1\nfunction update()\n  if x then\n    x = 0\n  end\nend\n", /conditions must be boolean/],
-  ["undeclared assignment", "function update()\n  y = 1\nend\n", /not declared.*no implicit globals/],
-  ["calling update yourself", "function update()\n  update()\nend\n", /called by the runtime/],
-  ["multiple assignment", "local a, b = 1, 2\n" + UPDATE, /multiple assignment is not supported/],
-  ["goto", UPDATE + "function f()\n  goto top\nend\n", /goto is not supported/],
-  ["method definitions", "function gt.foo() end\n" + UPDATE, /method definitions/],
-  ["exponent", UPDATE + "local p = 2\nfunction f()\n  p = p ^ 2\nend\n", /exponent/],
-  ["bool where number expected", UPDATE + "local q = 0\nfunction f()\n  q = true + 1\nend\n", /boolean used where a number/],
-  ["non-constant top-level init", "local r = gt.ticks()\n" + UPDATE, /constant expression/],
+  ["callback contract required", "local x = 1\n", /_update60\(\) \(60fps\) or _update\(\)/],
+  ["both _update and _update60", "function _update()\nend\nfunction _update60()\nend\n", /not both/],
+  ["calling _draw yourself", "function _update60()\n  _draw()\nend\nfunction _draw()\nend\n", /called by the runtime/],
+  ["tables", "local t = { x = 1 }\n" + LOOP, /table constructors are not supported yet/],
+  ["nil", LOOP + "local z = nil\n", /nil is not supported/],
+  ["strings", LOOP + 'local s = "hi"\n', /strings are not supported yet/],
+  ["closures", "function _update60()\n  function inner() end\nend\nfunction _draw()\nend\n", /no closures/],
+  ["int condition", "local x = 1\nfunction _update60()\n  if x then\n    x = 0\n  end\nend\nfunction _draw()\nend\n", /conditions must be boolean/],
+  ["undeclared assignment", "function _update60()\n  y = 1\nend\nfunction _draw()\nend\n", /not declared.*no implicit globals/],
+  ["'or' value idiom", LOOP + "local a = 1\nlocal b = 2\nfunction f()\n  a = a or b\nend\n", /needs boolean operands/],
+  ["goto", LOOP + "function f()\n  goto top\nend\n", /goto is not supported/],
+  ["exponent", LOOP + "local p = 2\nfunction f()\n  p = p ^ 2\nend\n", /exponent/],
+  ["string concat", LOOP + "local a = 1\nfunction f()\n  a = a .. 2\nend\n", /concatenation is not supported yet/],
+  ["non-constant top-level init", "local r = rnd(4)\n" + LOOP, /constant expression/],
+  ["out-of-range literal", "local r = 99999\n" + LOOP, /outside the 16.16 range/],
 ];
 
 for (const [name, src, re] of CASES) {

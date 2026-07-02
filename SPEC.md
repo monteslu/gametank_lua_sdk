@@ -1,106 +1,112 @@
-# gtlua language specification — v0.1
+# gtlua language specification — v0.2
 
-gtlua is a statically-compiled subset of Lua 5.4 for the GameTank. It keeps
-Lua's surface syntax over a fixed, integer-only semantic core that lowers to
-C and compiles through cc65 to native 65C02 code. The design rule: **where
-the subset has a wall, fail loudly at compile time with a message that says
-what to write instead.** Silent divergence from either Lua or C behavior is
-a bug in the compiler.
+gtlua is a statically-compiled, PICO-8-flavored Lua dialect for the GameTank
+(design rationale and roadmap: [PICO8.md](PICO8.md)). It keeps PICO-8's
+surface syntax and number model over a fixed semantic core that lowers to C
+and compiles through cc65 to native 65C02 code. The design rule: **where the
+dialect has a wall, fail loudly at compile time with a message that says
+what to write instead.** Silent divergence from PICO-8 or C behavior is a
+compiler bug.
 
 ## Program structure
 
-A program is one `.lua` file (modules/`require` land in a later release)
-containing, at top level, only:
+A program is one `.lua` file containing, at top level:
 
-- `local name = <constant expression>` — module state, 16-bit integer
+- `local name = <constant expression>` — module state
 - `function name(params...) ... end` — function definitions
 
-`function update()` is required; the runtime calls it every frame. `function
-init()` is optional; it runs once at boot, after hardware init. The runtime
-owns the frame: inputs are latched before `update()`, and after `update()`
-returns the blitter is drained, vblank awaited, and the double buffer
-flipped. There is no `gt.show()` to forget.
+**Callbacks (the PICO-8 contract):** define `_update60()` (60 fps) or
+`_update()` (30 fps: logic and draw run every second vblank), plus
+`_draw()`; `_init()` is optional and runs once at boot. The runtime latches
+inputs before each update and ends the frame after `_draw()` (blitter
+drain, vsync, page flip). Top-level statements other than declarations are
+errors; top-level initializers must be compile-time constants.
 
-Top-level statements other than declarations are errors (put them in
-`init()`), and top-level initializers must be compile-time constants.
+## Numbers — PICO-8 16.16 fixed point
 
-## Types
+One `number` type, semantically identical to PICO-8's (verified against the
+emulated hardware in `examples/mathcheck`):
 
-v0.1 has two types, checked statically:
+- signed 32-bit, 16 integer + 16 fraction bits: −32768.0 … 32767.99998
+- **overflow wraps** (two's complement); **division by zero saturates** to
+  ±0x7FFF.FFFF; `abs(-32768)` saturates
+- `\` (floor division) and `%` (modulo) are **floored** — `-9\2 == -5`,
+  `-9%2 == 1` (sign of divisor)
+- `sgn(0) == 1`; `flr` rounds toward −∞
+- literals: decimal (`1.5`), hex (`0x11.4`), binary (`0b101.1`)
+- trig in **turns** (1.0 = full circle) with PICO-8's screen-space
+  inversion: `sin(0.25) == -1`, `cos(0.5) == -1`, `atan2(1,1) == 0.875`
 
-- **integer** — 16-bit signed (`int` in the generated C). All numeric
-  literals (decimal or `0x` hex) are integers. Fractional literals are a
-  compile error (16.16 fixed point is the planned `number` type, not yet
-  implemented).
-- **boolean** — `true` / `false`, the type of comparisons and `gt.btn*()`.
+**Kinds (implementation detail, invisible semantics):** the compiler infers
+which variables/expressions provably stay integral and keeps them in 16-bit
+C ints (fast on the 6502); everything else is a 32-bit `long`. Integer
+arithmetic wraps at the same boundaries as PICO-8's 16 integer bits, `/`
+always produces a fixed result, and fractional values widen any variable
+they flow into (inference runs to a fixpoint across assignments, arguments,
+and returns). Power-of-two `/ \ %` fold to shifts/masks — bit-exact for
+16.16.
 
-There is no `nil`, no implicit conversion in either direction between
-integers and booleans, and no dynamic typing.
+## Dialect (PICO-8 syntax)
 
-**Conditions must be boolean.** `if n then` where `n` is an integer is an
-error. Rationale: Lua treats `0` as truthy and C as falsy; rather than pick
-a side silently, gtlua requires the explicit comparison (`n ~= 0`).
+- compound assignment: `+= -= *= /= \= %=`
+- `!=` is `~=`; `\` is floor division; **`//` is a comment** (P8/C style)
+- one-line shorthand (parens required, newline ends the body, no `elseif`):
+  `if (cond) stmt [else stmt]` · `while (cond) stmt`
+- button glyphs `⬅️ ➡️ ⬆️ ⬇️ 🅾️ ❎` are the constants 0–5
+- multiple assignment `x, y = y, x` (RHS fully evaluated first)
+- bitwise: `& | ^^ << >> >>>` and unary `~` (operates on all 32 bits, so it
+  always produces a fixed result); `@ $ %` memory-peek operators are not
+  supported
+- statements: `local` (incl. lists) · assignment · `if/elseif/else` ·
+  `while` · `repeat/until` · numeric `for` (limit evaluated once; constant
+  nonzero step; fractional/negative steps accumulate exactly in 16.16) ·
+  `break` · `return` · calls
+- no implicit globals: assignment requires a prior `local`
 
-## Statements
+## Booleans and conditions
 
-`local x = e` · assignment `x = e` · compound `x += e`, `x -= e`, `x *= e`,
-`x //= k`, `x %= k` · `if / elseif / else / end` · `while cond do ... end` ·
-`repeat ... until cond` · numeric `for i = a, b [, step] do ... end` ·
-`break` · `return [e]` · function calls.
+`true`/`false`, comparisons, `and or not` (boolean operands only), and
+`btn`/`btnp` results. **Conditions must be boolean** — `if n then` on a
+number is an error with a fix-it (`n ~= 0`). PICO-8 calls 0 truthy and C
+calls it falsy; gtlua refuses to guess. This also rules out the
+`x = x or default` value idiom (needs `nil`, which doesn't exist here).
 
-Numeric `for`: the limit is evaluated once (Lua semantics); `step` must be a
-nonzero constant. The loop variable is a fresh local.
+## Builtins (v0.2)
 
-Variables must be declared with `local` before assignment — there are no
-implicit globals. Function-local `local`s follow Lua scoping.
-
-## Expressions
-
-- Arithmetic: `+ - *` on integers. Overflow wraps at 16 bits (hardware
-  semantics).
-- `//` and `%`: the right operand must be a **constant power of two**; they
-  lower to an arithmetic shift / mask, which match Lua's floor-division and
-  modulo semantics for all signed operands. Anything else is an error — the
-  6502 has no divide instruction, and gtlua refuses to hide a ~100-cycle
-  routine behind one character. (`/` and `^` are always errors.)
-- Comparisons: `== ~= < <= > >=` → boolean. `==`/`~=` also compare booleans.
-- Logic: `and or not` on booleans only (the Lua `x or default` value idiom
-  is not in the subset).
-- Calls: user functions and the `gt.*` API. Functions are not values (no
-  closures); recursion is currently permitted but will trap at compile time
-  in a later release once the static call-graph allocator lands — avoid it.
+- **graphics** (PICO-8 signatures; colors are P8 indices through a
+  `pal()`-remappable table; trailing color sets the current color; camera
+  offset applies to all): `cls([c])` `camera([x,y])` `color(c)`
+  `pal([c0,c1])` `pset(x,y,[c])` `rect(x0,y0,x1,y1,[c])`
+  `rectfill(x0,y0,x1,y1,[c])` (corner coords, inclusive)
+  `circ(x,y,r,[c])` `circfill(x,y,r,[c])` `line(x0,y0,x1,y1,[c])`
+- **input**: `btn(i,[pl])` `btnp(i,[pl])` — 0=⬅️ 1=➡️ 2=⬆️ 3=⬇️ 4=🅾️(GT A)
+  5=❎(GT B) 6=GT C 7=START; `btnp` auto-repeats after 15 logical frames
+  then every 4 (30 fps values; doubled at 60, per PICO-8)
+- **math**: `flr ceil abs sgn sqrt min max mid sin cos atan2 rnd srand`
+  `t()/time()` — `min`/`max` accept one arg (second defaults 0), `rnd(x)`
+  is uniform in [0,x), `rnd()` in [0,1), `t()` is seconds since boot
+- **gt.***: `gt.rgb(byte)` raw GameTank color (256-color escape hatch),
+  `gt.border(c)` fills the overscan ring, `gt.ticks()` frames since boot
 
 ## Cut features and their diagnostics
 
-Every cut feature has a specific compile-time diagnostic (tested verbatim in
-`test/compiler.test.js`): tables (→ structs/arrays roadmap), strings,
-closures / anonymous / nested functions, coroutines, metatables, varargs,
-multiple assignment/return, `goto`, method definitions and calls, `nil`,
-fractional literals, `#`, `..`, generic `for ... in`.
-
-## The gt module
-
-See README for the v0.1 surface. `gt.*` names are resolved at compile time —
-`gt` is not a table, and unknown members are compile errors. Two hardware
-protocols are deliberately unreachable from the language: the blitter
-busy/IRQ drain discipline and the DMA/bank register mirror dance. They live
-inside the runtime (`sdk/gt_api.c`).
+Each cut fails with a specific, tested diagnostic: tables (capacity-bounded
+sequences land in v0.3), strings/`..`/`?`/`print` (v0.5), closures /
+anonymous / nested functions, method definitions and calls, metatables,
+coroutines, varargs, `goto`, `nil`, `#`, `^` exponent, generic `for ... in`,
+memory peek operators.
 
 ## Generated code contract (for debugging)
 
-- Module variables become non-static C ints named `gtl_<name>` — they appear
-  in the linker map and `build/<name>.lbl`, so tests and debuggers can
-  assert game state by reading RAM.
-- User functions become `static` C functions `gtl_<name>`.
-- The generated C is committed to readability: fully parenthesized
-  expressions, one Lua statement per C statement, and Lua block structure
-  preserved.
+Module variables are non-static C globals `gtl_<name>` (ints or longs) —
+they appear in `build/<name>.lbl`, so tests assert game state by reading
+RAM (the `examples/mathcheck` pattern). User functions are `static`
+`gtl_<name>`. Generated C is fully parenthesized, one Lua statement per C
+statement, block structure preserved.
 
-## Roadmap (in order)
+## Roadmap (see PICO8.md §4)
 
-1. Tables as compile-time structs and fixed-size typed arrays
-2. 16.16 fixed-point `number` (hand-written asm mul/div, 8.8 fast paths)
-3. Sprites + GRAM loading (`gt.load_sprite`, `gt.draw_sprite`, art pipeline)
-4. Sound (audio coprocessor firmware upload, `gt.note_on`, songs)
-5. Strings + text rendering
-6. `require` modules; later, multi-bank 2 MB cartridges
+v0.3 tables + `add/del/all/foreach` + `spr`/`sspr` sprites on GRAM sheets ·
+v0.4 `map/mget/fget` + `sfx/music` on the audio coprocessor + `cartdata` ·
+v0.5 strings + `print` + `?` · later: `require`, 2 MB multi-bank carts,
+hand-tuned asm for `gt_fmul`/`gt_fdiv`.
