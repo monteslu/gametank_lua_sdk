@@ -33,10 +33,10 @@ How the solver placed this game's 55 functions:
 
 | bin   | count | what lands here                                             |
 |-------|-------|-------------------------------------------------------------|
-| fixed | 1     | `makestars` (reached from both the update and draw paths)   |
+| fixed | 0     | (only the SDK runtime + far-call stubs; no game functions)  |
 | b0    | 32    | the `_update` path: movement, collisions, spawning, AI      |
-| b1    | 18    | the `_draw` path + `_init`                                   |
-| b2    | 4     | cold spill (wave/boss setup) + the sprite sheet's rodata    |
+| b1    | 17    | the `_draw` path + `_init`                                   |
+| b2    | 3     | cold spill (wave/boss setup) + the sprite sheet's rodata    |
 
 Placement rules that matter for correctness *and* speed:
 
@@ -67,41 +67,88 @@ The frame budget is exact and unforgiving. From the core's timing model:
   inside that window (**119,318 cycles**) or the frame overruns into a 3rd
   vsync and pacing climbs above 2.0.
 
-Techniques used to fit 2.0:
+The single dominant cost turned out to be **cc65 per-call overhead**, not the
+drawing itself. A blit's DMA is cheap (an 8×8 sprite is 64 cycles); but each
+`spr()`/`circfill()`/`pset()` is a C call with a 5-argument ABI + camera math
++ clip + volatile register writes, measured at ~500–2000 cycles *per call*.
+The game issues a lot of primitives per frame — 100 stars, 32 enemy sprites, a
+HUD, and up to ~56 particle circfills during a burst — so the call overhead,
+not the pixels, is what fills the budget.
 
+Optimizations applied (all behaviour- and pixel-preserving):
+
+* **The 100-star parallax field moved into the SDK** (`gt.starfield_*`). Drawn
+  one `pset()` per star from Lua it cost ~1 vsync/frame in call overhead
+  alone; the SDK moves and draws the whole field in one tight C loop each,
+  with a split-Y byte representation so the draw loop has no per-star shift.
+  Measured: the field went from ~1 vsync to fitting *inside* the 2-vsync
+  budget (effectively free).
 * `cls()` is issued **first** in `_update`, so its 127×127 (~16 K-cycle)
-  clear DMA runs *under* the whole frame's update logic instead of
-  stalling draw.
-* Positions/velocities are **1/16-pixel ints**, not 16.16 fixed: the
-  65C02 does 16-bit int math far cheaper than 32-bit fixed, and 1/16 px is
+  clear DMA overlaps the frame's update logic instead of stalling the draw.
+* Positions/velocities are **1/16-pixel ints**, not 16.16 fixed: the 65C02
+  does 16-bit int math far cheaper than 32-bit fixed, and 1/16 px is
   invisible on a 128×128 screen. Trig stays real 16.16 (sin/cos), floored.
-* The two per-frame **100-star loops** are the largest constant cost.
-  `animatestars` hoists its invariant mode test out of the loop (three
-  tight loops) and caches `star_y[i]`; `starfield` caches `star_s[i]`.
-* Entity pools carry a compiler-maintained **high-water mark** so a
-  loop over a 56-slot particle pool scans only the live prefix, not the
-  full capacity — a pool that is empty between explosions costs a
-  near-zero scan (see the compiler change below).
-* Particle sparks are always white, so the spark draw path skips the
-  `page_red`/`page_blue` colour-ramp call entirely.
+* Entity pools carry a compiler-maintained **high-water mark** (see below) so
+  a loop over a lightly-used pool scans only the live prefix, not the full
+  capacity — a pool empty between explosions costs a near-zero scan.
+* `gt_p8_spr`'s off-screen clip drops the per-call `-8*w` runtime multiply.
 
 ### Measured pacing
 
-<!-- PACING-TABLE -->
-_To be filled from a live run: `vsyncs/frame = _gt_ticks Δ / ((_gt_time_acc Δ /1092)/2)`
-over a busy-gameplay window. Symbols: `_gt_ticks` and `_gt_time_acc` in
-`build/main.lbl`._
+Measured on the libretro core (the shipping timing model) by reading
+`_gt_ticks` ($0298) and `_gt_time_acc` ($0204) from work-RAM across a window:
+`vsyncs/frame = Δticks / ((Δtime_acc/1092)/2)`. 2.0 = a locked 30 fps.
+
+| scene                                   | vsyncs/frame | fps  |
+|-----------------------------------------|--------------|------|
+| logo / start screen                     | ~4.0         | ~15  |
+| gameplay, wave up, no fire (32 enemies) | ~5.1         | ~12  |
+| gameplay, holding fire                  | ~11          | ~5.5 |
+| gameplay, fire + moving + explosions    | ~13          | ~4.6 |
+| — reference: same scenes, draw stubbed  | 3.2 / 6.9 / 7.9 | (update-only) |
+
+### Why 2.0 is not reachable for this game on this hardware
+
+This is the honest bottom line, and it is arithmetic, not a missing
+optimization (a prior pass independently bottomed out at "floor 3.0"):
+
+* Wave 1 is a **4×8 = 32-enemy** Space-Invaders formation — this is the
+  *original cart's* design (`placens` in `carts/cherrybomb-extract/source.p8.lua`),
+  not a port artifact, and the "no visual/gameplay downgrade" rule keeps it.
+* With **draw entirely stubbed**, a 32-enemy wave still measures **~3.2
+  vsyncs/frame of pure update** (movement easing/trig + two collision passes
+  + animation, once per enemy). That alone is above the 2-vsync budget, so
+  **no amount of draw optimization can reach 2.0** while 32 enemies are live.
+* PICO-8 runs the same 32 enemies at 30 fps because its `pset`/`spr` are
+  near-free VM ops; GameTank's 3.58 MHz 65C02 doing real per-entity 16-bit
+  math + cc65-ABI calls cannot match that throughput.
+
+Reaching a locked 2.0 would require reducing the on-screen entity count or
+rewriting the per-entity update in hand-batched SDK C (an SDK-owned enemy
+system, the way the starfield was batched) — the first is a gameplay change
+(disallowed), the second is a large SDK undertaking that still only closes the
+*draw* gap, not the ~3.2-vsync update floor. The starfield batching is the
+proven, shipped instance of that technique; batching enemy sprites and the
+particle burst the same way would pull firing/explosion frames down toward the
+update floor (~3–4 vsyncs) but not to 2.0.
 
 | scene                                   | vsyncs/frame |
 |-----------------------------------------|--------------|
-| gameplay, no fire                       | _pending_    |
-| gameplay, holding fire + enemies        | _pending_    |
-| boss + heavy particles                  | _pending_    |
-
 ## SDK gap report
 
 Things the port had to work around, in priority order:
 
+0. **Per-call draw overhead is the perf ceiling.** The biggest lesson from
+   this port: cc65's function-call ABI makes every `spr`/`circfill`/`pset`
+   cost ~500–2000 cycles regardless of how few pixels it draws, so a
+   primitive-heavy frame is call-bound, not pixel-bound. The fix is *batching*
+   — an SDK primitive that iterates many items in one C loop. The starfield
+   (`gt.starfield_*`) is the shipped example; a batched sprite-list and a
+   batched particle system would be the highest-value SDK additions for
+   entity-dense games (an SDK particle system was prototyped and works, but a
+   16 KB fixed-ROM-bank overflow blocked landing it here — the fixed bank is
+   near-full with the runtime + font, so it needs the bank solver to spill
+   fixed-bank pressure first).
 1. **No `pal()` sprite tinting.** The original flashes enemy/pickup
    silhouettes white via PICO-8 palette tinting. On GameTank the
    framebuffer bytes *are* colours, so the blitter can't recolour a
