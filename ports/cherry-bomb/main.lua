@@ -76,10 +76,10 @@ local eb_shake = 0
 local eb_flash = 0
 local eb_die = 0
 
--- starfield (100 stars; y and speed in 16ths, int math)
-local star_x = array(100)
-local star_y = array(100)
-local star_s = array(100)
+-- The 100-star parallax field lives in the SDK (gt.starfield_*): moving and
+-- drawing the whole field in one tight C loop each, instead of ~1000 cycles
+-- of cc65 call overhead PER star from here every frame. That single change is
+-- what makes this bullet-hell port hit its frame budget.
 
 local banim = array(18)   -- blink() color ramp
 local bossoff = array(4)  -- boss ani frame offsets {0,4,8,4}
@@ -97,54 +97,6 @@ local floats = pool(8)
 -->8
 -- tools
 
-function makestars()
- for i=1,100 do
-  star_x[i]=flr(rnd(128))
-  star_y[i]=flr(rnd(128))*16
-  star_s[i]=8+flr(rnd(24))   -- 0.5 .. 2.0 px/frame in 16ths
- end
-end
-
-function starfield()
- for i=1,100 do
-  local s=star_s[i]         -- index once, not twice
-  local scol=6
-  if s<16 then
-   scol=1
-  elseif s<24 then
-   scol=13
-  end
-  pset(star_x[i],star_y[i]\16,scol)
- end
-end
-
--- mode 1 = original speed 1, mode 2 = double (wavetext),
--- mode 0 = title drift (~0.375; original 0.4) — all shift math, no mults
-function animatestars(mode)
- -- hoist the mode test out of the 100-iteration loop (it's invariant) and
- -- cache star_y[i] in a local so it's indexed once, wrapped, stored once.
- if mode==1 then
-  for i=1,100 do
-   local y=star_y[i]+star_s[i]
-   if y>2047 then y-=2048 end
-   star_y[i]=y
-  end
- elseif mode==2 then
-  for i=1,100 do
-   local s=star_s[i]
-   local y=star_y[i]+s+s
-   if y>2047 then y-=2048 end
-   star_y[i]=y
-  end
- else
-  for i=1,100 do
-   local s=star_s[i]
-   local y=star_y[i]+(s\4)+(s\8)
-   if y>2047 then y-=2048 end
-   star_y[i]=y
-  end
- end
-end
 
 function blink()
  if blinkt>18 then
@@ -733,7 +685,7 @@ end
 -- game flow
 
 function startscreen()
- makestars()
+ gt.starfield_init(100)
  mode=MSTART
  -- TODO music(7)
 end
@@ -757,7 +709,7 @@ function startgame()
  attacfreq=60
  firefreq=20
  nextfire=0
- makestars()
+ gt.starfield_init(100)
  for b in all(buls) do del(buls,b) end
  for eb in all(ebuls) do del(ebuls,eb) end
  for e in all(enemies) do del(enemies,e) end
@@ -1052,9 +1004,9 @@ function update_game()
  if muzzle>0 then muzzle-=1 end
 
  if mode==MWAVETEXT then
-  animatestars(2)
+  gt.starfield_move(2)
  else
-  animatestars(1)
+  gt.starfield_move(1)
  end
 
  -- check if wave over
@@ -1065,7 +1017,7 @@ function update_game()
 end
 
 function update_start()
- animatestars(0)  -- title drift
+ gt.starfield_move(0)  -- title drift
  if not btn(4) and not btn(5) then
   btnreleased=1
  end
@@ -1131,7 +1083,7 @@ end
 -- draw
 
 function draw_game()
- starfield()
+ gt.starfield_draw()
 
  if lives>0 then
   local vis=1
@@ -1278,7 +1230,7 @@ function draw_game()
 end
 
 function draw_start()
- starfield()
+ gt.starfield_draw()
  print("v1",1,1,1)
 
  -- the peeker alien bobbing behind the logo
@@ -1359,7 +1311,7 @@ function _init()
  bossoff[3]=8
  bossoff[4]=4
  makesil()
- makestars()
+ gt.starfield_init(100)
 end
 
 function _update()
