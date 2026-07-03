@@ -49,7 +49,7 @@ static unsigned char resolve_color(int c) {
 #define MODE_NONE 0
 #define MODE_CPU  2
 #define MODE_GRAM 3
-static char draw_mode;
+char gt_draw_mode;
 
 /* dma_flags bytes carried in queue entries */
 #define QF_RECT (DMA_NMI | DMA_ENABLE | DMA_IRQ | DMA_COLORFILL_ENABLE | DMA_OPAQUE)
@@ -71,22 +71,22 @@ static void await_drawing(void) {
 /* Producers stage an entry with 8 zero-page stores and call gt_q_push()
  * (asm: commit + pump). No C-stack arguments anywhere on this path — the
  * measured cost of queueing a blit is the stores + one JSR. */
-#define Q_COMMIT() (draw_mode = MODE_NONE, gt_q_push())
+#define Q_COMMIT() (gt_draw_mode = MODE_NONE, gt_q_push())
 
 static void enter_cpu_mode(void) {
-    if (draw_mode == MODE_CPU) return;
+    if (gt_draw_mode == MODE_CPU) return;
     await_drawing();
     flags_mirror = DMA_NMI | DMA_CPU_TO_VRAM;   /* DMA off: CPU owns VRAM */
     *dma_flags = flags_mirror;
     banks_mirror = bankflip;                    /* write the DRAW page */
     *bank_reg = banks_mirror;
-    draw_mode = MODE_CPU;
+    gt_draw_mode = MODE_CPU;
 }
 
 /* GRAM CPU-write mode: dummy clipped 1x1 blit latches sheet quadrant 0,
  * then DMA off routes CPU writes into GRAM (hardware ref 3.4). */
 static void enter_gram_mode(void) {
-    if (draw_mode == MODE_GRAM) return;
+    if (gt_draw_mode == MODE_GRAM) return;
     await_drawing();
     flags_mirror = DMA_NMI | DMA_ENABLE | DMA_IRQ | DMA_GCARRY;
     *dma_flags = flags_mirror;
@@ -103,7 +103,7 @@ static void enter_gram_mode(void) {
     await_drawing();
     flags_mirror = DMA_NMI;      /* DMA off, CPU_TO_VRAM off -> GRAM writes */
     *dma_flags = flags_mirror;
-    draw_mode = MODE_GRAM;
+    gt_draw_mode = MODE_GRAM;
 }
 
 /* framebuffer row start addresses (ROM table: vram is fixed at $4000) */
@@ -196,32 +196,8 @@ void gt_p8_sset(int x, int y, int c) {
 }
 
 /* PICO-8 spr: blit sprite cell n (8x8, 16 per row) with transparency.
- * Clip in pixel-widths computed once (pw/ph); the blit itself is queued —
- * this call returns while the blitter is still working. */
-void gt_p8_spr_z(void) {
-    int x, y, pw, ph;
-    int n = gt_a0;
-    x = gt_a1 - gt_cam_x;
-    y = gt_a2 - gt_cam_y;
-    pw = gt_a3;
-    ph = gt_a4;
-    if (pw < 1) pw = 1;
-    if (ph < 1) ph = 1;
-    pw <<= 3;
-    ph <<= 3;
-    /* fully off-screen: right edge <=0, or left edge >127 (either axis) */
-    if (x > 127 || y > 127 || x + pw <= 0 || y + ph <= 0) return;
-    gt_ent[0] = QF_SPR;
-    gt_ent[1] = (unsigned char)x;
-    gt_ent[2] = (unsigned char)y;
-    gt_ent[3] = (unsigned char)((n & 15) << 3);
-    gt_ent[4] = (unsigned char)((n >> 4) << 3);
-    gt_ent[5] = (unsigned char)pw;
-    gt_ent[6] = (unsigned char)ph;
-    gt_ent[7] = 0;
-    Q_COMMIT();
-}
-
+ * The hot path lives in asm (gt_blitq.s _gt_p8_spr_z): camera-adjust,
+ * offscreen reject, stage a QF_SPR entry, pump. This is the cdecl shim. */
 void gt_p8_spr(int n, int x, int y, int w, int h) {
     gt_a0 = n; gt_a1 = x; gt_a2 = y; gt_a3 = w; gt_a4 = h;
     gt_p8_spr_z();
@@ -625,7 +601,7 @@ static void flip_pages(void) {
     banks_mirror = bankflip;
     *bank_reg = banks_mirror;
     gt_qbank = bankflip | BANK_CLIP_X | BANK_CLIP_Y;  /* next frame's blits */
-    draw_mode = MODE_NONE;
+    gt_draw_mode = MODE_NONE;
 }
 
 void gt_p8_fps30(void) { fps30 = 1; }
@@ -642,7 +618,7 @@ void gt_init(void) {
     gt_qhead = 0; gt_qtail = 0;
     gt_qbank = bankflip | BANK_CLIP_X | BANK_CLIP_Y;
     gt_pad0 = 0; gt_pad1 = 0; gt_rpt0 = 0; gt_rpt1 = 0;
-    draw_mode = MODE_NONE;
+    gt_draw_mode = MODE_NONE;
     for (i = 0; i < 16; ++i) p8pal[i] = p8pal_rom[i];
     draw_color = p8pal[6];             /* P8 default draw color: 6 */
     flags_mirror = DMA_NMI | DMA_ENABLE | DMA_IRQ;

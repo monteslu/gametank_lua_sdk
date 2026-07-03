@@ -26,6 +26,7 @@
 ; as inline zp ops.
 ; ---------------------------------------------------------------------------
 .import   _gt_draw_busy
+.import   _gt_draw_mode
 .export   _gt_a0, _gt_a1, _gt_a2, _gt_a3, _gt_a4, _gt_a5
 .export   _gt_cam_x, _gt_cam_y
 .export   _gt_pad0, _gt_pad1, _gt_rpt0, _gt_rpt1
@@ -33,6 +34,7 @@
 .export   _gt_q
 .export   _gt_ent
 .export   _gt_q_kick, _gt_q_push, _gt_q_pump
+.export   _gt_p8_spr_z
 .export   _irq_int
 
 DMA_Flags = $2007
@@ -63,6 +65,10 @@ _gt_qhead: .res 1               ; producer index (multiples of 8)
 _gt_qtail: .res 1               ; consumer index (advanced by the pump)
 _gt_qbank: .res 1               ; this frame's $2005 byte for blits
 _gt_ent:   .res 8               ; entry staging: C fills, gt_q_push commits
+q_pwh:     .res 1               ; spr_z scratch: pixel-width high byte
+q_phl:     .res 1               ;                pixel-height low
+q_phh:     .res 1               ;                pixel-height high
+q_t:       .res 1               ;                clip-sum low byte
 
 .segment "BSS"
 
@@ -170,6 +176,107 @@ _gt_q_pump:
         JSR _gt_q_kick
 @out:   PLP
         RTS
+
+; ---------------------------------------------------------------------------
+; gt_p8_spr_z: the hot per-entity draw call, fully in asm.
+;   gt_a0=n  gt_a1=x  gt_a2=y  gt_a3=w  gt_a4=h   (P8 spr semantics)
+; Camera-adjust (16-bit), reject fully-offscreen, stage a QF_SPR entry,
+; fall into gt_q_push. w/h use their low bytes (P8 cells are 1..16; 0 -> 1).
+; Clobbers A,X.
+; ---------------------------------------------------------------------------
+QF_SPR = $55                    ; DMA_NMI|DMA_ENABLE|DMA_IRQ|DMA_GCARRY
+
+_gt_p8_spr_z:
+        ; ---- pw = max(w,1) << 3 (16-bit result: A=lo, q_pwh=hi) ----
+        LDA _gt_a3
+        BNE :+
+        LDA #1
+:       STZ q_pwh
+        ASL A
+        ROL q_pwh
+        ASL A
+        ROL q_pwh
+        ASL A
+        ROL q_pwh
+        STA _gt_ent+5           ; entry WIDTH (low byte, matches C truncation)
+        ; ---- x = gt_a1 - cam_x (16-bit signed) ----
+        SEC
+        LDA _gt_a1
+        SBC _gt_cam_x
+        STA _gt_ent+1           ; entry VX candidate
+        LDA _gt_a1+1
+        SBC _gt_cam_x+1
+        BMI @xneg
+        BNE @rej                ; x >= 256: off right
+        BIT _gt_ent+1
+        BMI @rej                ; 128..255: off right
+        BRA @xok
+@xneg:  ; x < 0: reject when x + pw <= 0
+        TAX                     ; X = x high
+        CLC
+        LDA _gt_ent+1
+        ADC _gt_ent+5
+        STA q_t
+        TXA
+        ADC q_pwh
+        BMI @rej                ; sum < 0
+        BNE @xok                ; sum >= 256: on screen
+        LDA q_t
+        BEQ @rej                ; sum == 0: right edge exactly at 0
+@xok:
+        ; ---- ph = max(h,1) << 3 ----
+        LDA _gt_a4
+        BNE :+
+        LDA #1
+:       STZ q_phh
+        ASL A
+        ROL q_phh
+        ASL A
+        ROL q_phh
+        ASL A
+        ROL q_phh
+        STA _gt_ent+6           ; entry HEIGHT
+        ; ---- y = gt_a2 - cam_y (16-bit signed) ----
+        SEC
+        LDA _gt_a2
+        SBC _gt_cam_y
+        STA _gt_ent+2           ; entry VY candidate
+        LDA _gt_a2+1
+        SBC _gt_cam_y+1
+        BMI @yneg
+        BNE @rej
+        BIT _gt_ent+2
+        BMI @rej
+        BRA @yok
+@yneg:  TAX
+        CLC
+        LDA _gt_ent+2
+        ADC _gt_ent+6
+        STA q_t
+        TXA
+        ADC q_phh
+        BMI @rej
+        BNE @yok
+        LDA q_t
+        BEQ @rej
+@yok:
+        ; ---- stage the rest: flags, GX=(n&15)<<3, GY=(n&0xF0)>>1 ----
+        LDA #QF_SPR
+        STA _gt_ent+0
+        LDA _gt_a0
+        AND #$0F
+        ASL A
+        ASL A
+        ASL A
+        STA _gt_ent+3
+        LDA _gt_a0
+        AND #$F0
+        LSR A
+        STA _gt_ent+4
+        STZ _gt_ent+7           ; COLOR unused for sprite copies
+        STZ _gt_draw_mode       ; MODE_NONE: flags register now queue-owned
+        JMP _gt_q_push
+@rej:   RTS
 
 ; ---------------------------------------------------------------------------
 ; IRQ = blit complete: acknowledge and mark the blitter idle. Nothing else —
