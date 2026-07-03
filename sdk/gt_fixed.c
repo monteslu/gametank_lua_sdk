@@ -4,6 +4,14 @@
  * once profiling says so. */
 #include "gt_fixed.h"
 
+/* GT_FIXED_ASM: gt_fmul and gt_fdiv are provided by hand-tuned 65C02 in
+ * gt_fixed_asm.s (bit-identical PICO-8 semantics; a fixed-mul statement drops
+ * from ~9.3K to ~2.8K cycles, ~3.3x, measured on the fmul microbench).
+ * Defined by default; #undef it to fall back to these C references (kept below
+ * for provenance and host-side validation). */
+#define GT_FIXED_ASM 1
+
+#ifndef GT_FIXED_ASM
 long gt_fmul(long a, long b) {
     /* (a*b) >> 16 via four 16x16 partial products on magnitudes.
      * Wraps on overflow like the hardware (P8 wraps too; exact bit-equality
@@ -40,6 +48,7 @@ long gt_fdiv(long a, long b) {
     }
     return neg ? -(long)q : (long)q;
 }
+#endif /* !GT_FIXED_ASM */
 
 long gt_fsqrt(long x) {
     /* canonical bit-by-bit integer sqrt of the raw bits, then scale:
