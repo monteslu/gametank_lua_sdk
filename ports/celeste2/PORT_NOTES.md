@@ -51,14 +51,26 @@ in the fixed bank, which is the scarce resource here.
    carry (`p_state1`/`p_state2`, the `holds` pool) all stay. To restore the
    grapple, re-ship rooms 4+ and git-revert the grapple deletions.
 
-3. **Audio disabled (SDK blocker, not a choice).** The `gt.note`/`gt.noteoff`
-   calls in `sfx_go`/`sfx_tick` are commented out. Reason: any `gt.note` pulls
-   in `sdk/gt_audio.o`, whose **4 KB ACP firmware blob** (`gt_acp_fw.h`) lands
-   in the FIXED bank's RODATA. The SDK runtime + that blob already overflow the
-   16 KB fixed bank (§2 below), leaving no room for the cross-bank stubs a
-   banked build needs. Re-enable by uncommenting those two lines *once the SDK
-   moves the firmware to a switchable bank*. The `sfx_*` scheduler structure is
-   left intact so this is a two-line change.
+3. **Audio disabled + sfx scheduler removed (SDK blocker, not a choice).** Any
+   `gt.note` call pulls in `sdk/gt_audio.o`, whose **4 KB ACP firmware blob**
+   (`gt_acp_fw.h`) lands in the FIXED bank's RODATA. The SDK runtime + that blob
+   already overflow the 16 KB fixed bank (§2 below), leaving no room for the
+   cross-bank stubs a banked build needs. So every `gt.note`/`gt.noteoff` is
+   gone, and — since with no audio the sfx scheduler (`sfx_go`/`psfx`/`sfx_q`/
+   `sfx_tick` + the `sfx_t`/`sfxq_*` pools) only burned fixed-bank stubs — the
+   whole scheduler was removed too (its 37 call sites are commented with a
+   trailing marker). Re-enable by restoring those functions + call sites once
+   the SDK moves the ACP firmware to a switchable bank.
+
+3b. **Cosmetic HUD/atmosphere trimmed for fixed-bank headroom (SDK drift).**
+   The fixed bank is razor-tight, and the shared SDK grew ~1.7 KB mid-port (a
+   new `gt.starfield_*` parallax primitive, linked whole-object even though this
+   port never calls it — see §2). To keep a stable margin, four cosmetic
+   functions + their cross-bank stubs were dropped: `draw_time` (speedrun timer
+   HUD), `draw_score_panel` (end-of-level berry/death card), `draw_wipe` (room
+   transition curtain), and `draw_clouds` (background parallax; the iconic snow
+   layer stays). None affect movement or collision. All are one git-revert away
+   once the SDK stops growing / the starfield object is split out.
 
 4. **Numbers transfer exactly.** The engine is 16.16 fixed-point in both PICO-8
    and gtlua, so jump/dash/spring constants are byte-identical. `_update()`
@@ -88,9 +100,13 @@ in the fixed bank, which is the scarce resource here.
 gtlua has **no `map()`/`mget()`/`fget()` builtin and no way to embed constant
 data in ROM** (see gap report §3). This port works around both:
 
-* **Storage.** `map = array(2048)` (RAM; 2 tiles packed per 16-bit int, the
-  `array()` cap is 4096 ints and a 128×32 room is exactly 4096 *tiles* = 2048
-  ints). `bget(i)`/`bset(i,b)` do byte access into it.
+* **Storage.** `map = array(BUF_INTS)` (RAM; 2 tiles packed per 16-bit int).
+  `gen/gen.mjs` sizes `BUF_INTS` to the SHIPPED slice — the biggest shipped room
+  plus its LZ-stream staging — patching the `-- BUF_INTS` markers in `main.lua`.
+  For the full game a 128×32 room is 4096 tiles = 2048 ints (the `array()` cap);
+  a 1-room slice needs far less (room 1 = 96×16 = 768 tiles → 972 ints incl.
+  staging), which reclaims scarce work RAM. `bget(i)`/`bset(i,b)` do byte access
+  into it.
 * **Load.** `gen.mjs` px9-decodes each cart room, re-encodes it as a tiny LZSS
   stream (window = the decoded room itself, so the decoder needs no scratch
   RAM), and emits the bytes as `ld_dat_N()` (`d16`/`d1` data-call code). At
@@ -172,8 +188,16 @@ byte. (This port only builds because audio is disabled.) **Ask:** put the ACP
 firmware in a switchable bank and stream/copy it to audio RAM at init from
 there, freeing ~4 KB of fixed RODATA. Secondary: the fixed bank is tight even
 without audio — trimming `gt_api`'s fixed CODE, or allowing per-bank RODATA for
-`gt_math`'s sin/cos table, buys headroom (this port converged with only ~2
-bytes to spare).
+`gt_math`'s sin/cos table, buys headroom (this port lands within ~40 bytes of
+the fixed-bank ceiling).
+
+**§2b — `gt_api.o` is one monolithic object; unused primitives still cost
+fixed-bank space. (MEDIUM)** cc65 links whole objects, so a game that never
+calls `gt.starfield_*` still pays its ~1.7 KB of fixed CODE (adding that
+primitive mid-port is what forced the §3b cosmetic cuts here). **Ask:** split
+`gt_api.c` into per-feature translation units (or move the optional primitives —
+starfield, and anything not on the boot path — behind a link-time opt-in), so a
+banked game only pays fixed-bank code for the SDK it actually calls.
 
 **§3 — No way to put constant data in ROM. (HIGH — see the map spec above)**
 `array(N[,v])` allocates *RAM* (zeroed, or a scalar-filled DATA image); there
