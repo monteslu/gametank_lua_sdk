@@ -324,7 +324,30 @@ were cheaper than assumed), bank-layout/alignment shifts in the draw path, or
 an interaction with the queue's blit overlap. The emitter diff lives in this
 session's history; the zp slots stay reserved.
 
-### C0 FIRST — the ceiling probe
+### C0 DONE — the ceiling, measured (2026-07-04)
+
+A pure entity-update microbench (256x per frame: `ex[i] += ev[i]` + a bounds
+wrap, 16-bit arrays) costs **~466 cycles per entity through cc65**; the ideal
+hand asm for identical semantics (split lo/hi arrays, X-indexed) counts to
+**~40 cycles — an 11.7x tax**, corroborating the historical ~6k-cycles-per-
+enemy observation. Combined with the shipped C1 slice (loop counters, ~2x on
+the counter itself but the counter is a small slice of a loop), the honest
+map of the codegen program:
+
+- The tax on ARRAY-HEAVY ENTITY LOOPS is ~10x. Capturing it means the emitter
+  generating SPECIALIZED loops itself — 8-bit element arrays (gtlua's array()
+  is always int; an auto-narrowed or explicit byte array is the missing
+  feature), split lo/hi layout, X-indexed strides — rather than any amount of
+  cc65 coaxing.
+- The tax on CALL-HEAVY code is ~2x (asm spr path vs C fill path) — the
+  zp-fastcall ABI attacks it, pending the driftmania anomaly root-cause.
+- The tax on straight-line scalar code is smallest; peepholes found nothing.
+
+Priority for the next codegen session, in order: (1) byte ARRAYS + narrowed
+element ops (the 10x class), (2) the fastcall anomaly root-cause (the 2x
+class), (3) local-scalar narrowing for constant-assigned state variables.
+
+### (superseded) C0 FIRST — the ceiling probe
 Before building any of it: hand-asm ONE hot compiled function (celeste2
 box_solid or newleste p_is_flag), measure the per-call delta with the
 amplifier. That number bounds what perfect codegen buys and calibrates how
