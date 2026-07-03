@@ -172,6 +172,7 @@ export function emit(chunk, symbols, file, opts = {}) {
   let currentFnName = null; // for cross-bank call rewriting
   const narrowedVars = new Set(); // u8 fornum counters currently in scope
   let inlineMap = null;           // inlined callee: param name -> rendered arg
+  const inlineStack = new Set();  // fns currently being inlined (recursion guard)
   const stubbed = new Set(); // callee names reached through a far-call stub
   const line = (s) => out.push("    ".repeat(s === "" ? 0 : indent) + s);
   const mangle = (name) => `gtl_${name}`;
@@ -435,16 +436,30 @@ export function emit(chunk, symbols, file, opts = {}) {
       {
         const body = functions.get(callee.name)?.node?.body;
         const st = body && body.stmts.length === 1 ? body.stmts[0] : null;
-        if (st && st.kind === "return" && st.value && !hasUserCall(st.value) &&
+        if (st && st.kind === "return" && st.value &&
+            !inlineStack.has(callee.name) &&
             e.args.length === fn.params.length) {
-          const ok = fn.params.every((pname, i) =>
-            cheapPure(e.args[i]) || countUses(st.value, pname) <= 1);
+          // side-effecting args (user calls) must be pasted EXACTLY once —
+          // zero uses would drop the effect, two would double it — and at
+          // most ONE such arg may inline (pasting reorders evaluation from
+          // call-order to body-order; with a single effectful arg the pure
+          // ones can't observe the difference)
+          const effectful = e.args.map((a) => hasUserCall(a));
+          const ok = effectful.filter(Boolean).length <= 1 &&
+            fn.params.every((pname, i) => effectful[i]
+              ? countUses(st.value, pname) === 1
+              : (cheapPure(e.args[i]) || countUses(st.value, pname) <= 1));
           if (ok) {
+            // args render OUTSIDE the callee's substitution scope (they are
+            // caller-context expressions); user calls inside the body inline
+            // recursively, guarded by inlineStack against cycles
             const rendered = new Map(fn.params.map((pname, i) =>
               [pname, `(${expr(e.args[i], fn.paramKinds[i] ?? "int")})`]));
             const saved = inlineMap;
             inlineMap = rendered;
+            inlineStack.add(callee.name);
             const out = expr(st.value, fn.retKind ?? "int");
+            inlineStack.delete(callee.name);
             inlineMap = saved;
             return `(${out})`;
           }
@@ -808,14 +823,13 @@ export function emit(chunk, symbols, file, opts = {}) {
     out.push(`${linkage}${ret} ${mangle(name)}(${params});`);
   }
   if (banked) {
-    // a stub prototype for every callee some other bank might reach
-    // (superset is fine: unreferenced externs cost nothing)
+    // a stub prototype for every banked function: the INLINER can graft a
+    // callee's body (with its calls) into any caller, creating cross-bank
+    // edges the AST call graph never had — so the superset is simply every
+    // non-fixed function (unreferenced externs cost nothing)
     const candidates = new Set();
-    for (const [caller, callees] of callGraph) {
-      for (const cn of callees) {
-        const kb = bankOf(cn);
-        if (kb !== "fixed" && kb !== bankOf(caller)) candidates.add(cn);
-      }
+    for (const name of functions.keys()) {
+      if (bankOf(name) !== "fixed") candidates.add(name);
     }
     for (const cn of candidates) {
       const { params, ret } = signatureOf(cn, functions.get(cn));
