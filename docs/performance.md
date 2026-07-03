@@ -189,6 +189,18 @@ it. Fixed-point add/subtract are cheap, but fixed `*`/`/`/`%` are not (see §1).
 - Sub-pixel motion needs fixed point, but the *drawing* position is always a
   pixel — `flr()` at the draw boundary and do any wrap/compare in int space.
 
+### Byte arrays: `array8` for entity pools
+
+`array(n)` elements are 16-bit; `array8(n)` stores bytes (0-255) — **half the
+RAM, and ~2× faster element access in counting loops** (measured: 561 → 280
+cycles per `ex[i] += ev[i]` entity update). The catch: the 2× needs a *narrow
+index* — a plain counting loop with constant bounds (which the compiler
+already narrows to a byte register). A big table indexed by a 16-bit
+expression still wins the RAM but little speed, because the pointer
+arithmetic dominates. So: entity fields that fit a byte (hp, type, sprite,
+timer, color, size) belong in `array8`; a 1024-entry map keeps its speed
+profile but drops from 2 KB to 1 KB.
+
 ### Shrink your fixed-point: 8.8 in an int
 
 When a fractional quantity has a small range — a speed that never exceeds ±8, a

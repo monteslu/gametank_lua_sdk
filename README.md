@@ -72,6 +72,7 @@ button glyphs (`⬅️➡️⬆️⬇️🅾️❎`), and multiple assignment (`
 | graphics | `cls` `camera` `color` `pal` `pset` `rect` `rectfill` `circ` `circfill` `line` `sset` `spr(n,x,y,[w,h],[flip_x,flip_y])` — flips are free (hardware blitter mirror) |
 | input | `btn(i,[pl])` `btnp(i,[pl])` — indices 0-3 d-pad, 4=🅾️(GT A), 5=❎(GT B), **6=GT C**, 7=START; `btnp` has PICO-8 auto-repeat |
 | math | `flr` `ceil` `abs` `sgn` `sqrt` `min` `max` `mid` `sin` `cos` `atan2` `rnd` `srand` `t`/`time` |
+| data | `array(n,[v])` — 16-bit elements · `array8(n,[v])` — byte elements 0-255, half the RAM and ~2× faster in counting loops |
 | sound | `sfx(n,[ch])` `music(n,[loop])` (built-in FM effects/tunes — see below); low-level `gt.note(ch,note,vol)`/`gt.noteoff(ch)` |
 | gametank extras | `gt.rgb(b)` — raw palette byte (the GameTank has 256 colors; 0-15 are mapped to the PICO-8 palette), `gt.border(c)`, `gt.ticks()`, `gt.starfield_*`, `gt.bg_compose`/`gt.bg_draw` (see below) |
 
