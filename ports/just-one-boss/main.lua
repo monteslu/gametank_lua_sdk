@@ -2036,6 +2036,14 @@ function _update()
   if (rainbow_color == 13) rainbow_color = 14
   if (bh_rainbow > 0) bh_rainbow -= 1
   if (bdc > 0) bdc -= 1
+  -- boss-bar drain: once a phase fills the bar (bh_dc set to 61), the bar
+  -- empties 1/frame so the NEXT phase starts fresh (the cart's boss_health
+  -- entity update: default_counter>0 -> health-=1). Without this the bar
+  -- sticks at 60 and health_arrive's `<60` guard blocks all progression.
+  if bh_dc > 0 then
+    bh_dc -= 1
+    if (bh_health > 0) bh_health -= 1
+  end
 
   -- staging / cinematics
   start_game_step()
