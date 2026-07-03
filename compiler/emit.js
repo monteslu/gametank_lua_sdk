@@ -88,6 +88,20 @@ function hasUserCall(node) {
   return false;
 }
 
+// Does this statement tree assign to the named variable? (loop-var narrowing
+// must not fire if the body mutates the induction variable.)
+function assignsTo(node, name) {
+  if (!node || typeof node !== "object") return false;
+  if (Array.isArray(node)) return node.some((n) => assignsTo(n, name));
+  if (node.kind === "assign" && node.target?.kind === "name" &&
+      node.target.name === name) return true;
+  for (const [k, v] of Object.entries(node)) {
+    if (WALK_SKIP.has(k)) continue;
+    if (assignsTo(v, name)) return true;
+  }
+  return false;
+}
+
 // Can this expression subtree touch the shared zp slots fa/fb at runtime?
 // The zp-fastcall multiply/divide stages operands into fa/fb and then calls
 // the argless entry, so an operand that ITSELF reaches the fixed runtime would
@@ -607,7 +621,24 @@ export function emit(chunk, symbols, file, opts = {}) {
         } else {
           inc = `${v} += ${(Math.round(step * 65536) | 0)}L`;
         }
-        line(`{ ${ctype(kind)} ${v} = ${expr(s.from, kind)}; ${ctype(kind)} ${lim} = ${expr(s.to, kind)};`);
+        // 8-bit narrowing: a counting loop whose bounds are compile-time
+        // constants in [0, 254] (255 would wrap the ++ and never terminate),
+        // stepping +1, whose variable is never assigned in the body, fits an
+        // unsigned char. cc65's char ops are roughly half the cost of int
+        // (single-register loads, 8-bit compare), and C's integer promotions
+        // make every USE of the variable identical in value — PICO-8
+        // semantics are untouched because the value provably stays in range.
+        let cty = ctype(kind);
+        if (kind === "int" && step === 1) {
+          const lo = constFold(s.from), hi = constFold(s.to);
+          if (lo !== null && hi !== null &&
+              Number.isInteger(lo) && Number.isInteger(hi) &&
+              lo >= 0 && lo <= 254 && hi >= 0 && hi <= 254 &&
+              !assignsTo(s.body, s.name)) {
+            cty = "unsigned char";
+          }
+        }
+        line(`{ ${cty} ${v} = ${expr(s.from, kind)}; ${cty} ${lim} = ${expr(s.to, kind)};`);
         indent++;
         line(`for (; ${v} ${cmp} ${lim}; ${inc}) {`);
         indent++; block(s.body); indent--;
