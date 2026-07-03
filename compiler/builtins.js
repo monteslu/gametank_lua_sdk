@@ -82,9 +82,10 @@ export const GT_MEMBERS = {
   // drawn as ONE big blit from a spare page costs the same as one 8x8 blit
   // (~free), vs a per-tile spr() loop (~1 blit per visible tile). Compose the
   // level's tiles into the bg page ONCE (per level load), then blit it whole
-  // every frame.
+  // every frame. The bg page is a 256x256 canvas (cw/ch up to 32 cells), so
+  // gt.bg_draw(sx,sy) scrolls a 128x128 window across it seamlessly.
   //   gt.bg_compose(map, cols, cx, cy, cw, ch)  -- CPU-paint tiles -> bg page
-  //   gt.bg_draw([sx], [sy])                     -- blit bg window -> screen
+  //   gt.bg_draw([sx], [sy])                     -- blit/scroll window -> screen
   bg_compose: { kind: "fn", params: [
     ["array", false], ["int", false], ["int", false], ["int", false],
     ["int", false], ["int", false]], ret: "void", c: "gt_bg_compose" },
