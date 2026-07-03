@@ -147,6 +147,18 @@ test("del() snaps the high-water mark to 0 the moment the pool empties", () => {
   assert.match(c, /--gtl_ps_n == 0 \? \(gtl_ps_hi = 0\) : 0/);
 });
 
+// ---- gt.* extras -------------------------------------------------------------------
+
+test("gt.starfield_* map to the SDK batch primitives", () => {
+  const c = cOf(
+    "function _update()\n gt.starfield_move(1)\nend\n" +
+    "function _draw()\n gt.starfield_draw()\nend\n" +
+    "function _init()\n gt.starfield_init(100)\nend\n");
+  assert.match(c, /gt_starfield_init\(100\)/);
+  assert.match(c, /gt_starfield_move\(1\)/);
+  assert.match(c, /gt_starfield_draw\(\)/);
+});
+
 // ---- callbacks & harness -----------------------------------------------------------
 
 test("_update() selects 30fps mode in the harness", () => {

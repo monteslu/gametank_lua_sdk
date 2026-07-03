@@ -30,6 +30,9 @@ void gt_p8_camera(int x, int y);
 void gt_p8_color(int c);
 void gt_p8_pal(int c0, int c1);              /* (-1,-1) = reset */
 void gt_p8_pset(int x, int y, int c);
+void gt_starfield_init(int n);      /* seed n parallax stars (n<=128) */
+void gt_starfield_move(int mode);   /* scroll: 0=drift 1=1x 2=2x */
+void gt_starfield_draw(void);       /* plot the whole field (one CPU pass) */
 void gt_p8_rect(int x0, int y0, int x1, int y1, int c);
 void gt_p8_rectfill(int x0, int y0, int x1, int y1, int c);
 void gt_p8_circ(int cx, int cy, int r, int c);

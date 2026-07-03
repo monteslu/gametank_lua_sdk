@@ -310,6 +310,77 @@ void gt_p8_pset(int x, int y, int c) {
     pset_raw(x - cam_x, y - cam_y, resolve_color(c));
 }
 
+/* ---- parallax starfield ----------------------------------------------------
+ * A stock scrolling-starfield primitive. Ports that draw a full-screen field
+ * of drifting stars (shmups, space games) would otherwise pay ~1000 cycles of
+ * cc65 call overhead PER star per frame calling pset() from the game loop; the
+ * whole field here lives in one tight C loop each for move and draw — the
+ * measured difference is well over a vsync on a 100-star field, the gap
+ * between "3 fps" and "30 fps" for a bullet-hell port.
+ *
+ * State (positions in whole pixels x, 1/16-pixel y, speed in 16ths/frame):
+ *   x  in [0,127], y in [0,2047] (=127.9 px), speed in [8,31] (0.5..~2 px).
+ * Colour is by speed tier (the canonical near/mid/far parallax look):
+ *   speed <16 -> p8 col 1, <24 -> 13, else 6.
+ * move(mode): 0 = quarter+eighth drift (~0.375 px), 1 = 1x, 2 = 2x. */
+#define GT_STARS_MAX 128
+/* Split-Y representation so the hot DRAW loop needs NO shift: the pixel row is
+ * stored directly (star_row 0..127) and the sub-pixel accumulator (star_frac,
+ * 16ths) carries into it during move(). Everything is a byte -> the whole loop
+ * is 8-bit indexed, no cc65 asrax4/16-bit-pointer math per star. */
+static unsigned char star_x[GT_STARS_MAX];   /* column 0..127 */
+static unsigned char star_row[GT_STARS_MAX]; /* pixel row 0..127 */
+static unsigned char star_frac[GT_STARS_MAX];/* sub-row, 0..15 (16ths) */
+static unsigned char star_s[GT_STARS_MAX];   /* speed 8..31 (16ths/frame) */
+static unsigned char star_col[GT_STARS_MAX]; /* precomputed colour byte */
+static unsigned char star_n;
+
+void gt_starfield_init(int n) {
+    unsigned char i, s;
+    if (n > GT_STARS_MAX) n = GT_STARS_MAX;
+    star_n = (unsigned char)n;
+    for (i = 0; i < star_n; ++i) {
+        star_x[i]    = (unsigned char)(gt_p8_rnd(128L << 16) >> 16);
+        star_row[i]  = (unsigned char)(gt_p8_rnd(128L << 16) >> 16);
+        star_frac[i] = 0;
+        s = (unsigned char)(8 + (gt_p8_rnd(24L << 16) >> 16));
+        star_s[i]    = s;
+        /* colour by speed tier, baked once (pset colour never changes) */
+        star_col[i]  = (s < 16) ? p8pal[1] : (s < 24) ? p8pal[13] : p8pal[6];
+    }
+}
+
+/* advance the field. `step` is the 16ths added per star this frame; the caller
+ * passes it once, so the per-star loop is a plain byte add + carry. */
+static void starfield_advance(unsigned char step_shift, unsigned char dbl) {
+    unsigned char i, f, r, adv;
+    for (i = 0; i < star_n; ++i) {
+        adv = star_s[i];
+        if (dbl) adv <<= 1;
+        else if (step_shift) adv = (adv >> 2) + (adv >> 3); /* ~0.375x drift */
+        f = star_frac[i] + adv;
+        r = star_row[i] + (f >> 4);
+        f &= 15;
+        if (r > 127) r -= 128;
+        star_frac[i] = f;
+        star_row[i]  = r;
+    }
+}
+
+void gt_starfield_move(int mode) {
+    if (mode == 2)      starfield_advance(0, 1);
+    else if (mode == 1) starfield_advance(0, 0);
+    else                starfield_advance(1, 0);
+}
+
+void gt_starfield_draw(void) {
+    unsigned char i;
+    enter_cpu_mode();
+    for (i = 0; i < star_n; ++i) {
+        vram_row[star_row[i]][star_x[i]] = star_col[i];
+    }
+}
+
 void gt_p8_line(int x0, int y0, int x1, int y1, int c) {
     unsigned char col = resolve_color(c);
     int dx, dy, sx, sy, e2, errv;

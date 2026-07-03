@@ -64,6 +64,11 @@ export const GT_MEMBERS = {
   border: { kind: "fn", params: [["color", false]], ret: "void", c: "gt_p8_border" },
   note:    { kind: "fn", params: [["int", false], ["int", false], ["int", true]], ret: "void", c: "gt_note", audio: true },
   noteoff: { kind: "fn", params: [["int", false]], ret: "void", c: "gt_noteoff", audio: true },
+  // parallax starfield: the whole field moves/draws in one tight C loop each,
+  // instead of ~1000 cycles of cc65 call overhead per star from the game loop.
+  starfield_init: { kind: "fn", params: [["int", false]], ret: "void", c: "gt_starfield_init" },
+  starfield_move: { kind: "fn", params: [["int", false]], ret: "void", c: "gt_starfield_move" },
+  starfield_draw: { kind: "fn", params: [], ret: "void", c: "gt_starfield_draw" },
 };
 
 // PICO-8 color indices 0-15 -> GameTank CAPTURE-palette bytes.
