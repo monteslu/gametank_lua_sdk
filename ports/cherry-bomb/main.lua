@@ -107,10 +107,11 @@ end
 
 function starfield()
  for i=1,100 do
+  local s=star_s[i]         -- index once, not twice
   local scol=6
-  if star_s[i]<16 then
+  if s<16 then
    scol=1
-  elseif star_s[i]<24 then
+  elseif s<24 then
    scol=13
   end
   pset(star_x[i],star_y[i]\16,scol)
@@ -120,17 +121,27 @@ end
 -- mode 1 = original speed 1, mode 2 = double (wavetext),
 -- mode 0 = title drift (~0.375; original 0.4) — all shift math, no mults
 function animatestars(mode)
- for i=1,100 do
-  local s=star_s[i]
-  if mode==1 then
-   star_y[i]+=s
-  elseif mode==2 then
-   star_y[i]+=s+s
-  else
-   star_y[i]+=(s\4)+(s\8)
+ -- hoist the mode test out of the 100-iteration loop (it's invariant) and
+ -- cache star_y[i] in a local so it's indexed once, wrapped, stored once.
+ if mode==1 then
+  for i=1,100 do
+   local y=star_y[i]+star_s[i]
+   if y>2047 then y-=2048 end
+   star_y[i]=y
   end
-  if star_y[i]>2047 then
-   star_y[i]-=2048
+ elseif mode==2 then
+  for i=1,100 do
+   local s=star_s[i]
+   local y=star_y[i]+s+s
+   if y>2047 then y-=2048 end
+   star_y[i]=y
+  end
+ else
+  for i=1,100 do
+   local s=star_s[i]
+   local y=star_y[i]+(s\4)+(s\8)
+   if y>2047 then y-=2048 end
+   star_y[i]=y
   end
  end
 end
@@ -1207,15 +1218,16 @@ function draw_game()
 
  -- drawing particles (they animate in draw, like the original)
  for p2 in all(parts) do
-  local pc=7
-  if p2.blue==1 then
-   pc=page_blue(p2.age)
-  else
-   pc=page_red(p2.age)
-  end
   if p2.spark==1 then
+   -- sparks are always white; skip the page_* color ramp entirely
    pset(p2.x\16,p2.y\16,7)
   else
+   local pc
+   if p2.blue==1 then
+    pc=page_blue(p2.age)
+   else
+    pc=page_red(p2.age)
+   end
    circfill(p2.x\16,p2.y\16,p2.size2\2,pc)
   end
   p2.x+=p2.sx
