@@ -286,6 +286,35 @@ export function emit(chunk, symbols, file, opts = {}) {
     return `${fn}(${L}, ${R})`;
   }
 
+  // Safe to evaluate more than once AND cheap: a literal, a plain variable, or
+  // a small tree of simple arithmetic over those (no calls, no draws, no
+  // fixed-runtime ops). Used to inline min/max/mid as ternaries — the win is
+  // only real when re-evaluating the operand costs less than a cdecl call.
+  // opts.midInline === false turns the inlining off entirely: it's a
+  // speed-for-size trade, and a game at the bank-capacity cliff needs the
+  // smaller call form to link. The build driver retries with it off when
+  // FLASH2M placement can't converge.
+  const midInline = opts.midInline !== false;
+  function cheapPure(e, budget = 3) {
+    if (!midInline) return false;
+    if (budget <= 0 || !e || typeof e !== "object") return false;
+    switch (e.kind) {
+      case "number": case "bool": return true;
+      case "name": return true;                       // globals + locals: plain loads
+      case "paren": return cheapPure(e.expr, budget);
+      case "neg": case "not": case "bnot":
+        return cheapPure(e.expr, budget - 1);
+      case "index":                                    // array read: one indexed load
+        return cheapPure(e.object, budget - 1) && cheapPure(e.index, budget - 1);
+      case "binop":
+        // int arithmetic/shifts/masks only; fixed *, /, %, \ can reach the
+        // runtime (touchesFixedRuntime) — leave anything like that alone.
+        if (touchesFixedRuntime(e)) return false;
+        return cheapPure(e.left, budget - 1) && cheapPure(e.right, budget - 1);
+      default: return false;
+    }
+  }
+
   // ---- calls -----------------------------------------------------------------
 
   function argAt(call, i, pkind, dflt) {
@@ -436,11 +465,29 @@ export function emit(chunk, symbols, file, opts = {}) {
       case "sgn":
         return a0.tk === "int" ? `gt_sgni(${expr(a0, "int")})` : `gt_sgnf(${expr(a0, "fixed")})`;
       case "min": case "max": {
+        // int min/max of cheap PURE args inline as a ternary: a cc65 cdecl
+        // call (3 pushes + jsr + compare) is ~250 cycles for what is 2
+        // compares — and min/max/mid sit in the hottest loops of every game
+        // (collision clamps, camera). Multi-eval is safe because cheapPure()
+        // admits only literals, plain variables, and simple arithmetic.
+        const second = e.args[1] ?? { kind: "number", value: 0, isInt: true };
+        if (!anyFixed && cheapPure(a0) && cheapPure(second)) {
+          const A = expr(a0, "int"), B = expr(second, "int");
+          const op = b.special === "min" ? "<" : ">";
+          return `((${A}) ${op} (${B}) ? (${A}) : (${B}))`;
+        }
         const fn = `gt_${b.special}${anyFixed ? "f" : "i"}`;
-        const second = e.args[1] ? expr(e.args[1], anyFixed ? "fixed" : "int") : (anyFixed ? "0L" : "0");
-        return `${fn}(${expr(a0, anyFixed ? "fixed" : "int")}, ${second})`;
+        const sec = e.args[1] ? expr(e.args[1], anyFixed ? "fixed" : "int") : (anyFixed ? "0L" : "0");
+        return `${fn}(${expr(a0, anyFixed ? "fixed" : "int")}, ${sec})`;
       }
       case "mid": {
+        // median-of-3 inline (each arg evaluated at most twice) — same
+        // rationale as min/max above.
+        if (!anyFixed && e.args.every((a) => cheapPure(a))) {
+          const A = expr(e.args[0], "int"), B = expr(e.args[1], "int"), C = expr(e.args[2], "int");
+          return `((${A}) < (${B}) ? ((${B}) < (${C}) ? (${B}) : ((${A}) < (${C}) ? (${C}) : (${A})))` +
+                 ` : ((${A}) < (${C}) ? (${A}) : ((${B}) < (${C}) ? (${C}) : (${B}))))`;
+        }
         const fn = `gt_mid${anyFixed ? "f" : "i"}`;
         const k = anyFixed ? "fixed" : "int";
         return `${fn}(${expr(e.args[0], k)}, ${expr(e.args[1], k)}, ${expr(e.args[2], k)})`;

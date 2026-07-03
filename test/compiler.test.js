@@ -159,8 +159,17 @@ test("% by power of two masks; general int % is floored", () => {
 
 test("polymorphic min/mid pick int or fixed variants", () => {
   const c = cOf("local i = 1\nlocal f = 0.5\nlocal r = 0\nlocal q = 0.0\nfunction _update60()\n  r = min(i, 3)\n  q = mid(0, f, 1)\nend\nfunction _draw()\nend\n");
-  assert.match(c, /gt_mini\(gtl_i, 3\)/);
+  // int min of pure args inlines as a ternary (no cdecl call in hot loops)
+  assert.match(c, /\(gtl_i\) < \(3\) \? \(gtl_i\) : \(3\)/);
+  assert.doesNotMatch(c, /gt_mini/);
+  // fixed variants still go through the runtime (long ternaries would bloat)
   assert.match(c, /gt_midf\(0L, gtl_f, 65536L\)/);
+});
+
+test("min/mid with impure args still call the runtime (no double evaluation)", () => {
+  const c = cOf("local r = 0\nfunction gimme()\n  r += 1\n  return r\nend\nfunction _update60()\n  r = min(gimme(), 3)\n  r = mid(gimme(), 0, 7)\nend\nfunction _draw()\nend\n");
+  assert.match(c, /gt_mini\(gtl_gimme\(\), 3\)/);
+  assert.match(c, /gt_midi\(gtl_gimme\(\), 0, 7\)/);
 });
 
 test("flr of fixed floors via shift; ceil adds the fraction", () => {

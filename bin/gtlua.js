@@ -216,20 +216,63 @@ function rebalance(placement, sizes, overflows, sheetBytes, callGraph, usesBg, u
     let need = bytes + BANK_MARGIN;
 
     if (bin === "fixed") {
-      // fixed bank too full: push the largest movable fixed functions into
-      // the emptiest bank
-      const movable = bins.fixed
+      // Fixed bank too full. Moving a function OUT of fixed isn't free: every
+      // cross-bank edge it gains needs a far-call stub, and stubs live in the
+      // fixed bank's CODE — the thing we're trying to shrink. (Moving big
+      // fns blindly used to ping-pong: -600 bytes of function, +400 bytes of
+      // stubs, forever.) So pick by NET gain: size minus the stub bytes the
+      // move creates, and pick the target bank where the function's call
+      // neighbors already live so few new edges appear.
+      const STUB_BYTES = 24;
+      const callersOf = (fn) => {
+        const cs = [];
+        for (const [caller, callees] of callGraph) if (callees.has(fn)) cs.push(caller);
+        return cs;
+      };
+      const stubDelta = (n, target) => {
+        let d = 0;
+        // callees of n that end up in a DIFFERENT bank (fixed callees are free)
+        for (const c of (callGraph.get(n) ?? [])) {
+          const cb = placement[c] ?? "fixed";
+          if (cb !== "fixed" && cb !== target) d += STUB_BYTES;
+        }
+        // n itself needs a stub if any banked caller sits outside the target
+        if (callersOf(n).some((c) => {
+          const cb = placement[c] ?? "fixed";
+          return cb !== target;  // fixed callers also far-call into a bank
+        })) d += STUB_BYTES;
+        return d;
+      };
+      const candidates = bins.fixed
         .filter((n) => !CALLBACKS.has(n))
-        .sort((a, b) => (sizes.get(b) ?? 0) - (sizes.get(a) ?? 0));
-      for (const n of movable) {
+        .map((n) => {
+          const size = sizes.get(n) ?? 0;
+          const target = ["b0", "b1", "b2"]
+            .filter((t) => capacity[t] - estUsed(t) >= size)
+            .sort((x, y) => stubDelta(n, x) - stubDelta(n, y))[0];
+          return target ? { n, size, target, net: size - stubDelta(n, target) } : null;
+        })
+        .filter(Boolean)
+        .sort((a, b) => b.net - a.net);
+      let movedHere = false;
+      for (const c of candidates) {
         if (need <= 0) break;
-        const target = ["b2", "b1", "b0"].sort((x, y) =>
-          (capacity[y] - estUsed(y)) - (capacity[x] - estUsed(x)))[0];
-        if ((capacity[target] - estUsed(target)) < (sizes.get(n) ?? 0)) continue;
-        placement[n] = target;
-        bins[target].push(n);
-        bins.fixed.splice(bins.fixed.indexOf(n), 1);
-        need -= sizes.get(n) ?? 0;
+        if (c.net <= 0) break;            // only net-positive moves shrink CODE
+        placement[c.n] = c.target;
+        bins[c.target].push(c.n);
+        bins.fixed.splice(bins.fixed.indexOf(c.n), 1);
+        need -= c.net;
+        moved = true;
+        movedHere = true;
+      }
+      // last resort: the stub estimate is pessimistic (shared stubs, existing
+      // edges) — if no net-positive move exists, try the least-bad candidate
+      // once and let ld65 be the judge.
+      if (!movedHere && candidates.length) {
+        const c = candidates[0];
+        placement[c.n] = c.target;
+        bins[c.target].push(c.n);
+        bins.fixed.splice(bins.fixed.indexOf(c.n), 1);
         moved = true;
       }
       continue;
@@ -399,8 +442,20 @@ function build(entry, outPath, sheetPath) {
   }
 
   let linked = null;
-  for (let attempt = 0; attempt < 8; attempt++) {
-    result = compileLua(entry, { banked: true, placement });
+  let lastOverflows = [];
+  // The min/max/mid ternary inlining is a speed-for-size trade. A game at the
+  // bank-capacity cliff can fail to place WITH it but link fine WITHOUT it —
+  // so if placement is still failing halfway through the attempts, fall back
+  // to the compact call form and start placement over.
+  let midInline = true;
+  let workPlacement = placement;
+  for (let attempt = 0; attempt < 16; attempt++) {
+    if (attempt === 8 && midInline) {
+      midInline = false;
+      workPlacement = initialPlacement(result.callGraph);
+      console.error("bank placement tight: retrying with min/max/mid inlining off");
+    }
+    result = compileLua(entry, { banked: true, placement: workPlacement, midInline });
     writeFileSync(B(`${name}.c`), result.c);
     cc(B(`${name}.c`), B(`${name}.s`));
     as(B(`${name}.s`), B(`${name}.o`));
@@ -420,13 +475,15 @@ function build(entry, outPath, sheetPath) {
       tc.lib,
     ]);
     if (link.ok) { linked = flashOut; break; }
-    const moved = rebalance(placement, sizes, link.overflows, sheetBytes, result.callGraph, usesBg, usesAudio, usesMusic);
-    if (!moved) {
+    lastOverflows = link.overflows;
+    const moved = rebalance(workPlacement, sizes, link.overflows, sheetBytes, result.callGraph, usesBg, usesAudio, usesMusic);
+    if (!moved && attempt >= 8) {
       fail("FLASH2M bank placement failed: " +
         link.overflows.map((o) => `${o.segment} over by ${o.bytes}`).join(", "));
     }
   }
-  if (!linked) fail("FLASH2M bank placement did not converge");
+  if (!linked) fail("FLASH2M bank placement did not converge; last overflows: " +
+    lastOverflows.map((o) => `${o.segment} over by ${o.bytes}`).join(", "));
 
   // 5. lay the four 16 KB pieces into the 2 MB flash image:
   //    bank n at n*0x4000, the fixed bank last (offset 0x1FC000)
