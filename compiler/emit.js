@@ -49,7 +49,18 @@ export function emit(chunk, symbols, file) {
         if (!arr) return "0";
         return cv(`${mangle(e.object.name)}[${expr(e.index, "int")} - 1]`, arr.elemKind, want);
       }
-      case "len": return String(e.arraySym?.size ?? 0);
+      case "len": {
+        if (e.poolSym) return cv(`${mangle(e.expr.name)}_n`, "int", want);
+        return String(e.arraySym?.size ?? 0);
+      }
+      case "member": {
+        if (e.poolField) {
+          const pf = e.poolField;
+          const fl = pf.pool.fields.get(pf.field);
+          return cv(`${pf.pool.cname}_${pf.field}[${pf.forall.slotVar}]`, fl.kind, want);
+        }
+        return "0";
+      }
       case "neg": {
         const k = e.tk;
         return cv(`(-${expr(e.expr, k)})`, k, want);
@@ -58,7 +69,7 @@ export function emit(chunk, symbols, file) {
       case "not": return `(!${expr(e.expr, "bool")})`;
       case "call": return cv(call(e), e.tk === "void" ? "int" : e.tk, want);
       case "binop": return binop(e, want);
-      case "member": return "0"; // checker already rejected
+      // (pool member handled above)
       default: return "0";
     }
   }
@@ -176,6 +187,12 @@ export function emit(chunk, symbols, file) {
     const name = callee.name;
     if (!b) return "0";
 
+    if (b.special === "add") return emitAdd(e);
+    if (b.special === "del") {
+      const pl = e.poolSym;
+      const sv = e.args[1].sym?.forall?.slotVar ?? e.bindingSym?.forall?.slotVar;
+      return `(${pl.cname}_used[${sv}] = 0, --${pl.cname}_n, (void)0)`;
+    }
     if (b.special) return specialCall(e, b, name);
 
     // plain builtin
@@ -246,9 +263,12 @@ export function emit(chunk, symbols, file) {
     switch (s.kind) {
       case "assign": {
         const isElem = s.target.kind === "index";
-        const t = isElem
-          ? `${mangle(s.target.object.name)}[${expr(s.target.index, "int")} - 1]`
-          : mangle(s.target.name);
+        const isField = s.target.kind === "member" && s.target.poolField;
+        const t = isField
+          ? `${s.target.poolField.pool.cname}_${s.target.poolField.field}[${s.target.poolField.forall.slotVar}]`
+          : isElem
+            ? `${mangle(s.target.object.name)}[${expr(s.target.index, "int")} - 1]`
+            : mangle(s.target.name);
         const tk = s.targetKind ?? "int";
         if (s.op === "=") {
           line(`${t} = ${expr(s.value, tk)};`);
@@ -257,7 +277,7 @@ export function emit(chunk, symbols, file) {
         // compound: rebuild as t = t OP value with kind-correct lowering.
         // For array elements the index expression is evaluated twice —
         // same as PICO-8's own compound-assignment expansion.
-        const left = isElem ? { ...s.target, tk } : { kind: "name", name: s.target.name, tk };
+        const left = (isElem || isField) ? { ...s.target, tk } : { kind: "name", name: s.target.name, tk };
         const fake = {
           kind: "binop",
           op: s.op.slice(0, s.op.length - 1),
@@ -287,7 +307,11 @@ export function emit(chunk, symbols, file) {
         line("}");
         break;
       }
-      case "callstmt": line(`${call(s.call)};`); break;
+      case "callstmt": {
+        const txt = call(s.call);
+        line(txt.startsWith("{") ? txt : `${txt};`);
+        break;
+      }
       case "if": {
         s.clauses.forEach((cl, i) => {
           line(`${i === 0 ? "if" : "} else if"} (${expr(cl.cond, "bool")}) {`);
@@ -340,6 +364,24 @@ export function emit(chunk, symbols, file) {
         break;
       }
       case "break": line("break;"); break;
+      case "forall": {
+        const sv = `L_p${tempCounter++}`;
+        s.slotVar = sv;
+        if (s.binding) s.binding.forallSlot = sv;
+        // annotate: member nodes reference s (the forall) for slotVar
+        const pl = s.poolSym;
+        line(`{ int ${sv};`);
+        indent++;
+        line(`for (${sv} = 0; ${sv} < ${pl.size}; ++${sv}) {`);
+        indent++;
+        line(`if (!${pl.cname}_used[${sv}]) continue;`);
+        block(s.body);
+        indent--;
+        line("}");
+        indent--;
+        line("}");
+        break;
+      }
       case "do": {
         line("{");
         indent++; block(s.body); indent--;
@@ -348,6 +390,19 @@ export function emit(chunk, symbols, file) {
       }
       default: break;
     }
+  }
+
+  function emitAdd(e) {
+    const pl = e.poolSym;
+    const sv = `L_s${tempCounter++}`;
+    const t = e.args[1];
+    const sets = t.fields.map((f) => {
+      const fl = pl.fields.get(f.name);
+      return `${pl.cname}_${f.name}[${sv}] = ${expr(f.expr, fl.kind)};`;
+    }).join(" ");
+    // statement-expression shape via a helper block emitted inline by callstmt
+    return `{ int ${sv}; for (${sv} = 0; ${sv} < ${pl.size}; ++${sv}) if (!${pl.cname}_used[${sv}]) break; ` +
+           `if (${sv} < ${pl.size}) { ${pl.cname}_used[${sv}] = 1; ++${pl.cname}_n; ${sets} } }`;
   }
 
   // ---- module layout -----------------------------------------------------------
@@ -371,6 +426,15 @@ export function emit(chunk, symbols, file) {
   // module variables — non-static so they land in the symbol table for
   // RAM-level assertions in tests and debuggers
   for (const [name, g] of globals) {
+    if (g.kind === "pool") {
+      g.cname = mangle(name);
+      for (const [fname, fl] of g.fields) {
+        out.push(`${ctype(fl.kind)} ${g.cname}_${fname}[${g.size}];`);
+      }
+      out.push(`unsigned char ${g.cname}_used[${g.size}];`);
+      out.push(`int ${g.cname}_n;`);
+      continue;
+    }
     if (g.kind === "array") {
       const ct = g.elemKind === "fixed" ? "long" : "int";
       if (g.initVal === 0) {

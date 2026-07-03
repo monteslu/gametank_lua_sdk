@@ -132,7 +132,7 @@ const CASES = [
   ["callback contract required", "local x = 1\n", /_update60\(\) \(60fps\) or _update\(\)/],
   ["both _update and _update60", "function _update()\nend\nfunction _update60()\nend\n", /not both/],
   ["calling _draw yourself", "function _update60()\n  _draw()\nend\nfunction _draw()\nend\n", /called by the runtime/],
-  ["tables", "local t = { x = 1 }\n" + LOOP, /table constructors are not supported yet/],
+  ["tables outside add()", LOOP + "local q = 0\nfunction f()\n  q = { x = 1 }\nend\n", /only allowed inside add/],
   ["nil", LOOP + "local z = nil\n", /nil is not supported/],
   ["strings", LOOP + 'local s = "hi"\n', /strings are not supported yet/],
   ["closures", "function _update60()\n  function inner() end\nend\nfunction _draw()\nend\n", /no closures/],

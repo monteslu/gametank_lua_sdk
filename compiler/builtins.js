@@ -47,6 +47,13 @@ export const BUILTINS = {
   // fixed-capacity numeric array (v0.3): `local pool = array(16)`.
   // Top-level only; 1-based indexing; #a is the capacity. Checker handles it.
   array: { params: [["int", false], ["num", true]], ret: "array", special: "array" },
+
+  // struct pools (v0.3): `local bullets = pool(8)` at top level, then
+  // add(bullets, {x=1, y=2}), `for b in all(bullets)`, del(bullets, b).
+  // Field set is frozen by the first add(); #pool = live count.
+  pool: { params: [["int", false]], ret: "pool", special: "pool" },
+  add:  { params: [], ret: "void", special: "add" },
+  del:  { params: [], ret: "void", special: "del" },
 };
 
 // gt.* extras (GameTank-specific)

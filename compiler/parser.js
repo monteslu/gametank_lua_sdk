@@ -234,8 +234,20 @@ export function parse(tokens, file) {
   function forStmt() {
     const tok = expect("for");
     const name = expect("name", "loop variable");
-    if (at(",") || at("in")) {
-      error("generic 'for ... in' loops are not supported yet; use a numeric for");
+    if (at("in")) {
+      next();
+      const fn = expect("name", "'all'");
+      if (fn.value !== "all") error("only 'for e in all(pool)' iteration is supported");
+      expect("(");
+      const poolExpr = expression();
+      expect(")");
+      expect("do");
+      const body = block(["end"]);
+      expect("end");
+      return { kind: "forall", name: name.value, pool: poolExpr, body, line: tok.line, col: tok.col };
+    }
+    if (at(",")) {
+      error("multiple loop variables are not supported; use 'for e in all(pool)'");
       sync(["end", "eof"]);
       if (at("end")) next();
       return null;
@@ -281,7 +293,7 @@ export function parse(tokens, file) {
       const op = next();
       if (op.type === "^=") error("'^=' (exponent) is not supported");
       const value = expression();
-      if (target.kind !== "name" && target.kind !== "index") {
+      if (target.kind !== "name" && target.kind !== "index" && target.kind !== "member") {
         error("cannot assign to this expression", op);
       }
       return { kind: "assign", op: op.type, target, value, line: tok.line, col: tok.col };
@@ -412,11 +424,19 @@ export function parse(tokens, file) {
         e.parenthesized = true;
         return e;
       }
-      case "{":
-        error("table constructors are not supported yet (structs/arrays land in the next release)", tok);
-        sync(["}", "eof"]);
-        if (at("}")) next();
-        return { kind: "number", value: 0, fixed: 0, isInt: true, line: tok.line, col: tok.col };
+      case "{": {
+        next();
+        const fields = [];
+        while (!at("}") && !at("eof")) {
+          const fname = expect("name", "field name");
+          expect("=");
+          fields.push({ name: fname.value, expr: expression() });
+          if (at(",")) { next(); continue; }
+          break;
+        }
+        expect("}");
+        return { kind: "table", fields, line: tok.line, col: tok.col };
+      }
       case "function":
         error("anonymous functions are not supported (no closures); define a named function at top level", tok);
         sync(["end", "eof"]);

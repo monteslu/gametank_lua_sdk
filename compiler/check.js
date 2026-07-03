@@ -72,6 +72,20 @@ export function check(chunk, file) {
       s.names.forEach((name, idx) => {
         if (globals.has(name) || functions.has(name)) { err(s, `'${name}' is already defined`); return; }
         const init = s.inits[idx] ?? null;
+        // struct pool: local bullets = pool(N)
+        if (init && init.kind === "call" && init.callee.kind === "name" && init.callee.name === "pool") {
+          const size = constEval(init.args[0]);
+          if (size === null || !Number.isInteger(size) || size < 1 || size > 64) {
+            err(s, "pool(n) needs a constant capacity between 1 and 64");
+          }
+          globals.set(name, {
+            kind: "pool",
+            size: size ?? 1,
+            fields: new Map(),   // fieldName -> {kind}
+            node: s,
+          });
+          return;
+        }
         // fixed-capacity array: local pool = array(N [, initValue])
         if (init && init.kind === "call" && init.callee.kind === "name" && init.callee.name === "array") {
           const size = constEval(init.args[0]);
@@ -214,6 +228,26 @@ export function check(chunk, file) {
           break;
         }
         case "assign": {
+          if (s.target.kind === "member") {
+            const mt = typeOf(s.target);   // annotates poolField or errors
+            const vt = typeOf(s.value);
+            if (vt === "bool") { err(s.value, "pool fields are numbers"); break; }
+            if (s.target.poolField) {
+              const fl = s.target.poolField.pool.fields.get(s.target.poolField.field);
+              let rk = vt;
+              if (s.op === "/=") rk = "fixed";
+              if (s.op !== "=" && s.op !== "\\=") rk = join(rk, fl.kind);
+              if (rk === "fixed" && fl.kind !== "fixed") { fl.kind = "fixed"; changed = true; }
+              s.targetKind = fl.kind;
+            } else {
+              s.targetKind = mt;
+            }
+            if (s.op === "\\=" || s.op === "%=") {
+              const d = constEval(s.value);
+              s.divConst = d !== null && isPow2(d) ? d : null;
+            }
+            break;
+          }
           if (s.target.kind === "index") {
             // element store: a[i] = v (or compound)
             const arr = arrayOf(s.target);
@@ -341,12 +375,86 @@ export function check(chunk, file) {
           if (loopDepth === 0) err(s, "'break' outside of a loop");
           break;
         }
+        case "forall": {
+          const pl = poolOf(s.pool, "all()");
+          if (!pl) break;
+          s.poolSym = pl;
+          const binding = { poolBinding: pl, forall: s, kind: "int" };
+          s.binding = binding;
+          scopes.push(new Map());
+          scopes[scopes.length - 1].set(s.name, binding);
+          loopDepth++;
+          for (const st of s.body.stmts) checkStmt(st);
+          loopDepth--;
+          scopes.pop();
+          break;
+        }
         case "do": checkBlock(s.body); break;
         case "function":
           err(s, "functions cannot be defined inside functions (no closures); move it to top level");
           break;
         default: break;
       }
+    }
+
+    function poolOf(expr2, what) {
+      if (expr2.kind === "name") {
+        const g = globals.get(expr2.name);
+        if (g && g.kind === "pool") { expr2.poolSym = g; return g; }
+      }
+      err(expr2, `${what} needs a top-level pool ('local bullets = pool(8)')`);
+      return null;
+    }
+
+    function addDelType(call, which, asStatement) {
+      if (!asStatement) {
+        err(call, `${which}() is a statement, not a value`);
+      }
+      if (call.args.length !== 2) {
+        err(call, `${which}(pool, ${which === "add" ? "{...}" : "element"}) takes 2 arguments`);
+        return "void";
+      }
+      const pl = poolOf(call.args[0], which + "()");
+      if (!pl) return "void";
+      if (which === "add") {
+        const t = call.args[1];
+        if (t.kind !== "table") {
+          err(call, "add() takes a table literal: add(bullets, {x=1, y=2})");
+          return "void";
+        }
+        if (pl.fields.size === 0) {
+          for (const f of t.fields) pl.fields.set(f.name, { kind: "int" });
+        }
+        const seen = new Set();
+        for (const f of t.fields) {
+          const fk = typeOf(f.expr);
+          if (fk === "bool") err(f.expr, "pool fields are numbers (store 0/1)");
+          const slot = pl.fields.get(f.name);
+          if (!slot) {
+            err(call, `field '${f.name}' is not in pool '${call.args[0].name}' ` +
+                      `(the first add() froze its fields: ${[...pl.fields.keys()].join(", ")})`);
+          } else if (fk === "fixed" && slot.kind !== "fixed") {
+            slot.kind = "fixed";
+            changed = true;
+          }
+          seen.add(f.name);
+        }
+        for (const fname of pl.fields.keys()) {
+          if (!seen.has(fname)) err(call, `add() is missing field '${fname}'`);
+        }
+        call.poolSym = pl;
+        return "void";
+      }
+      // del(pool, e): e must be the all()-loop binding for that pool
+      const e2 = call.args[1];
+      const sym = e2.kind === "name" ? lookup(e2.name) : null;
+      if (!sym || !sym.poolBinding || sym.poolBinding !== pl) {
+        err(call, "del(pool, e) needs the loop variable of 'for e in all(pool)'");
+        return "void";
+      }
+      call.poolSym = pl;
+      call.bindingSym = sym;
+      return "void";
     }
 
     function symKind(sym) {
@@ -402,6 +510,14 @@ export function check(chunk, file) {
       if (b && b.special === "array") {
         err(call, "array(n) is only allowed as a top-level initializer: 'local pool = array(16)'");
         return "int";
+      }
+      if (b && b.special === "pool") {
+        err(call, "pool(n) is only allowed as a top-level initializer: 'local bullets = pool(8)'");
+        return "int";
+      }
+      if (b && (b.special === "add" || b.special === "del")) {
+        call.sig = b;
+        return addDelType(call, b.special, asStatement);
       }
       if (b) {
         checkArgs(call, b.params, callee.name);
@@ -485,7 +601,19 @@ export function check(chunk, file) {
             err(e, `unknown gt member 'gt.${e.field}'`);
             return "int";
           }
-          err(e, "field access is not supported yet (structs land in the next release)");
+          if (e.object.kind === "name") {
+            const sym = lookup(e.object.name);
+            if (sym && sym.poolBinding) {
+              const fl = sym.poolBinding.fields.get(e.field);
+              if (!fl) {
+                err(e, `pool has no field '${e.field}'`);
+                return "int";
+              }
+              e.poolField = { pool: sym.poolBinding, field: e.field, forall: sym.forall };
+              return fl.kind;
+            }
+          }
+          err(e, "field access is not supported yet outside 'for e in all(pool)' loops");
           return "int";
         }
         case "index": {
@@ -499,8 +627,9 @@ export function check(chunk, file) {
           if (e.expr.kind === "name") {
             const sym = globals.get(e.expr.name);
             if (sym && sym.kind === "array") { e.arraySym = sym; return "int"; }
+            if (sym && sym.kind === "pool") { e.poolSym = sym; return "int"; }
           }
-          err(e, "'#' works on top-level arrays only");
+          err(e, "'#' works on top-level arrays and pools only");
           return "int";
         }
         case "call": return callType(e);
@@ -520,6 +649,9 @@ export function check(chunk, file) {
           if (t !== "bool") err(e, "'not' needs a boolean; write an explicit comparison");
           return "bool";
         }
+        case "table":
+          err(e, "table literals are only allowed inside add(pool, {...})");
+          return "int";
         case "binop": return binopType(e);
         default: return "int";
       }
