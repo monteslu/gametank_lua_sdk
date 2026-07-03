@@ -58,6 +58,34 @@ half-written gt_fmul while it worked in the same tree, and post-crash reads
 used zp addresses its scratch had shifted. Never debug against a moving
 tree; pin addresses per build from the .lbl.
 
+## The honest per-cart CEILING — update floors (2026-07-03, third pass)
+
+The update floor (pace with `_draw` stubbed to `cls()`, IN GAMEPLAY) is the max
+fps a cart can EVER reach, since physics runs every frame no matter how cheap the
+draw. This reframes everything — some carts are physics-capped below 30 and no
+draw work will fix them:
+
+| cart | update floor | MAX fps | current | draw-fixable to 30? |
+|---|---:|---:|---:|:--:|
+| just-one-boss | 2.0 | **30** | 8.6 | YES — pure draw headroom |
+| combo-pool | 2.0 | **30** | 14 | YES |
+| driftmania | 3.0 | ~20 | 6 | capped at 20 |
+| celeste2 (gameplay) | 3.2 | ~19 | 8.5 | capped at 19 |
+| newleste | 5.0 | **~12** | 5.6 | NO — physics-bound, 12fps ceiling |
+
+⚠ MEASURE THE RIGHT SCREEN. Several carts boot to a title/menu (celeste2
+level_index 0, combo-pool mainmenu). A load-and-settle harness paces THAT, not
+gameplay — and a title (logo + particles) is nothing like a level (tilemap +
+entities + physics). celeste2's title paced 5.0 / its gameplay 7.1; its title
+update-floor is 2.0 / its gameplay floor 3.2. Drive into a level and confirm the
+state var before trusting any number. Earlier this session I optimized celeste2's
+snow against title-screen paces — the win held in gameplay (14.6→7.1) only because
+gameplay runs the same snow, but the attribution was luck, not method.
+
+RIGHT TARGETS for reaching locked 30fps: just-one-boss and combo-pool (2.0 floor,
+draw-bound). newleste is a lost cause for 30fps (5.0 physics floor); best it can
+do is ~12. celeste2/driftmania cap at ~19-20 (need physics cuts, not draw).
+
 ## Blit-count is the draw bottleneck — profiled 2026-07-03 (second pass)
 
 A full re-profile of all nine carts nailed down the draw-side cost model:
