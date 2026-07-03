@@ -200,7 +200,7 @@ function _draw()
   for i = 1, fn do
     if flive[i] == 1 then
       local hop = flr(sin(wob + i * 0.3) * 2)
-      rectfill(fx[i] - 2, fy[i] + hop - 2, fx[i] + 2, fy[i] + hop + 2, 11)
+      circfill(fx[i], fy[i] + hop, 3, 11)
       pset(fx[i] - 1, fy[i] + hop - 2, 7)
       pset(fx[i] + 1, fy[i] + hop - 2, 7)
     end
@@ -222,7 +222,7 @@ function _draw()
   if hurt % 8 < 4 then
     local x = flr(ux)
     local y = flr(uy)
-    rectfill(x - 2, y - 4, x + 2, y - 1, 12)  -- dome
+    circfill(x, y - 2, 3, 12)                 -- dome
     rectfill(x - 6, y, x + 6, y + 2, 6)       -- saucer
     pset(x - 4, y + 3, 10)
     pset(x, y + 3, 10)
@@ -239,6 +239,6 @@ function _draw()
     rectfill(114 + i * 4, 2, 116 + i * 4, 4, 8)
   end
   for i = 1, frogs do
-    rectfill(i * 6 - 2, 6, i * 6 + 1, 9, 11)
+    circfill(2 + i * 6, 8, 2, 11)
   end
 end

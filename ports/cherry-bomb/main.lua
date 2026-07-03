@@ -65,10 +65,36 @@ function fire()
   end
 end
 
+-- 8x8 cherry-pair sprite in cell 0: stems (dark green), two round
+-- berries (red) with pink highlights. Drawn once into the sheet.
+function make_art()
+  -- clear cell 0 to transparent (GRAM boots as noise)
+  for y = 0, 7 do
+    for x = 0, 7 do
+      sset(x, y, 0)
+    end
+  end
+  -- stems
+  sset(3, 0, 3) sset(4, 0, 3)
+  sset(2, 1, 3) sset(5, 1, 3)
+  sset(2, 2, 3) sset(5, 2, 3)
+  -- left berry
+  sset(1, 3, 8) sset(2, 3, 8)
+  sset(0, 4, 8) sset(1, 4, 8) sset(2, 4, 8) sset(3, 4, 8)
+  sset(0, 5, 8) sset(1, 5, 14) sset(2, 5, 8) sset(3, 5, 8)
+  sset(1, 6, 8) sset(2, 6, 8)
+  -- right berry
+  sset(5, 4, 8) sset(6, 4, 8)
+  sset(4, 5, 8) sset(5, 5, 8) sset(6, 5, 8) sset(7, 5, 8)
+  sset(4, 6, 8) sset(5, 6, 14) sset(6, 6, 8) sset(7, 6, 8)
+  sset(5, 7, 8) sset(6, 7, 8)
+end
+
 function _init()
   for k = 1, 32 do
     swaytab[k] = flr(sin(k * 0.03125) * 24)
   end
+  make_art()
   spawn_wave()
 end
 
@@ -163,11 +189,10 @@ function _draw()
     if (blive[i] == 1) rectfill(bx[i] - 1, by[i] - 2, bx[i], by[i] + 2, 10)
   end
 
-  -- enemies: berries (rect pass, then pset pass — avoids blit/CPU
-  -- mode thrash per enemy)
+  -- enemies: real cherry sprites, one blit each
   for i = 1, #ex do
     if elive[i] == 1 then
-      rectfill(ex[i] - 3, ey4[i] \ 4 - 1, ex[i] + 3, ey4[i] \ 4 + 5, 8)
+      spr(0, ex[i] - 4, ey4[i] \ 4 - 3)
     end
   end
 
@@ -175,11 +200,4 @@ function _draw()
   rectfill(2, 2, 2 + lives * 6, 4, 12)
   rectfill(0, 0, mid(0, score \ 8, 127), 1, 10)
   rectfill(127 - mid(1, wave, 8) * 4, 5, 127, 8, 14)
-
-  for i = 1, #ex do
-    if elive[i] == 1 then
-      pset(ex[i] - 2, ey4[i] \ 4, 14)
-      pset(ex[i], ey4[i] \ 4 - 2, 3)
-    end
-  end
 end

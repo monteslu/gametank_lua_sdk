@@ -249,10 +249,11 @@ end
 function _draw()
   cls(1)
 
-  -- background hills (kept cheap: one band + two small domes)
-  rectfill(0, 118, 127, 127, 13)
-  circfill(24, 118, 10, 13)
-  circfill(96, 118, 13, 13)
+  -- background hills
+  rectfill(0, 120, 127, 127, 13)
+  circfill(24, 122, 14, 13)
+  circfill(70, 126, 18, 13)
+  circfill(104, 121, 12, 13)
 
   -- platforms
   for i = 1, pn do

@@ -36,5 +36,7 @@ void gt_p8_circ(int cx, int cy, int r, int c);
 void gt_p8_circfill(int cx, int cy, int r, int c);
 void gt_p8_line(int x0, int y0, int x1, int y1, int c);
 void gt_p8_border(int c);
+void gt_p8_sset(int x, int y, int c);
+void gt_p8_spr(int n, int x, int y, int w, int h);
 
 #endif

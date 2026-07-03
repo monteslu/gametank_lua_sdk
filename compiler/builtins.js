@@ -20,6 +20,8 @@ export const BUILTINS = {
   circfill: { params: [["coord", false], ["coord", false], ["coord", false], ["color", true]], ret: "void", c: "gt_p8_circfill" },
   line:     { params: [["coord", false], ["coord", false], ["coord", false], ["coord", false], ["color", true]], ret: "void", c: "gt_p8_line" },
   pal:      { params: [["int", true], ["color", true]], ret: "void", c: "gt_p8_pal" },
+  sset:     { params: [["coord", false], ["coord", false], ["color", true]], ret: "void", c: "gt_p8_sset" },
+  spr:      { params: [["int", false], ["coord", false], ["coord", false], ["int", true], ["int", true]], ret: "void", c: "gt_p8_spr" },
 
   // ---- input ---------------------------------------------------------------
   btn:      { params: [["int", false], ["int", true]], ret: "bool", c: "gt_p8_btn" },

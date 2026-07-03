@@ -172,6 +172,7 @@ function _draw()
       local x = flr(px[i])
       local y = flr(py[i])
       circfill(x, y, radii[sz[i]], cols[sz[i]])
+      circ(x, y, radii[sz[i]], 7)
       pset(x - radii[sz[i]] \ 2, y - radii[sz[i]] \ 2, 7)
     end
   end
@@ -179,6 +180,7 @@ function _draw()
   -- dropper + next marble
   rectfill(drop_x - 1, 0, drop_x + 1, 6, 6)
   circfill(drop_x, 10, radii[next_sz], cols[next_sz])
+  circ(drop_x, 10, radii[next_sz], 7)
 
   -- score bar
   rectfill(0, 0, mid(0, score \ 8, 127), 1, 10)

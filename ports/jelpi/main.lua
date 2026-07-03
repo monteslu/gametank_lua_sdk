@@ -217,8 +217,10 @@ function _draw()
   cls(12)                       -- sky
 
   -- sun + cloud
-  rectfill(102, 8, 114, 20, 10)
+  circfill(108, 14, 8, 10)
   rectfill(24, 18, 46, 24, 7)
+  circfill(28, 18, 5, 7)
+  circfill(40, 17, 6, 7)
 
   -- platforms: dirt with grass tops
   for i = 1, pn do
@@ -233,7 +235,7 @@ function _draw()
   for i = 1, nn do
     if nlive[i] == 1 then
       local bob = flr(sin(anim + i * 0.2) * 2)
-      rectfill(nx[i] - 1, ny[i] + bob - 1, nx[i] + 1, ny[i] + bob + 1, 10)
+      circfill(nx[i], ny[i] + bob, 2, 10)
       pset(nx[i], ny[i] + bob - 1, 7)
     end
   end
@@ -242,7 +244,8 @@ function _draw()
   for i = 1, cn do
     if clive[i] == 1 then
       local ccx = flr(cx[i])
-      rectfill(ccx - 4, cy[i] - 1, ccx + 4, cy[i] + 6, 8)
+      circfill(ccx, cy[i] + 2, 4, 8)
+      rectfill(ccx - 4, cy[i] + 4, ccx + 4, cy[i] + 6, 2)
       pset(ccx - 2, cy[i], 7)
       pset(ccx + 2, cy[i], 7)
     end
@@ -257,7 +260,7 @@ function _draw()
     local px = flr(x)
     local py = flr(y)
     rectfill(px, py + 2, px + 4, py + 6, 9)          -- body
-    rectfill(px, py - 2, px + 4, py + 1, 15)         -- head
+    circfill(px + 2, py, 3, 15)                      -- head
     pset(px + 2 + face, py, 0)                       -- eye
     if grounded == 1 and abs(dx) > 0.2 then
       local step = flr(anim * 40) % 2
@@ -273,10 +276,10 @@ function _draw()
 
   -- hud: hp hearts + coin pips
   for i = 1, hp do
-    rectfill(i * 8 - 5, 2, i * 8 - 2, 5, 8)
+    circfill(i * 8 - 3, 4, 2, 8)
   end
   for i = 1, coins do
-    if (i < 16) rectfill(118 - i * 6, 2, 121 - i * 6, 5, 10)
+    if (i < 16) circfill(120 - i * 6, 4, 2, 10)
   end
 
   if dead == 1 then

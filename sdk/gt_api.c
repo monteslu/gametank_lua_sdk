@@ -46,6 +46,8 @@ static unsigned char resolve_color(int c) {
 #define MODE_NONE 0
 #define MODE_BLIT 1
 #define MODE_CPU  2
+#define MODE_GRAM 3
+#define MODE_SPR  4
 static char draw_mode;
 
 static void await_drawing(void) {
@@ -77,6 +79,66 @@ static void enter_cpu_mode(void) {
     banks_mirror = bankflip;                    /* write the DRAW page */
     *bank_reg = banks_mirror;
     draw_mode = MODE_CPU;
+}
+
+/* GRAM CPU-write mode: dummy clipped 1x1 blit latches sheet quadrant 0,
+ * then DMA off routes CPU writes into GRAM (hardware ref 3.4). */
+static void enter_gram_mode(void) {
+    if (draw_mode == MODE_GRAM) return;
+    await_drawing();
+    flags_mirror = DMA_NMI | DMA_ENABLE | DMA_IRQ | DMA_GCARRY;
+    *dma_flags = flags_mirror;
+    banks_mirror = bankflip | BANK_CLIP_X | BANK_CLIP_Y;
+    *bank_reg = banks_mirror;
+    vram[GX] = 0;
+    vram[GY] = 0;
+    vram[VX] = 200;              /* offscreen + clip: no visible pixel */
+    vram[VY] = 200;
+    vram[WIDTH] = 1;
+    vram[HEIGHT] = 1;
+    gt_draw_busy = 1;
+    vram[START] = 1;
+    await_drawing();
+    flags_mirror = DMA_NMI;      /* DMA off, CPU_TO_VRAM off -> GRAM writes */
+    *dma_flags = flags_mirror;
+    draw_mode = MODE_GRAM;
+}
+
+/* sprite-copy blit mode: GRAM source, color 0 transparent (OPAQUE off) */
+static void enter_spr_mode(void) {
+    if (draw_mode == MODE_SPR) { await_drawing(); return; }
+    await_drawing();
+    flags_mirror = DMA_NMI | DMA_ENABLE | DMA_IRQ | DMA_GCARRY;
+    *dma_flags = flags_mirror;
+    banks_mirror = bankflip | BANK_CLIP_X | BANK_CLIP_Y;
+    *bank_reg = banks_mirror;
+    draw_mode = MODE_SPR;
+}
+
+/* PICO-8 sset: plot into the 128x128 sprite sheet (GRAM quadrant 0) */
+void gt_p8_sset(int x, int y, int c) {
+    unsigned char col = resolve_color(c);
+    if (x < 0 || x > 127 || y < 0 || y > 127) return;
+    enter_gram_mode();
+    vram[((unsigned int)y << 7) | (unsigned int)x] = col;
+}
+
+/* PICO-8 spr: blit sprite cell n (8x8, 16 per row) with transparency */
+void gt_p8_spr(int n, int x, int y, int w, int h) {
+    x -= cam_x;
+    y -= cam_y;
+    if (w < 1) w = 1;
+    if (h < 1) h = 1;
+    if (x < -8 * w || x > 127 || y < -8 * h || y > 127) return;
+    enter_spr_mode();
+    vram[GX] = (unsigned char)((n & 15) << 3);
+    vram[GY] = (unsigned char)((n >> 4) << 3);
+    vram[VX] = (unsigned char)x;
+    vram[VY] = (unsigned char)y;
+    vram[WIDTH] = (unsigned char)(w << 3);
+    vram[HEIGHT] = (unsigned char)(h << 3);
+    gt_draw_busy = 1;
+    vram[START] = 1;
 }
 
 /* raw fill; caller guarantees 0<=x,y<=127, 1<=w,h<=127 (after clipping) */
