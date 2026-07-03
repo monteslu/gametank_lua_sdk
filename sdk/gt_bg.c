@@ -137,14 +137,14 @@ void GT_BG_COMPOSE(int *map, int cols, int cx, int cy, int cw, int ch) {
      * window, the whole reason compose blocked _init for well over a hundred
      * frames. Now it's 16 calls total, then a byte index per pixel. */
     for (b = 0; b < 16; ++b) lut[b] = gt_p8pal(b);
-    /* Clear each quadrant this compose can touch to color 0 first: GRAM powers
-     * on random and empty (tile 0) cells are SKIPPED below. A cell (i,j) lands
-     * at bg pixel (i*8, j*8), so cw/ch <= 16 stays in quadrant 0 (128px); a
-     * larger canvas spans up to the full 256x256 (4 quadrants). Clearing all 4
-     * when either axis exceeds 16 cells is a harmless over-clear (one-time). */
+    /* Clear ALL FOUR quadrants to color 0 first: GRAM powers on random and
+     * empty (tile 0) cells are SKIPPED below. Always clearing the full 256x256
+     * canvas (not just what this compose touches) means a bg_draw with a
+     * small negative/wrapping source offset — a screenshake — samples clean
+     * black instead of GRAM noise from a never-composed quadrant. One-time
+     * cost at compose, so the over-clear is free in practice. */
     { unsigned char q; unsigned int p; unsigned char c0 = lut[0];
-      unsigned char nq = (cw > 16 || ch > 16) ? 4 : 1;
-      for (q = 0; q < nq; ++q) {
+      for (q = 0; q < 4; ++q) {
           bg_enter_write_q(q);
           for (p = 0; p < 16384u; ++p) vram[p] = c0;
       }

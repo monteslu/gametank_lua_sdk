@@ -1635,8 +1635,66 @@ function g_btnicon(fl, x, y)
   if fl == 1 then spr(246, x, y, 1, 1) else spr(245, x, y, 1, 1) end
 end
 
+-- The boss arena is a fully static 16x16-tile screen. It used to be ~30
+-- spr() blits + 8 psets EVERY frame (~1 vsync of pure blit dispatch); now the
+-- tiles compose ONCE into the offscreen GRAM page at init and the whole
+-- background is a single gt.bg_draw() blit per frame. The stars sit at odd
+-- sub-tile offsets, so they stay as CPU pixel writes on top (they overlap no
+-- tiles). See docs/performance.md "compose once, blit once".
+local arena = array(256)
+
+function arena_row(n, cx, cy, w)
+  local base = cy * 16 + cx + 1
+  for k = 0, w - 1 do
+    arena[base + k] = n + k
+  end
+end
+
+function arena_compose()
+  arena_row(213, 2, 6, 1)
+  arena_row(213, 14, 9, 1)
+  arena_row(214, 2, 7, 1)
+  arena_row(146, 3, 7, 4)
+  arena_row(146, 7, 7, 4)
+  arena_row(146, 11, 7, 2)
+  arena_row(210, 2, 8, 1)
+  arena_row(131, 3, 8, 4)
+  arena_row(130, 7, 8, 1)
+  arena_row(131, 8, 8, 5)
+  arena_row(210, 2, 10, 1)
+  arena_row(131, 3, 10, 4)
+  arena_row(130, 7, 10, 1)
+  arena_row(131, 8, 10, 5)
+  arena_row(210, 2, 12, 1)
+  arena_row(131, 3, 12, 4)
+  arena_row(130, 7, 12, 1)
+  arena_row(131, 8, 12, 5)
+  arena_row(210, 2, 9, 1)
+  arena_row(136, 3, 9, 4)
+  arena_row(211, 7, 9, 1)
+  arena_row(136, 8, 9, 5)
+  arena_row(210, 2, 11, 1)
+  arena_row(136, 3, 11, 4)
+  arena_row(211, 7, 11, 1)
+  arena_row(136, 8, 11, 5)
+  arena_row(212, 2, 13, 1)
+  arena_row(150, 3, 13, 4)
+  arena_row(150, 7, 13, 4)
+  arena_row(150, 11, 13, 2)
+  gt.bg_compose(arena, 16, 0, 0, 16, 16)
+end
+
 function g_bg()
-  -- stars are single pixels in the cart tiles: pset is cheaper
+  -- screenshake shifts the SOURCE window (matches the camera() shake applied
+  -- to everything drawn on top; compose cleared all 4 quadrants so the wrap
+  -- samples black, same as the old cls-backed edges)
+  local sx = 0
+  local sy = 0
+  if shake_frames > 0 then
+    sx = scene_frame % 5 - 2
+    sy = (scene_frame \ 2) % 5 - 2
+  end
+  gt.bg_draw(sx, sy)
   pset(96, 15, 1)
   pset(80, 23, 1)
   pset(48, 31, 1)
@@ -1645,36 +1703,6 @@ function g_bg()
   pset(96, 55, 1)
   pset(8, 87, 1)
   pset(112, 95, 1)
-  spr(213, 16, 48, 1, 1)
-  spr(213, 112, 72, 1, 1)
-  spr(214, 16, 56, 1, 1)
-  spr(146, 24, 56, 4, 1)
-  spr(146, 56, 56, 4, 1)
-  spr(146, 88, 56, 2, 1)
-  spr(210, 16, 64, 1, 1)
-  spr(131, 24, 64, 4, 1)
-  spr(130, 56, 64, 1, 1)
-  spr(131, 64, 64, 5, 1)
-  spr(210, 16, 80, 1, 1)
-  spr(131, 24, 80, 4, 1)
-  spr(130, 56, 80, 1, 1)
-  spr(131, 64, 80, 5, 1)
-  spr(210, 16, 96, 1, 1)
-  spr(131, 24, 96, 4, 1)
-  spr(130, 56, 96, 1, 1)
-  spr(131, 64, 96, 5, 1)
-  spr(210, 16, 72, 1, 1)
-  spr(136, 24, 72, 4, 1)
-  spr(211, 56, 72, 1, 1)
-  spr(136, 64, 72, 5, 1)
-  spr(210, 16, 88, 1, 1)
-  spr(136, 24, 88, 4, 1)
-  spr(211, 56, 88, 1, 1)
-  spr(136, 64, 88, 5, 1)
-  spr(212, 16, 104, 1, 1)
-  spr(150, 24, 104, 4, 1)
-  spr(150, 56, 104, 4, 1)
-  spr(150, 88, 104, 2, 1)
 end
 
 -- >>>>>> src/draw.lua <<<<<<
@@ -1987,6 +2015,7 @@ function _init()
   cur_vis = 1
   cur_dc = 0
   fill_glyphs()
+  arena_compose()
   show_title_screen(1)
   scr_x[1] = 63
   scr_slide[1] = 0
@@ -2016,8 +2045,7 @@ function set_glyph(ch, a, b, c, d, e)
 end
 
 function _update()
-  -- cls first: its DMA overlaps the frame's logic (per SDK guidance)
-  cls(0)
+  -- no cls: gt.bg_draw() repaints the whole screen opaque each frame
 
   update_audio()
 
