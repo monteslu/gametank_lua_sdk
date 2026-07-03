@@ -120,11 +120,14 @@ static void fill_clipped(int x0, int y0, int x1, int y1, unsigned char color) {
 /* ---- PICO-8 drawing API ---- */
 
 void gt_p8_cls(int c) {
+    /* Edge slivers first, the big 127x127 blit LAST: the caller returns
+     * while the big DMA is still in flight, so a cls() at the top of
+     * _update() overlaps the whole frame's game logic. */
     unsigned char col = (c < 0) ? p8pal[0] : resolve_color(c);
-    box_raw(0, 0, 127, 127, col);
     box_raw(127, 0, 1, 127, col);
     box_raw(0, 127, 127, 1, col);
     box_raw(127, 127, 1, 1, col);
+    box_raw(0, 0, 127, 127, col);
 }
 
 void gt_p8_camera(int x, int y) { cam_x = x; cam_y = y; }

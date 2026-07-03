@@ -1,50 +1,52 @@
 -- cherry-bomb (adapted port)
 -- A wave survival shmup inspired by "Cherry Bomb" by Krystman / Lazy Devs
--- (lexaloffle.com/bbs/?tid=48986, CC4-BY-NC-SA). Original gameplay code:
--- this is a from-scratch gtlua implementation of the design, drawn with
--- primitives. This port: CC-BY-NC-SA 4.0.
+-- (lexaloffle.com/bbs/?tid=48986, CC4-BY-NC-SA). From-scratch gtlua
+-- implementation of the design, drawn with primitives.
+-- This port: CC-BY-NC-SA 4.0.
 --
--- d-pad move, 🅾️ (GT A) shoot. Survive the waves.
+-- d-pad move, 🅾️ (GT A) shoot. Survive the waves. Runs locked 30fps:
+-- enemy motion is all-integer (quarter-pixel y, table-driven sway), and
+-- cls() is kicked at update start so its DMA overlaps the game logic.
 
 local px = 60
 local py = 108
-local plive = 1
 local pflash = 0
 local lives = 3
 local score = 0
 local wave = 0
 local wavetimer = 30
 local gameover = 0
+local ph = 0                -- frame counter (drives sway + starfield)
 
 -- player bullets
-local bx = array(8)
-local by = array(8)
-local blive = array(8)
+local bx = array(6)
+local by = array(6)
+local blive = array(6)
 local cooldown = 0
 
--- enemies
+-- enemies: integer math only. y in quarter-pixels; sway from a table.
 local ex = array(8)
-local ey = array(8)
-local ebase = array(8)      -- sine center x
-local ephase = array(8)
-local espd = array(8)
+local ey4 = array(8)        -- y * 4
+local ebase = array(8)
+local espd4 = array(8)      -- quarter-pixels per frame
 local elive = array(8)
 local left = 0
+
+local swaytab = array(32)   -- flr(sin(k/32) * 24), filled once in _init
 
 function spawn_wave()
   wave += 1
   left = 0
   for i = 1, #ex do
     if i <= 3 + wave then
-      if i <= #ex then
-        elive[i] = 1
-        ebase[i] = 16 + (i * 23) % 96
-        ex[i] = ebase[i]
-        ey[i] = -8 - (i % 4) * 14
-        ephase[i] = i * 0.13
-        espd[i] = 0.6 + wave * 0.16 + (i % 3) * 0.2
-        left += 1
-      end
+      elive[i] = 1
+      ebase[i] = 28 + (i * 23) % 80
+      ex[i] = ebase[i]
+      ey4[i] = (-8 - (i % 4) * 14) * 4
+      local s = 3 + wave + (i % 3) * 2
+      if (s > 12) s = 12
+      espd4[i] = s
+      left += 1
     else
       elive[i] = 0
     end
@@ -64,22 +66,28 @@ function fire()
 end
 
 function _init()
-  srand(1)
+  for k = 1, 32 do
+    swaytab[k] = flr(sin(k * 0.03125) * 24)
+  end
   spawn_wave()
 end
 
 function _update()
+  cls(0)   -- kick the big clear first: its DMA runs under the logic below
+
   if gameover == 1 then
     if (btnp(4)) gameover = 0 lives = 3 score = 0 wave = 0 px = 60 spawn_wave()
     return
   end
+
+  ph += 1
 
   -- player
   if (btn(0)) px -= 4
   if (btn(1)) px += 4
   if (btn(2)) py -= 2
   if (btn(3)) py += 2
-  px = mid(4, px, 123)
+  px = mid(6, px, 121)
   py = mid(70, py, 120)
   if (btn(4)) fire()
   if (cooldown > 0) cooldown -= 1
@@ -93,18 +101,14 @@ function _update()
     end
   end
 
-  -- enemies
+  -- enemies (integer math throughout)
   for i = 1, #ex do
     if elive[i] == 1 then
-      ephase[i] += 0.02
-      ex[i] = ebase[i] + flr(sin(ephase[i]) * 24)
-      ey[i] += espd[i]
-      if ey[i] > 130 then
-        ey[i] = -10
-      end
-      local eyi = flr(ey[i])
+      ex[i] = ebase[i] + swaytab[1 + (ph \ 2 + i * 4) % 32]
+      ey4[i] += espd4[i]
+      if (ey4[i] > 520) ey4[i] = -40
+      local eyi = ey4[i] \ 4
 
-      -- bullet hits
       for j = 1, #bx do
         if blive[j] == 1 then
           if abs(bx[j] - ex[i]) < 6 and abs(by[j] - eyi) < 6 then
@@ -116,7 +120,6 @@ function _update()
         end
       end
 
-      -- player collision
       if elive[i] == 1 and pflash == 0 then
         if abs(px - ex[i]) < 7 and abs(py - eyi) < 7 then
           lives -= 1
@@ -136,16 +139,9 @@ function _update()
   end
 end
 
-function draw_ship(x, y, c)
-  rectfill(x - 1, y - 5, x + 1, y + 4, c)
-  rectfill(x - 5, y, x + 5, y + 3, c)
-end
-
 function _draw()
-  cls(0)
-
-  -- starfield scroll
-  local sy = flr(t() * 30) % 128
+  -- background was cleared in _update; just the stars
+  local sy = (ph * 2) % 128
   pset(20, sy, 5)
   pset(90, (sy + 64) % 128, 6)
 
@@ -156,9 +152,10 @@ function _draw()
     return
   end
 
-  -- player (flash while invulnerable)
+  -- player ship (flash while invulnerable)
   if pflash % 8 < 4 then
-    draw_ship(px, py, 12)
+    rectfill(px - 1, py - 5, px + 1, py + 4, 12)
+    rectfill(px - 5, py, px + 5, py + 3, 12)
   end
 
   -- bullets
@@ -166,23 +163,23 @@ function _draw()
     if (blive[i] == 1) rectfill(bx[i] - 1, by[i] - 2, bx[i], by[i] + 2, 10)
   end
 
-  -- enemies: cherry pairs
+  -- enemies: berries (rect pass, then pset pass — avoids blit/CPU
+  -- mode thrash per enemy)
   for i = 1, #ex do
     if elive[i] == 1 then
-      local eyi = flr(ey[i])
-      rectfill(ex[i] - 3, eyi - 1, ex[i] + 3, eyi + 5, 8)
-      pset(ex[i] - 2, eyi, 14)
-      pset(ex[i], eyi - 2, 3)
-      pset(ex[i], eyi - 3, 3)
+      rectfill(ex[i] - 3, ey4[i] \ 4 - 1, ex[i] + 3, ey4[i] \ 4 + 5, 8)
     end
   end
 
-  -- hud: lives as ships, score bar, wave pips
-  for i = 1, lives do
-    draw_ship(8 + i * 10, 6, 12)
-  end
+  -- hud: lives bar, score bar, wave bar
+  rectfill(2, 2, 2 + lives * 6, 4, 12)
   rectfill(0, 0, mid(0, score \ 8, 127), 1, 10)
-  for i = 1, wave do
-    if (i < 16) rectfill(126 - i * 4, 5, 127 - i * 4, 8, 14)
+  rectfill(127 - mid(1, wave, 8) * 4, 5, 127, 8, 14)
+
+  for i = 1, #ex do
+    if elive[i] == 1 then
+      pset(ex[i] - 2, ey4[i] \ 4, 14)
+      pset(ex[i], ey4[i] \ 4 - 2, 3)
+    end
   end
 end
