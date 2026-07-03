@@ -512,9 +512,14 @@ function update_hair()
   if (pflip == 1) lx = px + 6.0
   local ly = py + 2.9
   if (pmode == 2 and btn(3)) ly = py + 4.0
+  -- PERF: the cart divides by 1.5, but a fixed-point DIVIDE is ~12k cycles and
+  -- this loop did TEN of them per frame (2 per node x 5 nodes) — the hottest
+  -- code in the whole update. Multiplying by 1/1.5 (0.6667) is a table
+  -- multiply, ~50x cheaper, and hair smoothing is cosmetic — the 0.005%
+  -- constant error is invisible. See docs/performance.md.
   for i = 1, 5 do
-    hx[i] += (lx - hx[i]) / 1.5
-    hy[i] += (ly + 0.5 - hy[i]) / 1.5
+    hx[i] += (lx - hx[i]) * 0.6667
+    hy[i] += (ly + 0.5 - hy[i]) * 0.6667
     lx = hx[i]
     ly = hy[i]
   end
