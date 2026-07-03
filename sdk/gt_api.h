@@ -12,6 +12,38 @@ extern char gt_frameflag;
 extern char gt_draw_busy;
 extern unsigned int gt_ticks;
 
+/* --- the zero-page fastcall ABI (gt_blitq.s owns the storage) ---
+ * The compiler stores draw-builtin args into gt_a0..gt_a5 and calls the
+ * argless *_z entry points: two sta's per arg instead of a cc65 stack
+ * push, and the callee reads zp instead of (sp),y. Camera and pad words
+ * are zp too so camera()/btn()/btnp() emit as inline zp ops. */
+extern int gt_a0, gt_a1, gt_a2, gt_a3, gt_a4, gt_a5;
+extern int gt_cam_x, gt_cam_y;
+extern unsigned int gt_pad0, gt_pad1, gt_rpt0, gt_rpt1;
+extern volatile unsigned char gt_qhead, gt_qtail;
+extern unsigned char gt_qbank;
+extern unsigned char gt_ent[8];   /* blit-entry staging (zp) */
+extern unsigned char gt_q[256];
+#pragma zpsym ("gt_a0")
+#pragma zpsym ("gt_a1")
+#pragma zpsym ("gt_a2")
+#pragma zpsym ("gt_a3")
+#pragma zpsym ("gt_a4")
+#pragma zpsym ("gt_a5")
+#pragma zpsym ("gt_cam_x")
+#pragma zpsym ("gt_cam_y")
+#pragma zpsym ("gt_pad0")
+#pragma zpsym ("gt_pad1")
+#pragma zpsym ("gt_rpt0")
+#pragma zpsym ("gt_rpt1")
+#pragma zpsym ("gt_qhead")
+#pragma zpsym ("gt_qtail")
+#pragma zpsym ("gt_qbank")
+#pragma zpsym ("gt_ent")
+void __fastcall__ gt_q_kick(void);   /* program next queued blit (SEI held) */
+void __fastcall__ gt_q_push(void);   /* commit gt_ent to the ring + pump */
+void __fastcall__ gt_q_pump(void);   /* start next blit if idle (any ctx) */
+
 /* --- lifecycle --- */
 void gt_init(void);
 void gt_endframe(void);
@@ -30,6 +62,18 @@ void gt_p8_camera(int x, int y);
 void gt_p8_color(int c);
 void gt_p8_pal(int c0, int c1);              /* (-1,-1) = reset */
 void gt_p8_pset(int x, int y, int c);
+
+/* zp-ABI entry points: args in gt_a0..gt_a5 (see the block above).
+ * The cdecl versions above remain as thin wrappers for call sites whose
+ * argument expressions could themselves draw (user-function calls). */
+void gt_p8_pset_z(void);       /* a0=x a1=y a2=c */
+void gt_p8_rect_z(void);       /* a0=x0 a1=y0 a2=x1 a3=y1 a4=c */
+void gt_p8_rectfill_z(void);   /* a0=x0 a1=y0 a2=x1 a3=y1 a4=c */
+void gt_p8_circ_z(void);       /* a0=cx a1=cy a2=r a3=c */
+void gt_p8_circfill_z(void);   /* a0=cx a1=cy a2=r a3=c */
+void gt_p8_line_z(void);       /* a0=x0 a1=y0 a2=x1 a3=y1 a4=c */
+void gt_p8_spr_z(void);        /* a0=n a1=x a2=y a3=w a4=h */
+void gt_p8_sset_z(void);       /* a0=x a1=y a2=c */
 void gt_starfield_init(int n);      /* seed n parallax stars (n<=128) */
 void gt_starfield_move(int mode);   /* scroll: 0=drift 1=1x 2=2x */
 void gt_starfield_draw(void);       /* plot the whole field (one CPU pass) */

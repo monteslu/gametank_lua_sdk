@@ -42,6 +42,31 @@ const BANK_SEGMENTS = {
 };
 const BANK_NUMBER = { b0: 0, b1: 1, b2: 2 };
 
+// Draw builtins with a zero-page fastcall entry point (sdk/gt_blitq.s owns
+// the gt_a* slots; gt_api.h declares the _z functions).
+const ZP_BUILTINS = {
+  pset: "gt_p8_pset_z", rectfill: "gt_p8_rectfill_z", rect: "gt_p8_rect_z",
+  circfill: "gt_p8_circfill_z", circ: "gt_p8_circ_z", line: "gt_p8_line_z",
+  spr: "gt_p8_spr_z", sset: "gt_p8_sset_z",
+};
+
+// P8 button index -> pad-word mask (mirror of btn_mask[] in gt_api.c)
+const BTN_MASKS = [512, 256, 2056, 1028, 16, 4096, 8192, 32];
+
+// Does this expression contain a user-function call? One could draw, which
+// would clobber the gt_a* slots mid-store-sequence — such call sites fall
+// back to the cdecl wrappers. (Annotation keys skipped: they cycle.)
+function hasUserCall(node) {
+  if (!node || typeof node !== "object") return false;
+  if (Array.isArray(node)) return node.some(hasUserCall);
+  if (node.kind === "call" && node.userFn) return true;
+  for (const [k, v] of Object.entries(node)) {
+    if (WALK_SKIP.has(k)) continue;
+    if (hasUserCall(v)) return true;
+  }
+  return false;
+}
+
 export function emit(chunk, symbols, file, opts = {}) {
   const banked = opts.banked === true;
   const placement = opts.placement ?? {};
@@ -262,6 +287,30 @@ export function emit(chunk, symbols, file, opts = {}) {
 
     // plain builtin
     const args = b.params.map((p, i) => argAt(e, i, p[0], defaultFor(name, i)));
+
+    // The zero-page fastcall ABI: draw builtins store their args into the
+    // zp slots gt_a0.. (two sta's each) and call the argless _z entry point,
+    // instead of paying cc65's C-stack push per argument. Skipped when an
+    // argument expression could itself draw (a user-function call would
+    // clobber the slots mid-sequence) — those sites use the cdecl wrapper.
+    if (ZP_BUILTINS[name] && !e.args.some(hasUserCall)) {
+      const stores = args.map((a, i) => `gt_a${i} = ${a}`);
+      return `(${stores.join(", ")}, ${ZP_BUILTINS[name]}())`;
+    }
+    if (name === "camera" && !e.args.some(hasUserCall)) {
+      return `(gt_cam_x = ${args[0]}, gt_cam_y = ${args[1]})`;
+    }
+    // btn/btnp with constant button + player 0/1: an inline bit test on the
+    // zp pad word — no call at all (233 measured cycles down to a handful).
+    if ((name === "btn" || name === "btnp") && e.args[0]?.kind === "number") {
+      const idx = e.args[0].value | 0;
+      const plArg = e.args[1];
+      const plConst = !plArg ? 0 : (plArg.kind === "number" ? plArg.value | 0 : -1);
+      if (idx >= 0 && idx <= 7 && (plConst === 0 || plConst === 1)) {
+        const word = (name === "btn" ? "gt_pad" : "gt_rpt") + plConst;
+        return `((${word} & ${BTN_MASKS[idx]}u) != 0)`;
+      }
+    }
     return `${b.c}(${args.join(", ")})`;
   }
 

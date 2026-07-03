@@ -292,6 +292,8 @@ function build(entry, outPath, sheetPath) {
   as(path.join(SDK, "crt0.s"), B("crt0.o"));
   as(path.join(SDK, "vectors.s"), B("vectors.o"));
   as(path.join(SDK, "interrupt.s"), B("interrupt.o"));
+  as(path.join(SDK, "gt_blitq.s"), B("gt_blitq.o"));
+  as(path.join(SDK, "gt_fixed_asm.s"), B("gt_fixed_asm.o"));
   as(B("gt_api.s"), B("gt_api.o"));
   as(B("gt_fixed.s"), B("gt_fixed.o"));
   as(B("gt_math.s"), B("gt_math.o"));
@@ -300,8 +302,8 @@ function build(entry, outPath, sheetPath) {
   as(B(`${name}.s`), B(`${name}.o`));
 
   const baseObjs = [
-    B("crt0.o"), B("vectors.o"), B("interrupt.o"),
-    B("gt_api.o"), B("gt_fixed.o"), B("gt_math.o"),
+    B("crt0.o"), B("vectors.o"), B("interrupt.o"), B("gt_blitq.o"),
+    B("gt_api.o"), B("gt_fixed.o"), B("gt_fixed_asm.o"), B("gt_math.o"),
     ...(usesAudio ? [B("gt_audio.o")] : []),
     B("sheet.o"),
   ];

@@ -47,7 +47,8 @@ test("!= is ~=", () => {
 
 test("one-line if shorthand", () => {
   const c = cOf("local x = 0\nfunction _update60()\n  if (btn(0)) x -= 1\n  if (btn(1)) x += 1 else x = 0\nend\nfunction _draw()\nend\n");
-  assert.match(c, /gt_p8_btn\(0, 0\)/);
+  // constant-button btn() emits an inline zp pad-word bit test, not a call
+  assert.match(c, /gt_pad0 & 512u/);
   assert.match(c, /} else \{/);
 });
 
@@ -58,8 +59,9 @@ test("one-line while shorthand", () => {
 
 test("button glyphs lex as indices", () => {
   const c = cOf("local x = 0\nfunction _update60()\n  if (btnp(🅾️)) x += 1\n  if (btnp(❎)) x -= 1\nend\nfunction _draw()\nend\n");
-  assert.match(c, /gt_p8_btnp\(4, 0\)/);
-  assert.match(c, /gt_p8_btnp\(5, 0\)/);
+  // 🅾️=index 4 (mask 16), ❎=index 5 (mask 4096) on the newpress word
+  assert.match(c, /gt_rpt0 & 16u/);
+  assert.match(c, /gt_rpt0 & 4096u/);
 });
 
 test("multiple assignment evaluates RHS first (swap works)", () => {
