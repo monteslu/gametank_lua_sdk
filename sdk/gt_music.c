@@ -1,0 +1,445 @@
+/* gt_music.c — PICO-8-style sfx()/music() for the GameTank audio coprocessor.
+ *
+ * The GameTank has a second 65C02 (the ACP) running a fixed 4-operator FM
+ * firmware (uploaded by gt_audio_init() in gt_audio.c). Each of its 4 channels
+ * is a 4-op FM voice; the main CPU drives it by poking parameters into ACP
+ * shared RAM ($3000-$3FFF, the `aram` window) and pulsing the audio NMI.
+ *
+ * This is a SLIMMED port of the upstream gametank_sdk tracker
+ * (src/gt/audio/music.c). What we kept, verbatim in spirit:
+ *   - the FM Instrument model (per-op env_initial/decay/sustain + op_transpose
+ *     + feedback), and the built-in instrument voices (instruments.c).
+ *   - the per-frame envelope advance in tick_music(): every active operator
+ *     decays from env_initial toward env_sustain by env_decay, exactly like
+ *     upstream, so notes have real FM attack/decay shape (not flat tones).
+ *   - the sound-effect-over-music priority idea (an sfx grabs a channel and
+ *     the tune's notes on that channel are muted until the sfx finishes).
+ *
+ * What we DROPPED / reimagined for gtlua's audience (young Lua devs):
+ *   - No ROM-bank-switched .gtm song files or asset-index tables. Authoring a
+ *     tracker file is not Lua-idiomatic. Instead sfx/music are triggered BY
+ *     INDEX and the data lives in plain C arrays the compiler emits (either
+ *     the built-in bank below, or user-defined sound()/song() tables). This
+ *     keeps everything in the flat address space — no banking gymnastics.
+ *   - SFX are a simple list of {note,duration} steps on one channel (upstream
+ *     packs 4 amplitudes + 4 notes per frame — powerful but nobody hand-writes
+ *     it). A step here holds forever/for `dur` frames, then the next step.
+ *   - Songs are per-channel note+duration events (see the SongEvent format in
+ *     gt_music.h). music(-1) stops, like PICO-8.
+ *
+ * The whole thing costs one tick_music() call per frame on the MAIN CPU
+ * (wired into gt_endframe()); it early-outs to almost nothing when nothing is
+ * playing. Offloading the sequencer to the ACP is a later task.
+ */
+#include "gametank.h"
+#include "gt_api.h"
+#include "gt_music.h"
+
+#define FEEDBACK_AMT 0x04
+#define PITCH_MSB    0x10
+#define PITCH_LSB    0x20
+#define AMPLITUDE    0x30
+#define NUM_FM_CH    4
+#define NUM_FM_OPS   16
+
+/* FLASH2M banked build (-DGT_BANKED, passed by bin/gtlua.js): this whole unit
+ * — the ~2.4 KB sequencer code AND its instrument/sfx/song tables — is exiled
+ * from the always-mapped FIXED bank into game bank 2 (B2CODE/B2RODATA, with the
+ * firmware + sheet), exactly like gt_math/gt_audio. The public entry points are
+ * renamed with an _impl suffix; fixed-bank far-call stubs (gt_music_stubs.s)
+ * own the plain names and bank-switch to 2 around each call. tick_music reads
+ * gt_pitch_table (in the fixed bank, always mapped) and its own tables (in bank
+ * 2, mapped by the stub) — both reachable. gt_music_init() is NOT renamed: it
+ * stays a fixed-bank thunk that installs the (stub) hook then calls the banked
+ * real init, so the frame hook points at the fixed-bank stub, not the bank-2
+ * impl (which would be unreachable when another bank is mapped). */
+#ifdef GT_BANKED
+#pragma code-name ("B2CODE")
+#pragma rodata-name ("B2RODATA")
+#define GT_MB(name) name##_impl
+#else
+#define GT_MB(name) name
+#endif
+
+#define gt_music_tick GT_MB(gt_music_tick)
+#define gt_sfx        GT_MB(gt_sfx)
+#define gt_music      GT_MB(gt_music)
+#define gt_sfx_run    GT_MB(gt_sfx_run)
+#define gt_music_play GT_MB(gt_music_play)
+#define gt_music_stop GT_MB(gt_music_stop)
+#define gt_music_run_init GT_MB(gt_music_run_init)
+
+/* the MIDI pitch table lives in gt_audio.c (108 notes, 2 bytes each). */
+extern const unsigned char gt_pitch_table[216];
+
+/* --- built-in instruments (ported from upstream instruments.c) --------------
+ * Layout per op index: env_initial[4], env_decay[4], env_sustain[4],
+ * op_transpose[4], then feedback + channel transpose. */
+static const Instrument gt_instr[GT_NUM_INSTR] = {
+    /* 0 PIANO */   { {0x30,0x40,0x40,0x5f},{0x04,0x02,0x10,0x02},{0x04,0x02,0x10,0x30},{0,0,0,0},   0,   0 },
+    /* 1 GUITAR */  { {0x6f,0x40,0x68,0x5f},{0x00,0xFF,0x02,0x08},{0x00,0x00,0x40,0x08},{12,36,0,24},8, -12 },
+    /* 2 BASS */    { {0x58,0x88,0x58,0x5f},{0x18,0x08,0x04,0x02},{0x18,0x08,0x04,0x02},{28,12,0,12}, 0, -24 },
+    /* 3 SNARE */   { {0x88,0x8f,0x8f,0x38},{0x18,0x02,0x04,0x04},{0x18,0x08,0x08,0x04},{36,0,0,0},   8,  -8 },
+    /* 4 SITAR */   { {0x60,0x40,0x01,0x10},{0x00,0xFF,0xF8,0xFF},{0x00,0x60,0x60,0x30},{12,36,12,24},4, -24 },
+    /* 5 HORN */    { {0x00,0x00,0x01,0x10},{0x00,0x00,0xFC,0xFC},{0x00,0x00,0x30,0x50},{12,36,12,24},0, -12 },
+    /* 6 BELL */    { {0x50,0x30,0x50,0x40},{0x02,0x03,0x01,0x02},{0x00,0x00,0x00,0x00},{0,24,0,19},  2,   0 },
+    /* 7 BLIP */    { {0x00,0x00,0x00,0x6f},{0x00,0x00,0x00,0x20},{0x00,0x00,0x00,0x00},{0,0,0,0},    0,   0 },
+};
+
+/* per-op live state (mirrors upstream music.c) */
+static unsigned char env_initial[NUM_FM_OPS];
+static unsigned char env_decay[NUM_FM_OPS];
+static unsigned char env_sustain[NUM_FM_OPS];
+static unsigned char op_transpose[NUM_FM_OPS];
+static unsigned char amps[NUM_FM_OPS];        /* current op output level */
+static const unsigned char ch_mask[NUM_FM_CH] = {1, 2, 4, 8};
+static signed char ch_note_offset[NUM_FM_CH];
+
+/* which channels a live note is decaying on (music path) */
+static unsigned char note_held_mask;
+static unsigned char music_ch_mask;           /* channels not grabbed by an sfx */
+
+/* --- sound-effect layer (one active sfx per channel) --- */
+static const SfxStep *sfx_step[NUM_FM_CH];     /* current step */
+static const SfxStep *sfx_end[NUM_FM_CH];      /* one-past-last step */
+static unsigned char  sfx_left[NUM_FM_CH];     /* frames left in this step */
+static unsigned char  sfx_instr[NUM_FM_CH];    /* instrument index for this sfx */
+
+/* --- song layer (one active song) --- */
+static const SongEvent *song_cursor;
+static const SongEvent *song_start;
+static const SongEvent *song_end;
+static unsigned char song_delay;               /* frames until next event */
+static unsigned char song_loop;                /* 1 = loop at end */
+static unsigned char song_playing;
+
+static unsigned char audio_on;                 /* gt_audio_init() ran? */
+
+/* upload one instrument's per-op envelope + transpose to a channel's 4 ops */
+static void apply_instrument(unsigned char ch, unsigned char idx) {
+    unsigned char op = (unsigned char)(ch << 2);
+    unsigned char i;
+    const Instrument *ins = &gt_instr[idx];
+    ch_note_offset[ch] = ins->transpose;
+    aram[FEEDBACK_AMT + ch] = (unsigned char)((ins->feedback << 3) + 128);
+    for (i = 0; i < 4; ++i) {
+        env_initial[op + i]  = ins->env_initial[i];
+        env_decay[op + i]    = ins->env_decay[i];
+        env_sustain[op + i]  = ins->env_sustain[i];
+        op_transpose[op + i] = ins->op_transpose[i];
+    }
+}
+
+/* set the 4 operator pitches for a note on channel `ch` (upstream set_note) */
+static void set_note(unsigned char ch, unsigned char note) {
+    unsigned char op = (unsigned char)(ch << 2);
+    unsigned char i, nn, idx;
+    for (i = 0; i < 4; ++i) {
+        nn = (unsigned char)(op_transpose[op + i] + note);
+        if (nn > 107) nn = 107;
+        idx = (unsigned char)(nn << 1);
+        aram[PITCH_MSB + op + i] = gt_pitch_table[idx];
+        aram[PITCH_LSB + op + i] = gt_pitch_table[idx + 1];
+    }
+}
+
+/* trigger a note: reset every op's amplitude to its env_initial (attack) */
+static void key_on(unsigned char ch, unsigned char note) {
+    unsigned char op = (unsigned char)(ch << 2);
+    unsigned char i;
+    set_note(ch, (unsigned char)(note + ch_note_offset[ch]));
+    for (i = 0; i < 4; ++i) {
+        amps[op + i] = env_initial[op + i];
+        aram[AMPLITUDE + op + i] = (unsigned char)((amps[op + i] >> 1) + 128);
+    }
+    note_held_mask |= ch_mask[ch];
+}
+
+/* silence a channel's carrier (release) */
+static void key_off(unsigned char ch) {
+    unsigned char op = (unsigned char)(ch << 2);
+    amps[op + 3] = 0;
+    aram[AMPLITUDE + op + 3] = 128;
+    note_held_mask &= (unsigned char)~ch_mask[ch];
+}
+
+/* state reset — banked into bank 2 (renamed _impl) alongside the sequencer. */
+void gt_music_run_init(void) {
+    unsigned char i;
+    for (i = 0; i < NUM_FM_OPS; ++i) {
+        env_initial[i] = 0; env_decay[i] = 0; env_sustain[i] = 0;
+        op_transpose[i] = 0; amps[i] = 0;
+    }
+    for (i = 0; i < NUM_FM_CH; ++i) {
+        sfx_left[i] = 0; sfx_step[i] = 0;
+        ch_note_offset[i] = 0;
+    }
+    note_held_mask = 0;
+    music_ch_mask = 15;
+    song_playing = 0;
+    song_cursor = 0;
+    audio_on = 1;
+}
+
+/* start built-in or user sfx `steps`[0..count) on channel `ch` (0-3) with
+ * instrument `instr`. The sfx grabs the channel from the tune until it ends. */
+void gt_sfx_run(const SfxStep *steps, unsigned char count,
+                unsigned char instr, unsigned char ch) {
+    if (!audio_on) return;
+    ch &= 3;
+    if (instr >= GT_NUM_INSTR) instr = 0;
+    sfx_instr[ch] = instr;
+    apply_instrument(ch, instr);
+    sfx_step[ch] = steps;
+    sfx_end[ch]  = steps + count;
+    sfx_left[ch] = 0;                 /* advance to step 0 on the first tick */
+    music_ch_mask &= (unsigned char)~ch_mask[ch];   /* mute the tune here */
+    *audio_nmi = 1;
+}
+
+void gt_music_play(const SongEvent *events, unsigned char count,
+                   const unsigned char *instr4, unsigned char loop) {
+    unsigned char i;
+    if (!audio_on) return;
+    /* silence everything and load the song's 4 channel instruments */
+    for (i = 0; i < NUM_FM_OPS; ++i) { amps[i] = 0; aram[AMPLITUDE + i] = 128; }
+    note_held_mask = 0;
+    music_ch_mask = 15;
+    for (i = 0; i < NUM_FM_CH; ++i) apply_instrument(i, instr4[i]);
+    song_start  = events;
+    song_cursor = events;
+    song_end    = events + count;
+    song_delay  = 0;
+    song_loop   = loop;
+    song_playing = 1;
+    *audio_nmi = 1;
+}
+
+void gt_music_stop(void) {
+    unsigned char i;
+    if (!audio_on) return;
+    song_playing = 0;
+    song_cursor = 0;
+    for (i = 0; i < NUM_FM_OPS; ++i) { amps[i] = 0; aram[AMPLITUDE + i] = 128; }
+    note_held_mask = 0;
+    music_ch_mask = 15;
+    *audio_nmi = 1;
+}
+
+/* advance the sfx layer for one channel; returns nothing. */
+static void tick_sfx(unsigned char ch) {
+    const SfxStep *s;
+    if (!sfx_step[ch]) return;
+    if (sfx_left[ch] > 1) { --sfx_left[ch]; return; }
+    /* current step expired (or first frame): load the next one */
+    s = sfx_step[ch];
+    if (s >= sfx_end[ch]) {
+        /* sfx finished: release the channel back to the tune */
+        key_off(ch);
+        sfx_step[ch] = 0;
+        music_ch_mask |= ch_mask[ch];
+        return;
+    }
+    if (s->note == 0) {
+        key_off(ch);
+    } else {
+        key_on(ch, (unsigned char)(s->note - 1));  /* note is 1-based (0=rest) */
+    }
+    sfx_left[ch] = s->dur ? s->dur : 1;
+    sfx_step[ch] = s + 1;
+}
+
+/* the once-per-frame sequencer. Slim port of upstream tick_music():
+ *   1. advance each channel's sfx step
+ *   2. decay every held operator toward its sustain level (FM envelope)
+ *   3. step the song when its delay runs out
+ * Early-outs cheaply when nothing is playing. */
+void gt_music_tick(void) {
+    unsigned char ch, op, i;
+    if (!audio_on) return;
+
+    /* 1. sound effects */
+    for (ch = 0; ch < NUM_FM_CH; ++ch) tick_sfx(ch);
+
+    /* 2. envelope advance for every operator whose channel holds a note.
+     * (upstream: amps -= decay, clamped at sustain via the sign trick.) */
+    if (note_held_mask) {
+        op = 0;
+        for (ch = 0; ch < NUM_FM_CH; ++ch) {
+            if (note_held_mask & ch_mask[ch]) {
+                for (i = 0; i < 4; ++i) {
+                    if (((env_sustain[op] - amps[op]) ^ env_decay[op]) & 0x80) {
+                        amps[op] = (unsigned char)(amps[op] - env_decay[op]);
+                    } else {
+                        amps[op] = env_sustain[op];
+                    }
+                    aram[AMPLITUDE + op] = (unsigned char)((amps[op] >> 1) + 128);
+                    ++op;
+                }
+            } else {
+                op = (unsigned char)(op + 4);
+            }
+        }
+    }
+
+    /* 3. song sequencer */
+    if (song_playing) {
+        if (song_delay > 0) {
+            --song_delay;
+        } else {
+            while (song_cursor < song_end && song_cursor->delay == 0) {
+                /* zero-delay events fire this frame; note events carry delay>0
+                 * to the NEXT event, so we place a note then read its delay. */
+                unsigned char ev_ch = song_cursor->ch & 3;
+                if (music_ch_mask & ch_mask[ev_ch]) {
+                    if (song_cursor->note == 0) key_off(ev_ch);
+                    else key_on(ev_ch, (unsigned char)(song_cursor->note - 1));
+                }
+                ++song_cursor;
+            }
+            if (song_cursor < song_end) {
+                unsigned char ev_ch = song_cursor->ch & 3;
+                if (music_ch_mask & ch_mask[ev_ch]) {
+                    if (song_cursor->note == 0) key_off(ev_ch);
+                    else key_on(ev_ch, (unsigned char)(song_cursor->note - 1));
+                }
+                song_delay = song_cursor->delay;
+                ++song_cursor;
+            } else {
+                /* end of song */
+                if (song_loop) {
+                    song_cursor = song_start;
+                    song_delay = 0;
+                } else {
+                    song_playing = 0;
+                    for (i = 0; i < NUM_FM_OPS; ++i) { amps[i] = 0; aram[AMPLITUDE + i] = 128; }
+                    note_held_mask = 0;
+                }
+            }
+        }
+    }
+
+    *audio_nmi = 1;
+}
+
+/* ===========================================================================
+ * Built-in sound effects and songs (the zero-authoring PICO-8 path). A kid
+ * calls sfx(0) for a jump, music(0) for a tune — no data to write.
+ * Notes are 1-based MIDI (0 = rest); see gt_music.h for the step format.
+ * ========================================================================= */
+
+/* MIDI helpers for readability (Cn4 = middle-ish). +1 because note is 1-based. */
+#define N(m) ((unsigned char)((m) + 1))
+#define REST 0
+
+static const SfxStep sfx0[] = {  /* 0 JUMP: quick upward blip */
+    { N(60), 2 }, { N(64), 2 }, { N(67), 2 }, { N(72), 3 },
+};
+static const SfxStep sfx1[] = {  /* 1 PICKUP: two bright notes */
+    { N(72), 3 }, { N(79), 5 },
+};
+static const SfxStep sfx2[] = {  /* 2 SHOOT: high down-chirp */
+    { N(84), 2 }, { N(76), 2 }, { N(69), 3 },
+};
+static const SfxStep sfx3[] = {  /* 3 EXPLODE: low noisy hit (snare instr) */
+    { N(40), 4 }, { N(36), 6 }, { N(31), 8 },
+};
+static const SfxStep sfx4[] = {  /* 4 BLIP: single short tick */
+    { N(72), 3 },
+};
+static const SfxStep sfx5[] = {  /* 5 POWERUP: rising arpeggio */
+    { N(60), 2 }, { N(64), 2 }, { N(67), 2 }, { N(72), 2 }, { N(76), 4 },
+};
+static const SfxStep sfx6[] = {  /* 6 HURT: down two-note */
+    { N(55), 3 }, { N(48), 5 },
+};
+static const SfxStep sfx7[] = {  /* 7 SELECT: neutral double-blip */
+    { N(69), 2 }, REST_STEP, { N(69), 3 },
+};
+
+/* index -> {steps, count, default instrument} */
+static const BuiltinSfx builtin_sfx[GT_NUM_BUILTIN_SFX] = {
+    { sfx0, 4, GT_INSTR_BLIP },
+    { sfx1, 2, GT_INSTR_BELL },
+    { sfx2, 3, GT_INSTR_BLIP },
+    { sfx3, 3, GT_INSTR_SNARE },
+    { sfx4, 1, GT_INSTR_BLIP },
+    { sfx5, 5, GT_INSTR_BELL },
+    { sfx6, 2, GT_INSTR_HORN },
+    { sfx7, 3, GT_INSTR_BLIP },
+};
+
+/* auto channel: round-robin over the 4 FM channels for un-specified sfx() */
+static unsigned char next_sfx_ch = 0;
+
+void gt_sfx(int n, int ch) {
+    const BuiltinSfx *b;
+    unsigned char c;
+    if (!audio_on) return;
+    if (n < 0 || n >= GT_NUM_BUILTIN_SFX) return;
+    b = &builtin_sfx[n];
+    if (ch < 0) { c = next_sfx_ch; next_sfx_ch = (unsigned char)((next_sfx_ch + 1) & 3); }
+    else c = (unsigned char)(ch & 3);
+    gt_sfx_run(b->steps, b->count, b->instr, c);
+}
+
+/* --- built-in songs ---------------------------------------------------------
+ * A song is a flat list of {ch, note, delay} events. `delay` is frames until
+ * the NEXT event fires; a note plays until its channel is re-keyed or the
+ * decay silences it. Kept short + loopable. */
+
+/* 0: a simple 4-bar lead over a bass pulse (bell lead ch0, bass ch1) */
+static const SongEvent song0[] = {
+    { 1, N(36), 0 }, { 0, N(72), 16 },
+    { 0, N(76), 16 },
+    { 1, N(38), 0 }, { 0, N(79), 16 },
+    { 0, N(76), 16 },
+    { 1, N(41), 0 }, { 0, N(72), 16 },
+    { 0, N(74), 16 },
+    { 1, N(36), 0 }, { 0, N(67), 16 },
+    { 0, N(72), 16 },
+};
+/* 1: gentle two-note bassline loop */
+static const SongEvent song1[] = {
+    { 1, N(40), 24 }, { 1, N(43), 24 },
+    { 1, N(45), 24 }, { 1, N(43), 24 },
+};
+
+/* index -> {events, count, instrument-per-channel[4]} */
+static const unsigned char song0_instr[4] = { GT_INSTR_BELL, GT_INSTR_BASS, GT_INSTR_PIANO, GT_INSTR_PIANO };
+static const unsigned char song1_instr[4] = { GT_INSTR_PIANO, GT_INSTR_BASS, GT_INSTR_PIANO, GT_INSTR_PIANO };
+
+static const BuiltinSong builtin_song[GT_NUM_BUILTIN_SONG] = {
+    { song0, 14, song0_instr },
+    { song1, 4,  song1_instr },
+};
+
+void gt_music(int n, int loop) {
+    const BuiltinSong *s;
+    if (!audio_on) return;
+    if (n < 0) { gt_music_stop(); return; }
+    if (n >= GT_NUM_BUILTIN_SONG) return;
+    s = &builtin_song[n];
+    gt_music_play(s->events, s->count, s->instr4, (unsigned char)(loop ? 1 : 0));
+}
+
+/* ---- fixed-bank init thunk -------------------------------------------------
+ * gt_music_init() must live in the always-mapped fixed bank: main() calls it
+ * once, and it installs gt_frame_hook to point at the PLAIN gt_music_tick
+ * symbol. In banked builds that plain symbol is the fixed-bank stub (which
+ * banks in bank 2 around the real _impl); pointing the hook at the bank-2
+ * impl directly would jump into unmapped ROM whenever another bank is live.
+ * The #undef restores the plain names so this thunk references the stubs. */
+#ifdef GT_BANKED
+#pragma code-name ("CODE")
+#pragma rodata-name ("RODATA")
+#undef gt_music_tick
+#undef gt_music_run_init
+void gt_music_tick(void);        /* fixed-bank stub (gt_music_stubs.s) */
+void gt_music_run_init(void);    /* fixed-bank stub (gt_music_stubs.s) */
+#endif
+
+void gt_music_init(void) {
+    gt_frame_hook = gt_music_tick;   /* gt_endframe() now advances the tracker */
+    gt_music_run_init();             /* reset sequencer state (bank 2 in FLASH2M) */
+}

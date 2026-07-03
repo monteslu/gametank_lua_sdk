@@ -17,6 +17,7 @@ export function check(chunk, file) {
   const diagnostics = [];
   const globals = new Map();   // name -> {kind, fixedInit, node}
   const usesAudio = { flag: false };
+  const usesMusic = { flag: false };   // sfx()/music() -> link gt_music.o
   const functions = new Map(); // name -> {params:[names], paramKinds:[], ret, retKind, node}
   let reporting = true;        // pass 1 runs once: report; fixpoint passes: quiet
   let changed = false;         // fixpoint tracker
@@ -537,6 +538,7 @@ export function check(chunk, file) {
         return addDelType(call, b.special, asStatement);
       }
       if (b) {
+        if (b.audio) { usesAudio.flag = true; usesMusic.flag = true; }
         checkArgs(call, b.params, callee.name);
         call.sig = b;
         call.argKinds = call.args.map((a) => typeOf(a));
@@ -750,5 +752,5 @@ export function check(chunk, file) {
     checkBlock(fn.node.body);
   }
 
-  return { diagnostics, symbols: { globals, functions, usesAudio: usesAudio.flag } };
+  return { diagnostics, symbols: { globals, functions, usesAudio: usesAudio.flag, usesMusic: usesMusic.flag } };
 }

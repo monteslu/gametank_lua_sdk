@@ -72,6 +72,7 @@ button glyphs (`⬅️➡️⬆️⬇️🅾️❎`), and multiple assignment (`
 | graphics | `cls` `camera` `color` `pal` `pset` `rect` `rectfill` `circ` `circfill` `line` `sset` `spr(n,x,y,[w,h],[flip_x,flip_y])` — flips are free (hardware blitter mirror) |
 | input | `btn(i,[pl])` `btnp(i,[pl])` — indices 0-3 d-pad, 4=🅾️(GT A), 5=❎(GT B), **6=GT C**, 7=START; `btnp` has PICO-8 auto-repeat |
 | math | `flr` `ceil` `abs` `sgn` `sqrt` `min` `max` `mid` `sin` `cos` `atan2` `rnd` `srand` `t`/`time` |
+| sound | `sfx(n,[ch])` `music(n,[loop])` (built-in FM effects/tunes — see below); low-level `gt.note(ch,note,vol)`/`gt.noteoff(ch)` |
 | gametank extras | `gt.rgb(b)` — raw palette byte (the GameTank has 256 colors; 0-15 are mapped to the PICO-8 palette), `gt.border(c)`, `gt.ticks()`, `gt.starfield_*`, `gt.bg_compose`/`gt.bg_draw` (see below) |
 
 Colors are PICO-8 indices (0 black, 7 white, 8 red, 12 blue, …), mapped to
@@ -107,10 +108,34 @@ blits a 128×128 window from the page at source offset `(sx,sy)` (default 0,0).
 Best for static, single-screen backgrounds; moving/animated tiles still want
 `spr()`.
 
+### Sound: `sfx` / `music`
+
+The GameTank has a second 65C02 audio coprocessor (a 4-channel, 4-operator FM
+synth). PICO-8 style, you trigger sound by index — no tracker files to author:
+
+```lua
+function _init()
+  music(0)              -- start built-in tune 0, looping
+end
+function _update60()
+  if btnp(4) then sfx(0) end     -- 🅾️ -> jump sound
+  if btnp(5) then sfx(3) end     -- ❎ -> explosion
+end
+```
+
+Built-in **effects** (`sfx(n,[ch])`, n = 0–7): `0` jump · `1` pickup · `2`
+shoot · `3` explode · `4` blip · `5` powerup · `6` hurt · `7` select. Omit
+`ch` to auto-assign one of the 4 channels, or pass `0–3` to pin it. Built-in
+**tunes** (`music(n,[loop])`, n = 0–1): loops by default; `music(-1)` stops,
+`music(n,false)` plays once. A per-frame sequencer (ported from the upstream
+GameTank tracker) advances envelopes + steps the song automatically — it costs
+almost nothing when nothing is playing. For a single raw tone, the low-level
+`gt.note(ch,note,vol)` / `gt.noteoff(ch)` primitives are still there.
+
 Coming next (see [PICO8.md](PICO8.md) for the full roadmap): tables as
 capacity-bounded sequences with `add/del/all/foreach`, `spr`/`sspr` sprites
-on GRAM sheets, `map`/`mget`/`fget`, `sfx`/`music` on the audio coprocessor,
-then `print` and strings.
+on GRAM sheets, `map`/`mget`/`fget`, then `print` and strings, and a converter
+to import a PICO-8 cart's own SFX/music data.
 
 ## Not-Lua walls (loud, never silent)
 

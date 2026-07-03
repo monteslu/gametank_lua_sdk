@@ -17,6 +17,11 @@ char gt_frameflag;
 char gt_draw_busy;
 unsigned int gt_ticks;
 
+/* per-frame hook: null unless gt_music_init() installs the sfx/music
+ * sequencer. Lets gt_endframe() advance audio without hard-linking
+ * gt_music.o into games that never call sfx()/music(). */
+void (*gt_frame_hook)(void) = 0;
+
 char flags_mirror;          /* last value written to $2007 (bg reads it) */
 char banks_mirror;          /* last value written to $2005 (bg reads it) */
 char frameflip;             /* DMA_PAGE_OUT bit state */
@@ -655,8 +660,10 @@ void gt_endframe(void) {
     await_vsync();
     flip_pages();
     gt_time_tick();
+    if (gt_frame_hook) gt_frame_hook();     /* advance sfx/music (60 Hz base) */
     if (fps30) {                 /* 30fps mode: burn the second vsync */
         await_vsync();
         gt_time_tick();
+        if (gt_frame_hook) gt_frame_hook(); /* keep music at 60 Hz in 30fps mode */
     }
 }

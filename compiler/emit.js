@@ -385,6 +385,8 @@ export function emit(chunk, symbols, file, opts = {}) {
     if (name === "btn" || name === "btnp") return "0"; // player 0
     if (name === "pal") return "-1";          // pal() == reset
     if (name === "note") return "127";        // default volume
+    if (name === "sfx") return "-1";          // sfx(n) -> auto channel
+    if (name === "music") return "1";         // music(n) -> loop by default
     if (name === "spr") return i >= 5 ? "0" : "1";  // w,h default 1 cell; flips default off
     return "-1";                              // optional color -> current
   }
@@ -721,6 +723,7 @@ export function emit(chunk, symbols, file, opts = {}) {
   out.push("    gt_init();");
   out.push("    gt_sheet_init();");
   if (symbols.usesAudio) out.push("    gt_audio_init();");
+  if (symbols.usesMusic) out.push("    gt_music_init();");
   if (thirty) out.push("    gt_p8_fps30();");
   if (has("_init")) callCb("_init", "    ");
   out.push("    for (;;) {");

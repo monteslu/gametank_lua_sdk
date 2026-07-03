@@ -185,7 +185,7 @@ function initialPlacement(callGraph) {
 const SEG_BIN = { B0CODE: "b0", B1CODE: "b1", B2CODE: "b2", CODE: "fixed", RODATA: "fixed", B0RODATA: "b0", B1RODATA: "b1", B2RODATA: "b2" };
 
 // rebalance after a link overflow: move functions out of the fat bins
-function rebalance(placement, sizes, overflows, sheetBytes, callGraph, usesBg) {
+function rebalance(placement, sizes, overflows, sheetBytes, callGraph, usesBg, usesAudio, usesMusic) {
   const bins = { b0: [], b1: [], b2: [], fixed: [] };
   for (const [name, bin] of Object.entries(placement)) bins[bin].push(name);
   const estUsed = (bin) => bins[bin].reduce((a, n) => a + (sizes.get(n) ?? 0), 0);
@@ -194,10 +194,12 @@ function rebalance(placement, sizes, overflows, sheetBytes, callGraph, usesBg) {
   // ~12 KB runtime + stubs, so game functions get a small conservative slice
   // of it; ld65 re-checks every iteration and the ROM-overflow branch bails
   // us out if the estimate was optimistic.
-  // gt_bg_compose's decode body rides in bank 2 (B2CODE, ~625 B) alongside the
-  // sheet so it's mapped when it reads the sheet — reserve for it so the
-  // game-function packer doesn't overfill bank 2 and fail to converge.
-  const B2_SDK_RESERVE = usesBg ? 700 : 0;
+  // Bank 2 also carries SDK RODATA/CODE that must be mapped when read: the 4 KB
+  // ACP firmware (usesAudio), gt_bg_compose's ~625 B decode body (usesBg), and
+  // the ~2.7 KB sfx/music sequencer + its tables (usesMusic). Reserve for them
+  // so the game-function packer doesn't overfill bank 2 and fail to converge.
+  const B2_SDK_RESERVE =
+    (usesBg ? 700 : 0) + (usesAudio ? 4096 : 0) + (usesMusic ? 2800 : 0);
   const capacity = {
     b0: BANK_SIZE - BANK_MARGIN,
     b1: BANK_SIZE - BANK_MARGIN,
@@ -282,6 +284,10 @@ function build(entry, outPath, sheetPath) {
   // 1. lua -> C (flat 32 KB attempt first)
   let result = compileLua(entry);
   const usesAudio = result.c.includes("gt_audio_init(");
+  // sfx()/music() pull in the tracker (gt_music.c). Its data + per-frame
+  // sequencer are small and read across arbitrary game banks every frame, so
+  // it stays in the always-mapped fixed bank (compiled plain, not -DGT_BANKED).
+  const usesMusic = result.c.includes("gt_music_init(");
   // gt_bg (offscreen-GRAM background) is only linked when the game uses it —
   // its compose body rides in bank 2 with the sheet, so linking it into a game
   // that doesn't need it just steals bank-2 space from the game's own code.
@@ -296,6 +302,7 @@ function build(entry, outPath, sheetPath) {
   cc(path.join(SDK, "gt_math.c"), B("gt_math.s"));
   if (usesBg) cc(path.join(SDK, "gt_bg.c"), B("gt_bg.s"));
   if (usesAudio) cc(path.join(SDK, "gt_audio.c"), B("gt_audio.s"));
+  if (usesMusic) cc(path.join(SDK, "gt_music.c"), B("gt_music.s"));
   cc(B("sheet.c"), B("sheet.s"));
 
   as(path.join(SDK, "crt0.s"), B("crt0.o"));
@@ -308,6 +315,7 @@ function build(entry, outPath, sheetPath) {
   as(B("gt_math.s"), B("gt_math.o"));
   if (usesBg) as(B("gt_bg.s"), B("gt_bg.o"));
   if (usesAudio) as(B("gt_audio.s"), B("gt_audio.o"));
+  if (usesMusic) as(B("gt_music.s"), B("gt_music.o"));
   as(B("sheet.s"), B("sheet.o"));
   as(B(`${name}.s`), B(`${name}.o`));
 
@@ -316,6 +324,7 @@ function build(entry, outPath, sheetPath) {
     B("gt_api.o"), B("gt_fixed.o"), B("gt_fixed_asm.o"), B("gt_math.o"),
     ...(usesBg ? [B("gt_bg.o")] : []),
     ...(usesAudio ? [B("gt_audio.o")] : []),
+    ...(usesMusic ? [B("gt_music.o")] : []),
     B("sheet.o"),
   ];
 
@@ -377,6 +386,18 @@ function build(entry, outPath, sheetPath) {
     as(B("gt_audio.s"), B("gt_audio.o"));
   }
 
+  // gt_music (sfx/music sequencer + its instrument/sfx/song tables) is another
+  // fat unit that would blow the near-full fixed bank's RODATA/CODE. Recompile
+  // it banked: the impls + tables ride in bank 2 (B2CODE/B2RODATA, renamed
+  // _impl) and the fixed-bank stubs in gt_music_stubs.o bridge every call
+  // (game code AND gt_endframe's frame hook) with a bank-2 switch.
+  if (usesMusic) {
+    run(tc.cc65, [...CFLAGS, "-DGT_BANKED",
+                  "-o", B("gt_music.s"), path.join(SDK, "gt_music.c")]);
+    as(B("gt_music.s"), B("gt_music.o"));
+    as(path.join(SDK, "gt_music_stubs.s"), B("gt_music_stubs.o"));
+  }
+
   let linked = null;
   for (let attempt = 0; attempt < 8; attempt++) {
     result = compileLua(entry, { banked: true, placement });
@@ -392,12 +413,14 @@ function build(entry, outPath, sheetPath) {
       "-o", flashOut,
       "-m", B(`${name}.map`),
       "-Ln", B(`${name}.lbl`),
-      ...baseObjs, B("gt_bank.o"), B("gt_math_stubs.o"), B("stubs.o"),
+      ...baseObjs, B("gt_bank.o"), B("gt_math_stubs.o"),
+      ...(usesMusic ? [B("gt_music_stubs.o")] : []),
+      B("stubs.o"),
       B(`${name}.o`),
       tc.lib,
     ]);
     if (link.ok) { linked = flashOut; break; }
-    const moved = rebalance(placement, sizes, link.overflows, sheetBytes, result.callGraph, usesBg);
+    const moved = rebalance(placement, sizes, link.overflows, sheetBytes, result.callGraph, usesBg, usesAudio, usesMusic);
     if (!moved) {
       fail("FLASH2M bank placement failed: " +
         link.overflows.map((o) => `${o.segment} over by ${o.bytes}`).join(", "));

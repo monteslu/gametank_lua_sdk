@@ -117,7 +117,7 @@ research tiers:
 | `spr(n,x,y,[w,h],[flip_x,flip_y])` | n = 8×8 cell 0–255 on the current GRAM sheet (16/row); w,h in cells; flips are **hardware** (blitter bit-7 X/Y mirror); color 0 transparent unless `palt(0,false)` | exact |
 | `rectfill(x0,y0,x1,y1,[c])` / `rect(...)` | corner coords, inclusive (the P8 gotcha, kept) — fill = 1 blit; outline = 4 | exact |
 | `print(str,[x,y],[c])` | v0.4 with strings; literal-only strings can land earlier for HUDs; returns right-edge x | near-exact (4×6 font) |
-| `sfx(n,[ch])` / `music(n)` | v0.4 on the audio coprocessor: n = pre-authored effect/song bank (P8-tracker-to-GameTank converter is the asset-pipeline task; the ACP's 4 channels match P8's 4) | same shape, different tracker |
+| `sfx(n,[ch])` / `music(n,[loop])` | **shipped.** n indexes a BUILT-IN effect (0–7: jump/pickup/shoot/explode/blip/powerup/hurt/select) or tune (0–1) played on the ACP's 4-op FM voices — zero authoring, a kid writes `sfx(0)`. `ch` omitted = auto channel; `music(-1)` stops. Per-frame sequencer ported from the upstream tracker. (Custom P8-tracker-byte import is a later asset-pipeline task.) | same shape, built-in bank not P8 SFX bytes |
 | `rnd`, `flr`, `add/del/all/foreach` | as above | exact |
 
 ### Tier 1 (v0.3–v0.4) — any game with a world
@@ -169,8 +169,10 @@ colors, not fewer, through an escape hatch instead of a poke.
 5. `_update` CPU model differs (real silicon, no token/cycle governor —
    games get the whole 3.5 MHz and no 8192-token cap; the constraint moves
    to ROM/RAM size).
-6. Tracker data isn't cart-compatible: `sfx()/music()` play GameTank-authored
-   banks (converter tooling planned), not P8 SFX bytes.
+6. `sfx()/music()` play a GameTank-native BUILT-IN bank (indices 0–7 sfx,
+   0–1 songs) rendered on the ACP's FM voices — not P8 SFX bytes. A kid
+   triggers them by index with no data to author; importing a P8 cart's own
+   tracker data is a later converter task. See §sound below.
 
 ---
 

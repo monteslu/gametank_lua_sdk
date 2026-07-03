@@ -27,6 +27,14 @@ export const BUILTINS = {
   btn:      { params: [["int", false], ["int", true]], ret: "bool", c: "gt_p8_btn" },
   btnp:     { params: [["int", false], ["int", true]], ret: "bool", c: "gt_p8_btnp" },
 
+  // ---- sound (gt_music.c) --------------------------------------------------
+  // sfx(n, [ch]) — fire built-in effect n (0-7); ch omitted = auto channel.
+  // music(n, [loop]) — start built-in tune n; music(-1) stops (PICO-8).
+  // `audio` pulls in gt_audio_init()+gt_music.o at build time.
+  sfx:   { params: [["int", false], ["int", true]], ret: "void", c: "gt_sfx", audio: true },
+  // `loop` is a truthy flag (default on): music(0) loops, music(0,false) plays once.
+  music: { params: [["int", false], ["flip", true]], ret: "void", c: "gt_music", audio: true },
+
   // ---- math ------------------------------------------------------------------
   flr:   { params: [["num", false]], ret: "int", c: null, special: "flr" },
   ceil:  { params: [["num", false]], ret: "int", c: null, special: "ceil" },

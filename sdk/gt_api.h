@@ -99,6 +99,16 @@ void __fastcall__ gt_bank(unsigned char b);  /* FLASH2M: switch the $8000 window
 void gt_audio_init(void);
 void gt_note(int ch, int note, int vol);
 void gt_noteoff(int ch);
+
+/* sfx()/music() tracker (gt_music.c) — only compiled/linked when the game
+ * uses them. gt_api.c always ships and calls the per-frame sequencer through
+ * a hook pointer (null until gt_music_init() installs gt_music_tick), so
+ * gt_endframe() never references an unlinked symbol in audio-free games. */
+extern void (*gt_frame_hook)(void);
+void gt_music_init(void);
+void gt_music_tick(void);
+void gt_sfx(int n, int ch);
+void gt_music(int n, int loop);
 void gt_p8_spr(int n, int x, int y, int w, int h, int flip);
 
 #endif

@@ -24,7 +24,7 @@ function cOf(src) {
 
 // ---- examples ------------------------------------------------------------------
 
-for (const ex of ["pad-square", "orbit", "mathcheck"]) {
+for (const ex of ["pad-square", "orbit", "mathcheck", "audio"]) {
   test(`example ${ex} compiles`, () => {
     const src = readFileSync(path.join(REPO, `examples/${ex}/main.lua`), "utf8");
     const r = compile(src, "main.lua");
@@ -193,6 +193,47 @@ test("gt.starfield_* map to the SDK batch primitives", () => {
   assert.match(c, /gt_starfield_init\(100\)/);
   assert.match(c, /gt_starfield_move\(1\)/);
   assert.match(c, /gt_starfield_draw\(\)/);
+});
+
+// ---- sound: sfx() / music() --------------------------------------------------------
+
+test("sfx(n) emits gt_sfx with an auto-channel sentinel and pulls in audio init", () => {
+  const c = cOf("function _update60()\n  if (btnp(4)) sfx(0)\nend\nfunction _draw()\nend\n");
+  assert.match(c, /gt_sfx\(0, -1\)/);          // omitted channel -> -1 (auto)
+  assert.match(c, /gt_audio_init\(\);/);        // sfx implies the ACP is up
+  assert.match(c, /gt_music_init\(\);/);        // and the tracker is installed
+});
+
+test("sfx(n, ch) passes the explicit channel", () => {
+  const c = cOf("function _update60()\n  sfx(5, 2)\nend\nfunction _draw()\nend\n");
+  assert.match(c, /gt_sfx\(5, 2\)/);
+});
+
+test("music(n) loops by default; music(-1) still routes to gt_music (stop)", () => {
+  const c = cOf("function _init()\n  music(0)\nend\n" +
+                "function _update60()\n  if (btnp(2)) music(-1)\nend\nfunction _draw()\nend\n");
+  assert.match(c, /gt_music\(0, 1\)/);          // default loop = 1
+  assert.match(c, /gt_music\(\(-1\), 1\)/);     // stop sentinel (n<0) handled at runtime
+});
+
+test("music(n, false) passes an explicit non-loop flag", () => {
+  const c = cOf("function _init()\n  music(0, false)\nend\n" + LOOP);
+  // loop is a truthy flag: false -> 0
+  assert.match(c, /gt_music\(0, \(\(0\) \? 1 : 0\)\)/);
+});
+
+test("a game with neither sfx nor music links no audio/tracker init", () => {
+  const c = cOf(LOOP);
+  assert.doesNotMatch(c, /gt_audio_init/);
+  assert.doesNotMatch(c, /gt_music_init/);
+});
+
+test("gt.note (the low-level primitive) still works and does NOT pull in the tracker", () => {
+  const c = cOf("function _update60()\n  gt.note(0, 60, 100)\n  gt.noteoff(0)\nend\nfunction _draw()\nend\n");
+  assert.match(c, /gt_note\(0, 60, 100\)/);
+  assert.match(c, /gt_noteoff\(0\)/);
+  assert.match(c, /gt_audio_init\(\);/);        // note needs the ACP
+  assert.doesNotMatch(c, /gt_music_init/);      // but not the sfx/music sequencer
 });
 
 // ---- callbacks & harness -----------------------------------------------------------
