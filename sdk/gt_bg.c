@@ -85,14 +85,18 @@ static void bg_drain(void) {
     (void)*((volatile unsigned char *)0x4000);
 }
 
-/* Enter CPU-write mode targeting the background GRAM page (group 1, quadrant
- * 0): a dummy clipped 1x1 blit latches the group, then DMA-off routes CPU
- * writes into it. After this, vram[(y<<7)|x] lands in the bg page. */
-static void bg_enter_write(void) {
+/* Enter CPU-write mode targeting one 128x128 quadrant of the background GRAM
+ * group. A group is a 256x256 canvas of 4 quadrants; the blitter picks the
+ * quadrant from GX/GY bit 7 (mid=0 TL, 1 TR, 2 BL, 3 BR), and that selection
+ * is LATCHED by a blit — so a dummy clipped 1x1 blit with GX/GY bit7 = the
+ * quadrant latches it, then DMA-off routes CPU writes into that quadrant.
+ * After this, vram[(y<<7)|x] (x,y in 0..127) lands in the chosen quadrant. */
+static void bg_enter_write_q(unsigned char quad) {
     bg_drain();
     *dma_flags = DMA_NMI | DMA_ENABLE | DMA_IRQ | DMA_GCARRY;
     *bank_reg  = bankflip | BG_GROUP | BANK_CLIP_X | BANK_CLIP_Y;
-    vram[GX] = 0; vram[GY] = 0;      /* GX/GY bit7 = 0 -> quadrant 0 */
+    vram[GX] = (quad & 1) ? 0x80 : 0;   /* GX bit7 -> right quadrant column */
+    vram[GY] = (quad & 2) ? 0x80 : 0;   /* GY bit7 -> bottom quadrant row */
     vram[VX] = 200; vram[VY] = 200;  /* offscreen + clipped: no visible pixel */
     vram[WIDTH] = 1; vram[HEIGHT] = 1;
     gt_draw_busy = 1;
@@ -124,7 +128,7 @@ static void bg_enter_write(void) {
 #endif
 void GT_BG_COMPOSE(int *map, int cols, int cx, int cy, int cw, int ch) {
     int i, j;
-    unsigned char py, t, sy0, b;
+    unsigned char py, t, sy0, b, quad, cur_quad, lx;
     unsigned char lut[16];
     const unsigned char *sheet = gt_sheet_ptr;
     if (!sheet) return;
@@ -133,18 +137,34 @@ void GT_BG_COMPOSE(int *map, int cols, int cx, int cy, int cw, int ch) {
      * window, the whole reason compose blocked _init for well over a hundred
      * frames. Now it's 16 calls total, then a byte index per pixel. */
     for (b = 0; b < 16; ++b) lut[b] = gt_p8pal(b);
-    bg_enter_write();
-    /* Clear the page to color 0 first: GRAM powers on random, and empty (tile 0)
-     * cells are SKIPPED below, so without this they'd show power-on garbage. A
-     * full-window compose becomes fully opaque (the common background case). */
-    { unsigned int p; unsigned char c0 = lut[0];
-      for (p = 0; p < 16384u; ++p) vram[p] = c0; }
+    /* Clear each quadrant this compose can touch to color 0 first: GRAM powers
+     * on random and empty (tile 0) cells are SKIPPED below. A cell (i,j) lands
+     * at bg pixel (i*8, j*8), so cw/ch <= 16 stays in quadrant 0 (128px); a
+     * larger canvas spans up to the full 256x256 (4 quadrants). Clearing all 4
+     * when either axis exceeds 16 cells is a harmless over-clear (one-time). */
+    { unsigned char q; unsigned int p; unsigned char c0 = lut[0];
+      unsigned char nq = (cw > 16 || ch > 16) ? 4 : 1;
+      for (q = 0; q < nq; ++q) {
+          bg_enter_write_q(q);
+          for (p = 0; p < 16384u; ++p) vram[p] = c0;
+      }
+    }
+    cur_quad = 0xFF;                  /* force a re-latch on the first tile */
     for (j = 0; j < ch; ++j) {
         if (cy + j < 0) continue;
         for (i = 0; i < cw; ++i) {
             if (cx + i < 0) continue;
             t = (unsigned char)map[(cy + j) * cols + (cx + i)];
             if (t == 0) continue;                    /* transparent cell */
+            /* which 128x128 quadrant does cell (i,j) land in? pixel (i*8, j*8):
+             * bit 7 of i*8 == bit 3 of i; likewise j. Tiles are 8px-aligned and
+             * quadrants 128px-aligned, so a tile never straddles a boundary. */
+            quad = (unsigned char)((((j >> 4) & 1) << 1) | ((i >> 4) & 1));
+            if (quad != cur_quad) {  /* re-latch CPU writes to this quadrant */
+                bg_enter_write_q(quad);
+                cur_quad = quad;
+            }
+            lx = (unsigned char)((i << 3) & 0x7F);   /* local x within quadrant */
             /* sheet cell origin: sx0 = (t&15)<<3 (always even -> the row's 8
              * source pixels are 4 whole packed bytes), sy0 = (t>>4)<<3 */
             sy0 = (unsigned char)((t >> 4) << 3);
@@ -154,9 +174,9 @@ void GT_BG_COMPOSE(int *map, int cols, int cx, int cy, int cw, int ch) {
                  * nibble first (matches the old (src&1)? hi : lo decode). */
                 const unsigned char *sp =
                     sheet + (((unsigned int)(sy0 + py) << 6) | (unsigned int)((t & 15) << 2));
-                /* dest cursor in the bg page: screen (i*8, j*8+py) */
+                /* dest cursor: local (lx, (j*8+py)&127) within the quadrant */
                 unsigned char *dp =
-                    vram + ((((unsigned int)(j << 3) + py) << 7) | (unsigned int)(i << 3));
+                    vram + (((unsigned int)(((j << 3) + py) & 0x7F) << 7) | lx);
                 unsigned char k;
                 for (k = 0; k < 4; ++k) {
                     b = *sp++;
@@ -183,8 +203,13 @@ void gt_bg_compose(int *map, int cols, int cx, int cy, int cw, int ch) {
 }
 #endif
 
-/* Blit the background window to the screen. (sx,sy) is the source offset within
- * the bg page (for a level larger than one screen; 0,0 draws the page as-is).
+/* Blit a 128x128 window of the background onto the screen at source offset
+ * (sx,sy). The bg group is a 256x256 canvas (4 quadrants); the blitter picks
+ * the quadrant per-pixel from GX/GY bit 7 as the source counter crosses 128,
+ * so a window at any (sx,sy) in 0..128 scrolls SEAMLESSLY across quadrants —
+ * that's how a level larger than one screen scrolls (compose the whole
+ * 256x256, then bg_draw(camera_x, camera_y)). 0,0 draws the top-left screen.
+ *
  * ONE big blit — the cheap per-frame cost. Enqueued? No: the queue's shared
  * bank byte points at GRAM group 0; a bg blit needs group 1, so it runs
  * synchronously here (drain, program, wait). It's one blit/frame, so the drain
