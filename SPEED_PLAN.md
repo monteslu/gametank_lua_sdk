@@ -58,6 +58,34 @@ half-written gt_fmul while it worked in the same tree, and post-crash reads
 used zp addresses its scratch had shifted. Never debug against a moving
 tree; pin addresses per build from the .lbl.
 
+## Blit-count is the draw bottleneck — profiled 2026-07-03 (second pass)
+
+A full re-profile of all nine carts nailed down the draw-side cost model:
+
+- **Draw cost tracks blit COUNT, not pixel area.** Measured: 64× 1×1, 64× 8×8,
+  and 64× 16×16 fills all pace IDENTICALLY (4.0 vsyncs); 1× 64×64 = 2.0. A blit
+  is a fixed per-primitive CPU cost; the blitter's own W*H drain is negligible
+  at sprite sizes (an 8×8 drains in 64 cycles).
+- **Per-frame blit budget @ 30fps (2.0 vsyncs):** sprites ~**68**, rectfills
+  ~**37** (was ~33 before the fill fast-path). Sprites are ~2× cheaper than the
+  C fill path per call — the asm `_gt_p8_spr_z` staging vs the two nested cc65 C
+  calls (`rectfill_z`→`fill_clipped_z`).
+- **circfill/circ are blit-count bound by nature:** a radius-r filled circle is
+  ~2r scanline blits, so ~3 medium circles already blow the budget. No per-call
+  optimization fixes that — only fewer blits (e.g. a pre-rendered circle sprite)
+  would, which is a game-authoring choice.
+
+SHIPPED win (commit a397fed, SDK-level, no game changes, no visual change): a
+fast-path in fill_clipped_z for on-screen ordered non-128 rects + a lean
+hspan_raw for circle scanlines. Result: celeste-like 4.0→3.0, jelpi 4.9→4.0,
+newleste 11.11→10.71, driftmania 10.17→10.08. Sprite-bound carts unchanged.
+
+⚠ MEASUREMENT CAUTION (a bug I hit and caught): when stubbing `_draw` to
+isolate update cost, a regex that grabbed the wrong `end` ALSO truncated
+`_update`, giving a bogus "2.0 vsyncs, update is free" reading. The CORRECT
+isolation (verified `_update` still 56 lines) gives **5.0 vsyncs** — see the
+table below. Always re-check the stubbed source actually kept the other half.
+
 ## Real-game breakdown: newleste level 1 (measured 2026-07-03)
 
 The microbenches told us primitive COST; a real port tells us where the frame
@@ -67,9 +95,17 @@ protocol over 600 vsyncs, by stubbing pieces of the frame:
 | Configuration                                  | vsyncs/frame |
 |------------------------------------------------|:------------:|
 | Baseline (per-tile spr map loop)               |   **10.91**  |
+| + fill fast-path (a397fed), full game          |   **10.71**  |
+| _update intact, _draw stubbed to cls()         |    **5.00**  |
 | bg blit (gt.bg_draw) + all entities            |    **9.75**  |
 | bg blit + player only                          |    **5.88**  |
 | bg blit only (update still running)            |    **4.98**  |
+
+**The frame is ~half update, ~half draw** (5.0 update + ~5.7 draw = 10.7). Both
+are ~5-vsync levers. The draw half is blit-count (batch/cut sprites, bg_compose
+static layers); the update half is the 16.16 fixed-point physics floor spread
+across p_update/p_move/update_* — no single hot function, inherent to Celeste-
+scale physics on a 6.7 MHz 6502.
 
 - **Tilemap draw -> one big GRAM blit: ~1.15 vsyncs saved.** The new
   gt.bg_compose/gt.bg_draw path works and helps — but the map was only ~11%
