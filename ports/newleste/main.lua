@@ -76,21 +76,26 @@ local tpos = -20
 local pmode = 0
 local px = 0
 local py = 0
-local premx = 0.0
-local premy = 0.0
-local pspdx = 0.0
-local pspdy = 0.0
+-- PERF: player speeds/remainders are 8.8 fixed-point stored in fast 16-bit
+-- INTS (value*256), not 16.16 longs. Speeds never exceed +-8, remainders are
+-- always in (-1,1), so 8.8 loses nothing that survives to a pixel — and every
+-- add/compare becomes cheap int math instead of 4-byte long arithmetic.
+-- 256 = 1.0. See docs/performance.md "shrink your fixed-point".
+local prx8 = 0
+local pry8 = 0
+local pvx8 = 0
+local pvy8 = 0
 local pflip = 0
 local pdjump = 1
 local pgrace = 0
 local pjbuf = 0
 local pdash_t = 0
 local pdash_eff = 0
-local pdtx = 0.0
-local pdty = 0.0
-local pdax = 0.0
-local pday = 0.0
-local psproff = 0.0
+local pdtx8 = 0
+local pdty8 = 0
+local pdax8 = 0
+local pday8 = 0
+local psproff8 = 0
 local pspr = 1
 local pwasog = 0
 local pphin = 0
@@ -116,7 +121,11 @@ local fry_ = array(4, 0.0)     -- un-bobbed y_
 local frdy = array(4, 0.0)     -- bobbed draw y
 local frtx = array(4, 0.0)
 local frty = array(4, 0.0)
-local froff = array(4, 0.0)
+local froff8 = array(4)        -- bob phase, 8.8 int (205/frame = 1 turn/40f)
+-- PERF: the fruit bob was sin(froff8)*2.5 per fruit per frame — a fixed-point
+-- sin + multiply each. frwob is that waveform precomputed once (32 entries,
+-- one turn); the int phase wraps harmlessly (32768/256=128, 128%32==0).
+local frwob = array(32, 0.0)
 local frspr = array(4)
 local frgold = array(4)
 local frid = array(4)
@@ -315,6 +324,11 @@ function appr(val, target, amount)
   return mid(val - amount, val + amount, target)
 end
 
+-- integer twin of appr() for the 8.8 player physics (int mid, no long math)
+function appr8(val, target, amount)
+  return mid(val - amount, val + amount, target)
+end
+
 function sign0(v)
   if (v > 0) return 1
   if (v < 0) return -1
@@ -366,9 +380,14 @@ function p_is_flag(ox, oy, mask)
   local i1 = mid(0, lvl_w - 1, r \ 8)
   local j0 = mid(0, lvl_h - 1, t2 \ 8)
   local j1 = mid(0, lvl_h - 1, b \ 8)
+  -- PERF: i/j are clamped in-level by the mids above, so fetch tiles with a
+  -- direct array read — tile_at()->mget() was two nested cc65 calls per tile,
+  -- x4 tiles, in the hottest routine in the game. See docs/performance.md.
   for i = i0, i1 do
+    local rowb = (lvl_y + j0) * 64 + lvl_x + i + 1
     for j = j0, j1 do
-      local v = tile_at(i, j)
+      local v = m[rowb]
+      rowb += 64
       if (fl[v + 1] & mask) ~= 0 then
         if mask ~= 8 or j * 8 > b0 then
           return 1
@@ -389,21 +408,70 @@ function p_is_solid(ox, oy)
       end
     end
   end
-  -- one-way platforms (only when moving down and not already inside one)
-  if oy > 0 then
-    if p_is_flag(ox, 0, 8) == 0 then
-      if (p_is_flag(ox, oy, 8) == 1) return 1
+  -- PERF: one merged scan collects solid (mask 1) AND one-way (mask 8) hits
+  -- in a single pass over the 2x2 tile window — this used to be up to THREE
+  -- separate p_is_flag scans (~2.5k cycles each) and it runs several times a
+  -- frame. The un-offset "already inside a one-way?" scan now only happens in
+  -- the rare case a one-way was actually hit. See docs/performance.md.
+  local l = px + 1 + ox
+  local r = px + 6 + ox
+  local t2 = py + 3 + oy
+  local b = py + 7 + oy
+  local b0 = py + 7
+  local i0 = mid(0, lvl_w - 1, l \ 8)
+  local i1 = mid(0, lvl_w - 1, r \ 8)
+  local j0 = mid(0, lvl_h - 1, t2 \ 8)
+  local j1 = mid(0, lvl_h - 1, b \ 8)
+  local hit8 = 0
+  local i = i0
+  while i <= i1 do
+    local rowb = (lvl_y + j0) * 64 + lvl_x + i + 1
+    local j = j0
+    while j <= j1 do
+      local f = fl[m[rowb] + 1]
+      rowb += 64
+      if (f & 1) ~= 0 then
+        return 1
+      end
+      if (f & 8) ~= 0 and j * 8 > b0 then hit8 = 1 end
+      j += 1
     end
+    i += 1
   end
-  return p_is_flag(ox, oy, 1)
+  if oy > 0 and hit8 == 1 then
+    if (p_is_flag(ox, 0, 8) == 0) return 1
+  end
+  return 0
 end
 
 -- is_solid(0,1,true): same but fall floors (unsafe_ground) don't count
 function p_on_safe_ground()
-  if p_is_flag(0, 0, 8) == 0 then
-    if (p_is_flag(0, 1, 8) == 1) return 1
+  -- same merged single-scan pattern as p_is_solid (see the note there)
+  local b0 = py + 7
+  local i0 = mid(0, lvl_w - 1, (px + 1) \ 8)
+  local i1 = mid(0, lvl_w - 1, (px + 6) \ 8)
+  local j0 = mid(0, lvl_h - 1, (py + 4) \ 8)
+  local j1 = mid(0, lvl_h - 1, (py + 8) \ 8)
+  local hit8 = 0
+  local i = i0
+  while i <= i1 do
+    local rowb = (lvl_y + j0) * 64 + lvl_x + i + 1
+    local j = j0
+    while j <= j1 do
+      local f = fl[m[rowb] + 1]
+      rowb += 64
+      if (f & 1) ~= 0 then
+        return 1
+      end
+      if (f & 8) ~= 0 and j * 8 > b0 then hit8 = 1 end
+      j += 1
+    end
+    i += 1
   end
-  return p_is_flag(0, 1, 1)
+  if hit8 == 1 then
+    if (p_is_flag(0, 0, 8) == 0) return 1
+  end
+  return 0
 end
 
 function p_oob(ox, oy)
@@ -424,16 +492,18 @@ function p_spiked()
   local j0 = mid(0, lvl_h - 1, t2 \ 8)
   local j1 = mid(0, lvl_h - 1, b \ 8)
   for i = i0, i1 do
+    local rowb = (lvl_y + j0) * 64 + lvl_x + i + 1
     for j = j0, j1 do
-      local v = tile_at(i, j)
+      local v = m[rowb]
+      rowb += 64
       if v == 16 then
-        if (pspdy >= 0 and b % 8 >= 6) return 1
+        if (pvy8 >= 0 and b % 8 >= 6) return 1
       elseif v == 17 then
-        if (pspdy <= 0 and t2 % 8 <= 2) return 1
+        if (pvy8 <= 0 and t2 % 8 <= 2) return 1
       elseif v == 18 then
-        if (pspdx <= 0 and l % 8 <= 2) return 1
+        if (pvx8 <= 0 and l % 8 <= 2) return 1
       elseif v == 19 then
-        if (pspdx >= 0 and r % 8 >= 6) return 1
+        if (pvx8 >= 0 and r % 8 >= 6) return 1
       end
     end
   end
@@ -444,31 +514,56 @@ end
 -- player movement (the evercore move(): pixel-stepped, rem-accumulated)
 -- ---------------------------------------------------------------------
 function p_move(ox, oy, start)
-  premx += ox
-  local amt = flr(premx + 0.5)
-  premx -= amt
+  -- PERF: with start=0 the i=0 iteration is an "already embedded in solid?"
+  -- check at zero offset — and when BOTH axes are at rest (standing still,
+  -- the most common frame) the two axes were doing that identical full
+  -- collision scan twice. idle_hit computes it once and shares it.
+  local idle_hit = -1
+  prx8 += ox
+  local amt = (prx8 + 128) \ 256
+  prx8 -= amt * 256
   local step = sign0(amt)
-  for i = start, abs(amt) do
-    if p_is_solid(step, 0) == 1 or p_oob(step, 0) == 1 then
-      pspdx = 0
-      premx = 0
-      break
-    else
-      px += step
+  if amt == 0 and start == 0 then
+    idle_hit = 0
+    if (p_is_solid(0, 0) == 1 or p_oob(0, 0) == 1) idle_hit = 1
+    if idle_hit == 1 then
+      pvx8 = 0
+      prx8 = 0
+    end
+  else
+    for i = start, abs(amt) do
+      if p_is_solid(step, 0) == 1 or p_oob(step, 0) == 1 then
+        pvx8 = 0
+        prx8 = 0
+        break
+      else
+        px += step
+      end
     end
   end
 
-  premy += oy
-  amt = flr(premy + 0.5)
-  premy -= amt
+  pry8 += oy
+  amt = (pry8 + 128) \ 256
+  pry8 -= amt * 256
   step = sign0(amt)
-  for i = start, abs(amt) do
-    if p_is_solid(0, step) == 1 or p_oob(0, step) == 1 then
-      pspdy = 0
-      premy = 0
-      break
-    else
-      py += step
+  if amt == 0 and start == 0 then
+    if idle_hit < 0 then
+      idle_hit = 0
+      if (p_is_solid(0, 0) == 1 or p_oob(0, 0) == 1) idle_hit = 1
+    end
+    if idle_hit == 1 then
+      pvy8 = 0
+      pry8 = 0
+    end
+  else
+    for i = start, abs(amt) do
+      if p_is_solid(0, step) == 1 or p_oob(0, step) == 1 then
+        pvy8 = 0
+        pry8 = 0
+        break
+      else
+        py += step
+      end
     end
   end
 end
@@ -508,18 +603,19 @@ end
 -- hair
 -- ---------------------------------------------------------------------
 function update_hair()
-  local lx = px + 1.0
-  if (pflip == 1) lx = px + 6.0
-  local ly = py + 2.9
-  if (pmode == 2 and btn(3)) ly = py + 4.0
-  -- PERF: the cart divides by 1.5, but a fixed-point DIVIDE is ~12k cycles and
-  -- this loop did TEN of them per frame (2 per node x 5 nodes) — the hottest
-  -- code in the whole update. Multiplying by 1/1.5 (0.6667) is a table
-  -- multiply, ~50x cheaper, and hair smoothing is cosmetic — the 0.005%
-  -- constant error is invisible. See docs/performance.md.
+  local lx = px + 1
+  if (pflip == 1) lx = px + 6
+  local ly = py + 3
+  if (pmode == 2 and btn(3)) ly = py + 4
+  -- PERF: hair positions in whole pixels with integer smoothing. The original
+  -- fixed-point (delta)/1.5 smoothing cost 10 fixed divides (~12k cycles
+  -- each!) per frame; even as table-multiplies it was ~13k cycles total — for
+  -- 1-2px dots whose position gets floored to a pixel anyway. Integer 5/8
+  -- smoothing ((d*5+4)\8 — the +4 rounds so the last pixel converges) is
+  -- visually identical hair lag and near-free. See docs/performance.md.
   for i = 1, 5 do
-    hx[i] += (lx - hx[i]) * 0.6667
-    hy[i] += (ly + 0.5 - hy[i]) * 0.6667
+    hx[i] += ((lx - hx[i]) * 5 + 4) \ 8
+    hy[i] += ((ly - hy[i]) * 5 + 4) \ 8
     lx = hx[i]
     ly = hy[i]
   end
@@ -528,11 +624,11 @@ end
 function draw_hair()
   local hc = 8
   if (pdjump == 0) hc = 12
-  circfill(flr(hx[1] + 0.5), flr(hy[1] + 0.5), 2, hc)
-  circfill(flr(hx[2] + 0.5), flr(hy[2] + 0.5), 2, hc)
-  circfill(flr(hx[3] + 0.5), flr(hy[3] + 0.5), 1, hc)
-  circfill(flr(hx[4] + 0.5), flr(hy[4] + 0.5), 1, hc)
-  circfill(flr(hx[5] + 0.5), flr(hy[5] + 0.5), 1, hc)
+  circfill(hx[1], hy[1], 2, hc)
+  circfill(hx[2], hy[2], 2, hc)
+  circfill(hx[3], hy[3], 1, hc)
+  circfill(hx[4], hy[4], 1, hc)
+  circfill(hx[5], hy[5], 1, hc)
 end
 
 -- ---------------------------------------------------------------------
@@ -548,10 +644,10 @@ function spawn_init(x, y)
   py = min(y + 48, lvl_ph)
   cam_x = mid(x, 64, lvl_pw - 64)
   cam_y = mid(y, 64, lvl_ph - 64)
-  pspdx = 0
-  pspdy = -4
-  premx = 0
-  premy = 0
+  pvx8 = 0
+  pvy8 = -1024
+  prx8 = 0
+  pry8 = 0
   spstate = 0
   spdelay = 0
   pdjump = max_djump
@@ -567,7 +663,7 @@ function spawn_init(x, y)
       frdy[i] = py
       frtx[i] = px
       frty[i] = py
-      froff[i] = 0
+      froff8[i] = 0
     end
   end
 end
@@ -576,16 +672,16 @@ function player_init()
   pmode = 2
   pspr = 1
   pflip = 0
-  pspdx = 0
-  pspdy = 0
-  premx = 0
-  premy = 0
+  pvx8 = 0
+  pvy8 = 0
+  prx8 = 0
+  pry8 = 0
   pdjump = max_djump
   pgrace = 0
   pjbuf = 0
   pdash_t = 0
   pdash_eff = 0
-  psproff = 0
+  psproff8 = 0
   pbtimer = 0
   pbcount = 0
   pjprev = 0
@@ -600,9 +696,9 @@ end
 
 function spawn_update()
   -- move (spawn never collides)
-  premy += pspdy
-  local amt = flr(premy + 0.5)
-  premy -= amt
+  pry8 += pvy8
+  local amt = (pry8 + 128) \ 256
+  pry8 -= amt * 256
   py += amt
 
   if spstate == 0 then
@@ -613,17 +709,17 @@ function spawn_update()
     end
   elseif spstate == 1 then
     -- falling
-    pspdy += 0.5
-    if pspdy > 0 then
+    pvy8 += 128
+    if pvy8 > 0 then
       if spdelay > 0 then
         -- stall at peak
-        pspdy = 0
+        pvy8 = 0
         spdelay -= 1
       elseif py > sptarget then
         -- clamp at target y
         py = sptarget
-        pspdy = 0
-        premy = 0
+        pvy8 = 0
+        pry8 = 0
         spstate = 2
         spdelay = 5
         shake = 4
@@ -721,36 +817,36 @@ function p_update()
     -- dash startup: accelerate toward the dash target speed
     smoke_spawn(px, py)
     pdash_t -= 1
-    pspdx = appr(pspdx, pdtx, pdax)
-    pspdy = appr(pspdy, pdty, pday)
+    pvx8 = appr8(pvx8, pdtx8, pdax8)
+    pvy8 = appr8(pvy8, pdty8, pday8)
   else
     -- x movement
-    local accel = 0.4
-    if (on_ground == 1) accel = 0.6
-    if abs(pspdx) <= 1 then
-      pspdx = appr(pspdx, h_input, accel)
+    local accel8 = 102                     -- 0.4
+    if (on_ground == 1) accel8 = 154       -- 0.6
+    if abs(pvx8) <= 256 then
+      pvx8 = appr8(pvx8, h_input * 256, accel8)
     else
-      pspdx = appr(pspdx, sign0(pspdx), 0.15)
+      pvx8 = appr8(pvx8, sign0(pvx8) * 256, 38)   -- 0.15
     end
 
     -- facing
-    if pspdx ~= 0 then
+    if pvx8 ~= 0 then
       pflip = 0
-      if (pspdx < 0) pflip = 1
+      if (pvx8 < 0) pflip = 1
     end
 
     -- y movement: wall slide caps fall speed
-    local maxfall = 2.0
+    local maxfall8 = 512          -- 2.0
     if h_input ~= 0 and p_is_solid(h_input, 0) == 1 then
-      maxfall = 0.4
+      maxfall8 = 102              -- wall slide, 0.4
       if (rnd(1) < 0.2) smoke_spawn(px + h_input * 6, py)
     end
 
     -- gravity
     if on_ground == 0 then
-      local gacc = 0.105
-      if (abs(pspdy) > 0.15) gacc = 0.21
-      pspdy = appr(pspdy, maxfall, gacc)
+      local gacc8 = 27                    -- 0.105
+      if (abs(pvy8) > 38) gacc8 = 54      -- 0.21 above 0.15
+      pvy8 = appr8(pvy8, maxfall8, gacc8)
     end
 
     -- jump
@@ -760,7 +856,7 @@ function p_update()
         psfx(18)
         pjbuf = 0
         pgrace = 0
-        pspdy = -2
+        pvy8 = -512
         smoke_spawn(px, py + 4)
       else
         -- wall jump
@@ -770,8 +866,8 @@ function p_update()
         if wall_dir ~= 0 then
           psfx(19)
           pjbuf = 0
-          pspdx = wall_dir * -2
-          pspdy = -2
+          pvx8 = wall_dir * -512
+          pvy8 = -512
           smoke_spawn(px + wall_dir * 6, py)
         end
       end
@@ -788,31 +884,31 @@ function p_update()
         local v_input = 0
         if (btn(2)) v_input = -1
         if (v_input == 0 and btn(3)) v_input = 1
-        local dspd = 5.0
-        if (h_input ~= 0 and v_input ~= 0) dspd = 3.5355339059
+        local dspd8 = 1280                  -- 5.0
+        if (h_input ~= 0 and v_input ~= 0) dspd8 = 905  -- 5/sqrt(2)
         if h_input ~= 0 then
-          pspdx = h_input * dspd
+          pvx8 = h_input * dspd8
         elseif v_input ~= 0 then
-          pspdx = 0
+          pvx8 = 0
         else
-          pspdx = 1
-          if (pflip == 1) pspdx = -1
+          pvx8 = 256
+          if (pflip == 1) pvx8 = -256
         end
-        pspdy = v_input * dspd
+        pvy8 = v_input * dspd8
         psfx(20)
         freeze = 2
         shake = 5
         -- dash target speeds and accels
-        pdtx = 2 * sign0(pspdx)
-        pdty = 0
-        if (v_input == -1) pdty = -1.5
-        if (v_input == 1) pdty = 2
-        pdax = 1.06066017177
-        if (v_input == 0) pdax = 1.5
-        pday = 1.06066017177
-        if (pspdx == 0) pday = 1.5
+        pdtx8 = 512 * sign0(pvx8)
+        pdty8 = 0
+        if (v_input == -1) pdty8 = -384
+        if (v_input == 1) pdty8 = 512
+        pdax8 = 272
+        if (v_input == 0) pdax8 = 384
+        pday8 = 272
+        if (pvx8 == 0) pday8 = 384
         -- emulate soft dashes (reversing off a wall)
-        if (pphin == -h_input and h_input ~= 0 and p_oob(pphin, 0) == 1) pspdx = 0
+        if (pphin == -h_input and h_input ~= 0 and p_oob(pphin, 0) == 1) pvx8 = 0
       else
         -- failed dash
         psfx(21)
@@ -822,15 +918,15 @@ function p_update()
   end
 
   -- animation
-  psproff += 0.25
+  psproff8 += 64                        -- 0.25
   local s = 1
   if on_ground == 1 then
     if btn(3) then
       s = 6                       -- crouch
     elseif btn(2) then
       s = 7                       -- look up
-    elseif pspdx ~= 0 and h_input ~= 0 then
-      s = 1 + flr(psproff % 4)    -- walk
+    elseif pvx8 ~= 0 and h_input ~= 0 then
+      s = 1 + (psproff8 \ 256) % 4    -- walk
     end
   else
     s = 3                         -- mid air
@@ -876,11 +972,17 @@ function update_fall_floors()
       -- idling (0.2/frame keeps the vanilla frame counts)
       ffdelay[i] -= 0.2
     elseif ffstate[i] == 0 then
-      -- check the player standing on / hugging the sides
+      -- check the player standing on / hugging the sides.
+      -- PERF: a broad-phase box (the union of the three test rects, inline
+      -- int compares) skips the three p_over calls when the player is nowhere
+      -- near — which is nearly every floor, nearly every frame.
       local hit = 0
-      if (p_over(ffx[i] - 1, ffy[i], ffx[i] + 6, ffy[i] + 7) == 1) hit = 1
-      if (p_over(ffx[i], ffy[i] - 1, ffx[i] + 7, ffy[i] + 6) == 1) hit = 1
-      if (p_over(ffx[i] + 1, ffy[i], ffx[i] + 8, ffy[i] + 7) == 1) hit = 1
+      if ffx[i] - 1 <= px + 6 and px + 1 <= ffx[i] + 8 and
+         ffy[i] - 1 <= py + 7 and py + 3 <= ffy[i] + 7 then
+        if (p_over(ffx[i] - 1, ffy[i], ffx[i] + 6, ffy[i] + 7) == 1) hit = 1
+        if (p_over(ffx[i], ffy[i] - 1, ffx[i] + 7, ffy[i] + 6) == 1) hit = 1
+        if (p_over(ffx[i] + 1, ffy[i], ffx[i] + 8, ffy[i] + 7) == 1) hit = 1
+      end
       if hit == 1 then
         psfx(13)
         ffstate[i] = 1
@@ -906,16 +1008,20 @@ end
 
 function update_springs()
   for i = 1, spgn do
-    spgdelta[i] *= 0.75
-    if p_over(spgx[i], spgy[i], spgx[i] + 7, spgy[i] + 7) == 1 then
+    -- PERF: the compression delta decays to exactly 0 (16.16 truncation), so
+    -- skip the fixed multiply once it gets there — it ran every spring, every
+    -- frame, forever. The overlap test is p_over inlined (int compares).
+    if (spgdelta[i] ~= 0) spgdelta[i] *= 0.75
+    if pmode == 2 and spgx[i] <= px + 6 and px + 1 <= spgx[i] + 7 and
+       spgy[i] <= py + 7 and py + 3 <= spgy[i] + 7 then
       if spgdir[i] == 0 then
         p_move(0, spgy[i] - py - 4, 1)
-        pspdx *= 0.2
-        pspdy = -3
+        pvx8 = pvx8 \ 5                -- *0.2
+        pvy8 = -768
       else
         p_move(spgx[i] + spgdir[i] * 4 - px, 0, 1)
-        pspdx = spgdir[i] * 3
-        pspdy = -1.5
+        pvx8 = spgdir[i] * 768
+        pvy8 = -384
       end
       pdash_t = 0
       pdash_eff = 0
@@ -990,7 +1096,7 @@ function update_flyfruit()
         frdy[i] = fly
         frtx[i] = flx
         frty[i] = fly
-        froff[i] = 0
+        froff8[i] = 0
         frspr[i] = 10
         frgold[i] = 0
         frid[i] = flyid
@@ -1020,8 +1126,8 @@ function update_fruits()
         if (dtx * dtx + dty * dty > rr * rr) k2 = 0.2
         frx[i] += k2 * (rr * cos(a) - dtx)
         fry_[i] += k2 * (rr * sin(a) - dty)
-        froff[i] += 0.025
-        frdy[i] = fry_[i] + sin(froff[i]) * 2.5
+        froff8[i] += 205
+        frdy[i] = fry_[i] + frwob[((froff8[i] \ 256) & 31) + 1]
         ttx[k + 1] = frx[i]
         tty[k + 1] = frdy[i]
       end
@@ -1030,8 +1136,8 @@ function update_fruits()
   -- free fruits bob in place and wait for the player
   for i = 1, 4 do
     if fract[i] == 1 and frtrain[i] == 0 then
-      froff[i] += 0.025
-      frdy[i] = fry_[i] + sin(froff[i]) * 2.5
+      froff8[i] += 205
+      frdy[i] = fry_[i] + frwob[((froff8[i] \ 256) & 31) + 1]
       local fx = flr(frx[i])
       local fy = flr(frdy[i])
       if p_over(fx, fy, fx + 7, fy + 7) == 1 then
@@ -1161,7 +1267,7 @@ function load_level(id)
               frdy[i] = y
               frtx[i] = x
               frty[i] = y
-              froff[i] = 0
+              froff8[i] = 0
               frspr[i] = tile
               frgold[i] = 0
               if (tile == 11) frgold[i] = 1
@@ -1244,6 +1350,11 @@ function game_init()
 end
 
 function _init()
+  local i = 1
+  while i <= 32 do
+    frwob[i] = sin((i - 1) / 32) * 2.5
+    i += 1
+  end
   map_init()
   game_init()
 end
@@ -1301,7 +1412,7 @@ function _update()
   if pmode == 1 then
     spawn_update()
   elseif pmode == 2 then
-    p_move(pspdx, pspdy, 0)
+    p_move(pvx8, pvy8, 0)
     p_update()
   end
 
