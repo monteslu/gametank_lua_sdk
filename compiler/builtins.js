@@ -52,6 +52,7 @@ export const BUILTINS = {
   // add(bullets, {x=1, y=2}), `for b in all(bullets)`, del(bullets, b).
   // Field set is frozen by the first add(); #pool = live count.
   pool: { params: [["int", false]], ret: "pool", special: "pool" },
+  print: { params: [], ret: "int", special: "print" },
   add:  { params: [], ret: "void", special: "add" },
   del:  { params: [], ret: "void", special: "del" },
 };

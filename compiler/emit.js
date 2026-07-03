@@ -187,6 +187,16 @@ export function emit(chunk, symbols, file) {
     const name = callee.name;
     if (!b) return "0";
 
+    if (b.special === "print") {
+      const x = expr(e.args[1], "int");
+      const y = expr(e.args[2], "int");
+      const c = e.args[3] ? expr(e.args[3], "int") : "-1";
+      if (e.printKind === "str") {
+        const esc = String(e.args[0].value).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+        return `gt_p8_print("${esc}", ${x}, ${y}, ${c})`;
+      }
+      return `gt_p8_print_num(${expr(e.args[0], "fixed")}, ${x}, ${y}, ${c})`;
+    }
     if (b.special === "add") return emitAdd(e);
     if (b.special === "del") {
       const pl = e.poolSym;

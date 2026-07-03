@@ -11,6 +11,7 @@
  */
 #include "gametank.h"
 #include "gt_api.h"
+#include "gt_font.h"
 
 char gt_frameflag;
 char gt_draw_busy;
@@ -113,6 +114,48 @@ static void enter_spr_mode(void) {
     banks_mirror = bankflip | BANK_CLIP_X | BANK_CLIP_Y;
     *bank_reg = banks_mirror;
     draw_mode = MODE_SPR;
+}
+
+/* print: 3x5 glyphs via CPU writes; returns the x after the last glyph
+ * (the PICO-8 width-measuring idiom). Clipped per pixel. */
+int gt_p8_print(const char *str, int x, int y, int c) {
+    unsigned char col = resolve_color(c);
+    unsigned char row, bits;
+    const unsigned char *g;
+    x -= cam_x;
+    y -= cam_y;
+    enter_cpu_mode();
+    while (*str) {
+        g = gt_font[gt_glyph(*str)];
+        for (row = 0; row < 5; ++row) {
+            int py = y + row;
+            if (py < 0 || py > 127) continue;
+            bits = g[row];
+            if ((bits & 4) && x >= 0 && x <= 127)
+                vram[((unsigned int)py << 7) | (unsigned int)x] = col;
+            if ((bits & 2) && x + 1 >= 0 && x + 1 <= 127)
+                vram[((unsigned int)py << 7) | (unsigned int)(x + 1)] = col;
+            if ((bits & 1) && x + 2 >= 0 && x + 2 <= 127)
+                vram[((unsigned int)py << 7) | (unsigned int)(x + 2)] = col;
+        }
+        x += 4;
+        ++str;
+    }
+    return x + cam_x;
+}
+
+/* print a 16.16 number: integer part (P8 prints integers bare) */
+int gt_p8_print_num(long v, int x, int y, int c) {
+    char buf[8];
+    char *p = buf + 7;
+    int iv = (int)(v >> 16);
+    unsigned int uv;
+    unsigned char neg = 0;
+    *p = 0;
+    if (iv < 0) { neg = 1; uv = (unsigned int)(-iv); } else uv = (unsigned int)iv;
+    do { *--p = '0' + (uv % 10); uv /= 10; } while (uv);
+    if (neg) *--p = '-';
+    return gt_p8_print(p, x, y, c);
 }
 
 /* Load a packed 4bpp PICO-8 sheet (8192 bytes, two pixels per byte, low

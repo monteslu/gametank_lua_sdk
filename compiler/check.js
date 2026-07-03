@@ -515,6 +515,21 @@ export function check(chunk, file) {
         err(call, "pool(n) is only allowed as a top-level initializer: 'local bullets = pool(8)'");
         return "int";
       }
+      if (b && b.special === "print") {
+        call.sig = b;
+        if (call.args.length < 3 || call.args.length > 4) {
+          err(call, "print(value, x, y, [color]) takes 3-4 arguments (cursor form not supported yet)");
+        }
+        if (call.args[0] && call.args[0].kind === "string") call.args[0].inPrint = true;
+        const t0 = call.args[0] ? typeOf(call.args[0]) : "int";
+        call.printKind = t0 === "str" ? "str" : "num";
+        if (t0 === "bool") err(call.args[0], "cannot print a boolean");
+        call.args.slice(1).forEach((a) => {
+          const t = typeOf(a);
+          if (t === "bool" || t === "str") err(a, "print coordinates/color must be numbers");
+        });
+        return "int";
+      }
       if (b && (b.special === "add" || b.special === "del")) {
         call.sig = b;
         return addDelType(call, b.special, asStatement);
@@ -652,6 +667,9 @@ export function check(chunk, file) {
         case "table":
           err(e, "table literals are only allowed inside add(pool, {...})");
           return "int";
+        case "string":
+          if (!e.inPrint) err(e, "strings can only be used in print() for now");
+          return "str";
         case "binop": return binopType(e);
         default: return "int";
       }

@@ -414,8 +414,7 @@ export function parse(tokens, file) {
         return { kind: "number", value: 0, fixed: 0, isInt: true, line: tok.line, col: tok.col };
       case "string":
         next();
-        error("strings are not supported yet (print/strings land in a later release)", tok);
-        return { kind: "number", value: 0, fixed: 0, isInt: true, line: tok.line, col: tok.col };
+        return { kind: "string", value: tok.value, line: tok.line, col: tok.col };
       case "name": next(); return { kind: "name", name: tok.value, line: tok.line, col: tok.col };
       case "(": {
         next();

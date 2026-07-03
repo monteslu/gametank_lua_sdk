@@ -134,7 +134,7 @@ const CASES = [
   ["calling _draw yourself", "function _update60()\n  _draw()\nend\nfunction _draw()\nend\n", /called by the runtime/],
   ["tables outside add()", LOOP + "local q = 0\nfunction f()\n  q = { x = 1 }\nend\n", /only allowed inside add/],
   ["nil", LOOP + "local z = nil\n", /nil is not supported/],
-  ["strings", LOOP + 'local s = "hi"\n', /strings are not supported yet/],
+  ["strings outside print", LOOP + 'local q = 0\nfunction f()\n  q = "hi"\nend\n', /only be used in print/],
   ["closures", "function _update60()\n  function inner() end\nend\nfunction _draw()\nend\n", /no closures/],
   ["int condition", "local x = 1\nfunction _update60()\n  if x then\n    x = 0\n  end\nend\nfunction _draw()\nend\n", /conditions must be boolean/],
   ["undeclared assignment", "function _update60()\n  y = 1\nend\nfunction _draw()\nend\n", /not declared.*no implicit globals/],
