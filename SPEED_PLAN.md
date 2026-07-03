@@ -159,10 +159,23 @@ dominated by cc65-compiled UPDATE LOGIC (pool scans, 16-bit coordinate math,
 collision, the draw queue), not fixed multiplies. So the table multiply + zp
 ABI are a genuine, verified 1.5-3x on multiply-DENSE code and cost nothing
 (Tier C = parity, empty bench still 2.00) — worth keeping for future physics-
-heavy games — but they do NOT move these ports' pacing. The REAL remaining
-lever is cc65 codegen of the game's own update logic: zp temporaries + hot
-loop counters in the emitter (the original stage-5 idea), pool-iteration
-codegen, and 16-bit-coordinate paths. That is the true next sprint.
+heavy games — but they do NOT move these ports' pacing.
+
+### zp-globals codegen: TRIED, ZERO EFFECT (2026-07-03)
+
+The long-assumed "next lever" — hot update-logic variables into zero page —
+was BUILT and MEASURED, and it does nothing. The emitter ranked scalar globals
+by reference count and placed the busiest ~40 bytes in the ZEROPAGE segment
+(verified working: `_gtl_px` landed at $0054, real zp addressing). newleste
+paced **11.11 vsyncs/frame with AND without it — identical.** Why: `-Osr`
+already keeps hot LOCALS in the zp regbank, and `--static-locals` already keeps
+globals out of the software stack (absolute BSS, not `(sp),y`). Promoting a
+global from absolute to zp saves ~1 cycle + 1 byte per access — real, but lost
+in the noise of a ~660K-cycle frame whose cost is fixed-point CALL overhead and
+blit dispatch, not global-load cycles. Reverted; do not re-attempt without a
+profile showing global loads are actually hot. The measured levers that DO move
+the frame are entity-draw batching (~3.9 vsyncs of per-sprite blits) and a
+cheaper fixed-point call path — NOT addressing-mode micro-opts.
 
 ### 6. Banked audio done right (P1) + string pool (P2)
 gt_audio_init switches to the firmware's bank before the ARAM upload
