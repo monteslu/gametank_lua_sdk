@@ -136,6 +136,11 @@ local spawners = pool(5)
 -- snow + clouds
 local snow_x = array(26)
 local snow_y = array(26, 0.5)
+-- snow drift wobble: a precomputed 32-entry sine table + per-frame phase, so the
+-- per-flake y-wobble is a table READ, not a gt_fsin() call. 26 sin() per frame
+-- was ~3 vsyncs (fixed-point sin is a real runtime call); this makes it ~free.
+local snow_wob = array(32)
+local snow_ph = 0
 local cloud_x = array(12, 0.5)
 local cloud_y = array(12)
 local cloud_s = array(12)
@@ -1725,13 +1730,15 @@ function draw_snow()
   -- anyway so nothing visual changes. This one swap takes celeste2 from ~4fps
   -- to ~10fps. Snow dots are 0-1px, so pset (a free CPU byte-write) beats
   -- circfill (a blit primitive). See SPEED_PLAN.md "the fixed-% footgun".
+  snow_ph += 1
+  local base = snow_ph >> 2          -- advance the wobble phase every 4 frames
   local i = 1
   while i <= 26 do
     local px = (flr(snow_x[i]) - (cam_draw_x >> 1)) % 132
     local py = (flr(snow_y[i]) - (cam_draw_y >> 1)) % 132
     pset(cam_draw_x + px - 2, cam_draw_y + py, 7)
     snow_x[i] += 4 - i % 4
-    snow_y[i] += sin(time() * 0.25 + i * 0.1)
+    snow_y[i] += snow_wob[((base + i) & 31) + 1]   -- LUT read, not sin()
     i += 1
   end
 end
@@ -1881,6 +1888,11 @@ function _init()
   fl_pos = 1
   fl_data()
   local i = 1
+  while i <= 32 do
+    snow_wob[i] = sin((i - 1) / 32)   -- one full period over the 32 entries
+    i += 1
+  end
+  i = 1
   while i <= 26 do
     snow_x[i] = flr(rnd(132))
     snow_y[i] = rnd(132)
