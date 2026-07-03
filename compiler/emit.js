@@ -955,7 +955,11 @@ export function emit(chunk, symbols, file, opts = {}) {
     if (g.kind === "pool") {
       g.cname = mangle(name);
       for (const [fname, fl] of g.fields) {
-        out.push(`${ctype(fl.kind)} ${g.cname}_${fname}[${g.size}];`);
+        // constant-byte-only fields (state ids, sprite numbers, colors) store
+        // as bytes: half the RAM, and the u8 forall index + u8 element is the
+        // fast entity-access shape
+        const ct = (fl.kind === "int" && !fl.notByte) ? "unsigned char" : ctype(fl.kind);
+        out.push(`${ct} ${g.cname}_${fname}[${g.size}];`);
       }
       out.push(`unsigned char ${g.cname}_used[${g.size}];`);
       out.push(`int ${g.cname}_n;`);

@@ -250,6 +250,14 @@ export function check(chunk, file) {
               if (s.op === "/=") rk = "fixed";
               if (s.op !== "=" && s.op !== "\\=") rk = join(rk, fl.kind);
               if (rk === "fixed" && fl.kind !== "fixed") { fl.kind = "fixed"; changed = true; }
+              // byte evidence: this + the add() literals are the ONLY store
+              // paths (the parser rejects member targets in multi-assign).
+              // Any compound op or non-constant / out-of-range value
+              // disqualifies the field from u8 storage.
+              {
+                const cvv = s.op === "=" ? constEval(s.value) : null;
+                if (!(Number.isInteger(cvv) && cvv >= 0 && cvv <= 255)) fl.notByte = true;
+              }
               s.targetKind = fl.kind;
             } else {
               s.targetKind = mt;
@@ -447,6 +455,10 @@ export function check(chunk, file) {
           const fk = typeOf(f.expr);
           if (fk === "bool") err(f.expr, "pool fields are numbers (store 0/1)");
           const slot = pl.fields.get(f.name);
+          if (slot) {
+            const cvv = constEval(f.expr);
+            if (!(Number.isInteger(cvv) && cvv >= 0 && cvv <= 255)) slot.notByte = true;
+          }
           if (!slot) {
             err(call, `field '${f.name}' is not in pool '${call.args[0].name}' ` +
                       `(the first add() froze its fields: ${[...pl.fields.keys()].join(", ")})`);
