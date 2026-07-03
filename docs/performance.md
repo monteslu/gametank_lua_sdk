@@ -196,11 +196,12 @@ The emitter narrows counting-loop variables to bytes when bounds are provably
 1-based `-1` into the symbol address for byte-counter indexes. Measured on the
 entity-update probe: the full stack (narrowed counters + `array8` + index
 folds) runs **3.0× faster than the same Lua compiled naively** (561 → 186
-cycles per update). Single-`return` helper functions inline automatically at
+cycles per update). Single-`return` helpers AND
+if-then-return chains (`sign0`, tile classifiers) inline automatically at
 their call sites (~466 cycles of calling convention saved per call — a probe
 making 256 helper calls per frame runs 4.0 vsyncs without the inliner, a
-locked 2.0 with it), so small named helpers are FREE — write them for
-clarity. You get all of it by writing plain counting loops over `array8`
+locked 2.0 with it), and functions you never call are eliminated entirely —
+so small named helpers are FREE: write them for clarity. You get all of it by writing plain counting loops over `array8`
 fields — the idiomatic entity-pool shape.
 
 ### Byte arrays: `array8` for entity pools
@@ -334,7 +335,7 @@ feels productive and changes nothing players feel.
 | just-one-boss | 7.0 | 8.6 | sprites |
 | driftmania | 7.1 (was 10.1) | 8.4 | chunk atlas landed; car physics next |
 | newleste | 7.1 (was 10.7) | 8.5 | physics 3× + map on the canvas (4 blits) |
-| celeste2 (gameplay) | 7.1 (was 14.6) | 8.5 | collision core inlined; 768px animated map won't fit the canvas |
+| celeste2 (gameplay) | 6.8 (was 14.6) | 8.8 | compiler inlining reached its collision chain |
 | just-one-boss (gameplay) | ~2.2 | ~29 | effectively at 30 fps |
 | combo-pool (gameplay) | 5.0 | 12 | division-heavy ball physics (unprofiled) |
 
