@@ -200,10 +200,14 @@ local dpdy = array(8, 0.0)
 local dpt = array(8, 0.0)
 
 -- one-way platform tiles collected during the map pass, drawn over objects
-local platx = array(16)
-local platy = array(16)
-local plats = array(16)
+-- one-way platforms are collected LEVEL-WIDE at load (not per frame): the
+-- static map lives in the GRAM canvas (see compose_level) and the old
+-- per-frame 256-cell scan is gone.
+local platx = array(64)
+local platy = array(64)
+local plats = array(64)
 local platn = 0
+local composed_lvl = 0         -- which level the GRAM canvas currently holds
 
 
 -- ---------------------------------------------------------------------
@@ -1191,6 +1195,48 @@ end
 -- ---------------------------------------------------------------------
 -- levels
 -- ---------------------------------------------------------------------
+-- PERF: the level map is STATIC, so it composes into the 256x256 GRAM canvas
+-- once per level as 128-tall strips (strip s = world x [s*256,(s+1)*256) at
+-- canvas rows [s*128, s*128+128)) — level 2 is 384px wide, 1.5 strips. The
+-- per-frame map draw is then FOUR gt.gspr blits instead of ~80 tile blits
+-- (colorkey keeps empty cells transparent over the clouds, same as spr did).
+-- Death respawns reuse the canvas (composed_lvl cache) so there is no reload
+-- hitch; only a real level change pays the clear+stamp. One-way platforms
+-- (f&8, drawn OVER entities) are collected level-wide here instead of being
+-- re-scanned every frame.
+function compose_level()
+  local fresh = 0
+  if composed_lvl ~= lvl_id then
+    fresh = 1
+    gt.bg_clear()
+    composed_lvl = lvl_id
+  end
+  platn = 0
+  local j = 0
+  while j < lvl_h do
+    local base = (lvl_y + j) * 64 + lvl_x + 1
+    local i = 0
+    while i < lvl_w do
+      local v = m[base + i]
+      if v > 0 then
+        local f = fl[v + 1]
+        if (f & 6) ~= 0 then
+          if (fresh == 1) gt.bg_tile(v, (i & 31) * 8, (i \ 32) * 128 + j * 8)
+        elseif (f & 8) ~= 0 then
+          if platn < 64 then
+            platn += 1
+            platx[platn] = i * 8
+            platy[platn] = j * 8
+            plats[platn] = v
+          end
+        end
+      end
+      i += 1
+    end
+    j += 1
+  end
+end
+
 function load_level(id)
   -- clear level-owned objects; train fruits ride along to the next spawn
   ffn = 0
@@ -1306,6 +1352,7 @@ function load_level(id)
       end
     end
   end
+  compose_level()
 end
 
 -- ---------------------------------------------------------------------
@@ -1512,31 +1559,21 @@ function _draw()
 
   camera(draw_x, draw_y)
 
-  -- map: bg + terrain in one pass (no cell holds both flags); one-way
-  -- platform tiles are collected and drawn over the objects, like the
-  -- cart's third map() call
-  platn = 0
-  local tx0 = mid(0, lvl_w - 1, draw_x \ 8)
-  local tx1 = mid(0, lvl_w - 1, (draw_x + 127) \ 8)
-  local ty0 = mid(0, lvl_h - 1, draw_y \ 8)
-  local ty1 = mid(0, lvl_h - 1, (draw_y + 127) \ 8)
-  for j = ty0, ty1 do
-    local base = (lvl_y + j) * 64 + lvl_x + 1
-    for i = tx0, tx1 do
-      local v = m[base + i]
-      if v > 0 then
-        local f = fl[v + 1]
-        if (f & 6) ~= 0 then
-          spr(v, i * 8, j * 8)
-        elseif (f & 8) ~= 0 then
-          platn += 1
-          platx[platn] = i * 8
-          platy[platn] = j * 8
-          plats[platn] = v
-        end
-      end
-    end
-  end
+  -- map: blit the visible window from the pre-composed GRAM canvas (see
+  -- compose_level). Two x-pieces (the 256px canvas strip boundary) x two
+  -- 64-tall halves (the blitter's W/H are 7-bit): 4 blits total, colorkey-
+  -- transparent over the clouds exactly like the old per-tile spr() pass.
+  local coff = draw_x & 255
+  local crow = (draw_x \ 256) * 128 + draw_y
+  local w0 = 256 - coff
+  if (w0 > 127) w0 = 127
+  gt.gspr(coff, crow, w0, 64, draw_x, draw_y)
+  gt.gspr(coff, crow + 64, w0, 64, draw_x, draw_y + 64)
+  local wx1 = draw_x + w0
+  local coff1 = wx1 & 255
+  local crow1 = (wx1 \ 256) * 128 + draw_y
+  gt.gspr(coff1, crow1, 128 - w0, 64, wx1, draw_y)
+  gt.gspr(coff1, crow1 + 64, 128 - w0, 64, wx1, draw_y + 64)
 
   -- layer 1: level entities
   for i = 1, ffn do

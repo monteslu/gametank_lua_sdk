@@ -94,7 +94,12 @@ static void bg_drain(void) {
  * After this, vram[(y<<7)|x] (x,y in 0..127) lands in the chosen quadrant. */
 static void bg_enter_write_q(unsigned char quad) {
     bg_drain();
-    *dma_flags = DMA_NMI | DMA_ENABLE | DMA_IRQ | DMA_GCARRY;
+    /* keep frameflip (PAGE_OUT) intact: the display page is read from the
+     * LIVE $2007, and this state persists across whole vsyncs during a long
+     * compose/clear — dropping the bit flips the presented page out of phase
+     * with the game's flip protocol (seen as content on alternate frames
+     * only). */
+    *dma_flags = DMA_NMI | DMA_ENABLE | DMA_IRQ | DMA_GCARRY | frameflip;
     *bank_reg  = bankflip | BG_GROUP | BANK_CLIP_X | BANK_CLIP_Y;
     vram[GX] = (quad & 1) ? 0x80 : 0;   /* GX bit7 -> right quadrant column */
     vram[GY] = (quad & 2) ? 0x80 : 0;   /* GY bit7 -> bottom quadrant row */
@@ -103,7 +108,7 @@ static void bg_enter_write_q(unsigned char quad) {
     gt_draw_busy = 1;
     vram[START] = 1;
     bg_drain();
-    *dma_flags = DMA_NMI;            /* CPU_TO_VRAM off + DMA off -> GRAM writes */
+    *dma_flags = DMA_NMI | frameflip;   /* CPU_TO_VRAM off + DMA off -> GRAM writes */
 }
 
 /* Compose a tilemap into the background page. The page is first cleared to
