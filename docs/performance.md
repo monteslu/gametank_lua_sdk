@@ -196,8 +196,12 @@ The emitter narrows counting-loop variables to bytes when bounds are provably
 1-based `-1` into the symbol address for byte-counter indexes. Measured on the
 entity-update probe: the full stack (narrowed counters + `array8` + index
 folds) runs **3.0× faster than the same Lua compiled naively** (561 → 186
-cycles per update). You get all of it by writing plain counting loops over
-`array8` fields — the idiomatic entity-pool shape.
+cycles per update). Single-`return` helper functions inline automatically at
+their call sites (~466 cycles of calling convention saved per call — a probe
+making 256 helper calls per frame runs 4.0 vsyncs without the inliner, a
+locked 2.0 with it), so small named helpers are FREE — write them for
+clarity. You get all of it by writing plain counting loops over `array8`
+fields — the idiomatic entity-pool shape.
 
 ### Byte arrays: `array8` for entity pools
 
