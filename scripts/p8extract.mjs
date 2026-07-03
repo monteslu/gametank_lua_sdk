@@ -84,7 +84,7 @@ writeFileSync(path.join(outdir, "code.bin"), cart.subarray(0x4300, 0x8000));
 // then an LSB-first bitstream of move-to-front literals and LZ copies.
 function decompressCode(sec) {
   if (sec[0] === 0 && sec[1] === 0x70 && sec[2] === 0x78 && sec[3] === 0x61) {
-    const uncSize = sec.readUInt16LE(4);
+    const uncSize = sec.readUInt16BE(4); // header sizes are big-endian
     let bitPos = 8 * 8; // stream starts after the 8-byte header
     const bit = () => {
       const b = (sec[bitPos >> 3] >> (bitPos & 7)) & 1;

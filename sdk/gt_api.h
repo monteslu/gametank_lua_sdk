@@ -41,6 +41,7 @@ int gt_p8_print(const char *str, int x, int y, int c);
 int gt_p8_print_num(long v, int x, int y, int c);
 void gt_sheet_load(const unsigned char *packed);
 void gt_sheet_init(void);   /* generated per-build: loads the sheet or no-op */
+void __fastcall__ gt_bank(unsigned char b);  /* FLASH2M: switch the $8000 window */
 
 /* audio coprocessor (gt_audio.c) */
 void gt_audio_init(void);

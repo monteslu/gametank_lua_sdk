@@ -1,187 +1,1437 @@
--- combo-pool (adapted port)
--- A marble-merge arcade game inspired by "Combo Pool" by NuSan
--- (lexaloffle.com/bbs/?tid=3467, CC4-BY-NC-SA). From-scratch gtlua
--- implementation of the design, drawn with primitives.
--- This port: CC-BY-NC-SA 4.0.
+-- combo pool — gametank port
+-- Hand-translated from "Combo Pool" by NuSan (PICO-8, p8jam2)
+-- lexaloffle.com/bbs/?tid=3467 — original licensed CC-BY-NC-SA 4.0.
+-- This adaptation (real game logic, real sprite sheet) is released under
+-- the same license: CC-BY-NC-SA 4.0 — see LICENSE in this directory.
+-- Every divergence from the original cart is listed in PORT_NOTES.md.
 --
--- ⬅️➡️ aim, 🅾️ (GT A) drop. Same-size marbles merge. Don't overflow the top.
+-- ⬅️➡️ aim the launcher, hold/release 🅾️ (GT A) to shoot a ball.
+-- Balls of the same color merge into the next color; merging two of the
+-- last color sets off a bomb (victory outside endless mode). Keeping too
+-- many balls on the table drains your life bar. GT C toggles ball numbers.
+--
+-- Build: node bin/gtlua.js build ports/combo-pool/main.lua \
+--          --sheet carts/combo-pool-extract/gfx.bin
 
-local MAXB = 14
-local px = array(14, 0.0)   -- positions (fixed)
-local py = array(14, 0.0)
-local vx = array(14, 0.0)
-local vy = array(14, 0.0)
-local sz = array(14)        -- size level 0=dead, 1..5
-local drop_x = 64
-local next_sz = 1
-local held = 1              -- marble waiting at the top
-local score = 0
-local gameover = 0
-local overflow = 0
+-- ---------------------------------------------------------------------
+-- state (original keeps these as globals; ball objects become parallel
+-- arrays so the pairwise collision pass can index any two balls)
+-- ---------------------------------------------------------------------
 
-local radii = array(5)
-local cols = array(5)
+local menuselect = 2
+local maxallowed10 = 0      -- life budget x10 (ballcost kept in tenths)
+local displaynumber = 0     -- original menuitem toggle; GT C here
 
-function _init()
-  srand(1)
-  radii[1] = 4
-  radii[2] = 6
-  radii[3] = 9
-  radii[4] = 13
-  radii[5] = 18
-  cols[1] = 12
-  cols[2] = 11
-  cols[3] = 10
-  cols[4] = 9
-  cols[5] = 8
-  next_sz = 1 + flr(rnd(2))
+-- balls: slot is live when ballc[slot] > 0 (original: dead flag + del)
+local ballx = array(28, 0.0)
+local bally = array(28, 0.0)
+local ballvx = array(28, 0.0)
+local ballvy = array(28, 0.0)
+local ballc = array(28)     -- color/tier 1..7, 0 = free slot
+local ballmul = array(28)   -- combo multiplier 1..8
+local balllm = array(28)    -- "lastmult" cooldown, 60 -> 0
+local trailx = array(28, 0.0)  -- stamped trail position (port addition)
+local traily = array(28, 0.0)
+
+local ballidx = 0           -- total balls created (endgame stat)
+
+-- 8x8 broad-phase grid, 16px cells (original: grid[i][j] tables)
+local gridcnt = array(64)
+local gridmem = array(512)  -- 8 slots per cell
+local bgx = array(28)       -- per-frame collision-lookup cell coords
+local bgy = array(28)
+
+-- 1/sqrdist table for contact math: invsq[flr(d2*2)+1] ~= 1/d2 for the
+-- contact range d2 < 64. gt_fdiv is a 48-step software loop (~35K cycles,
+-- over half a vsync) so per-frame division is banned; see PORT_NOTES.md.
+local invsq = array(128, 0.0)
+
+-- main-menu marching-ball constants (i*136/14 and i/13 from the cart),
+-- computed once at boot instead of two divisions per ball per frame
+local march_off = array(14, 0.0)
+local phase_off = array(14, 0.0)
+local menu_march = 0.0
+
+local parts = pool(32)      -- explosion/spark particles
+local texts = pool(8)       -- floating "+score" popups
+
+local gtime = 0             -- original 'time' (renamed: time() builtin)
+local menutime = 0.0
+
+local launch_vrot = 0.0
+local launch_rot = 0.25
+local launch_dx = 0.0
+local launch_dy = 1.0
+local launch_x = 64
+local launch_y = 120
+local launch_str = 6
+local launch_press = 0
+local avoid_nextlaunch = 1
+local launch_next = 1
+
+local score = 0.0           -- like the original, score is points/100
+local ballscore = 0.0
+local maxballscore = 0.0
+local ballmult = 1
+local maxmult = 1
+local oldscore = 0.0
+local newscoretimer = 0
+local newballtimer = 0
+local newballappear = 0
+local oldballscore = 0.0
+local newballscoretimer = 0
+local newmaxtimer = 0
+local newmaxappear = 0
+
+local mainmenu = 1
+local intromenu = 0
+local lastselect = 30
+
+local death = 0
+local suddendeath = 0
+local victory = 0
+local finish = 0
+local finishtimer = 0
+
+local pstam = 100.0
+local astam = 0.5
+local lstam = 100.0
+
+local plife = 1.0
+local llife = 1.0
+local lifecost10 = 0
+local inv_maxlife = 0.0     -- 1/maxallowed10, one boot-time division
+
+-- per-tier tables (filled in _init)
+local bpal = array(7)       -- ball body color
+local bpal2 = array(7)      -- highlight color
+local bpal3 = array(7)      -- rim color
+local ballvalue = array(7)  -- score value per merge
+local ballcost10 = array(7) -- life cost x10
+local lifes10 = array(4)    -- per-difficulty life budget x10
+
+-- audio: tiny per-channel sequencer approximating the cart's sfx
+local chfx = array(4)
+local chstep = array(4)
+local fxlen = array(17)
+local fxrate = array(17)
+local fxvol = array(17)
+local fxbase = array(17)
+local fxslide = array(17)
+local fxarp = array(17)
+local arp3 = array(3)
+
+-- ---------------------------------------------------------------------
+-- audio driver: gt.note sequences stand in for the cart's sfx tracker
+-- ---------------------------------------------------------------------
+
+function playfx(f)
+  local ch = 2                       -- merges (12/13/14) on channel 2
+  if (f == 9 or f == 10) ch = 0      -- launcher
+  if (f == 11) ch = 1                -- combo ticks
+  if (f == 15 or f == 17) ch = 3     -- bomb / fanfare
+  chfx[ch + 1] = f
+  chstep[ch + 1] = 0
 end
 
-function drop()
-  for i = 1, MAXB do
-    if sz[i] == 0 then
-      sz[i] = next_sz
-      px[i] = drop_x
-      py[i] = 14
-      vx[i] = 0
-      vy[i] = 0.4
-      next_sz = 1 + flr(rnd(2))
+function update_audio()
+  local ch = 0
+  while ch < 4 do
+    local f = chfx[ch + 1]
+    if f > 0 then
+      local stp = chstep[ch + 1]
+      local idx = stp \ fxrate[f]
+      if idx >= fxlen[f] then
+        gt.noteoff(ch)
+        chfx[ch + 1] = 0
+      else
+        if stp % fxrate[f] == 0 then
+          local nt = fxbase[f]
+          if fxarp[f] == 1 then
+            nt += arp3[(idx % 3) + 1]
+          else
+            nt += fxslide[f] * idx
+          end
+          gt.note(ch, nt, fxvol[f])
+        end
+        chstep[ch + 1] = stp + 1
+      end
+    end
+    ch += 1
+  end
+end
+
+-- trail-stamp sheet cells per tier (scattered into blank cells; filled
+-- in _init, baked by bake_sprites)
+local trailspr = array(7)
+
+-- ---------------------------------------------------------------------
+-- sprite baking: the cart draws balls procedurally (3 nested circfills +
+-- backdrop + shadow) every frame; at 3.5MHz that is 5 primitives per ball
+-- (~15K cycles measured), so _init pre-renders each tier into free sheet
+-- cells and the game draws one spr() per ball:
+--   rows 6-7  (96+):  launcher ball per tier (aim ring + backdrop + ball)
+--   rows 8-9  (128+): field ball per tier (drop shadow + backdrop + ball)
+--   rows 10-11(160+): blinking field ball (red backdrop)
+--   scattered singles: r3 motion-trail stamps (trailspr[])
+-- build.mjs additionally composes border/lattice/panel STRIPS into rows
+-- 12-15 + 4-5 of the sheet so the static art is a handful of wide blits.
+-- ---------------------------------------------------------------------
+
+function bake_span(x0, x1, y, col)
+  local x = x0
+  while x <= x1 do
+    sset(x, y, col)
+    x += 1
+  end
+end
+
+-- midpoint circle, same spans as circfill so baked balls match the
+-- procedurally drawn launcher/menu circles
+function bake_circfill(cx, cy, r, col)
+  local x = r
+  local y = 0
+  local d = 1 - r
+  while y <= x do
+    bake_span(cx - x, cx + x, cy + y, col)
+    if (y ~= 0) bake_span(cx - x, cx + x, cy - y, col)
+    if d < 0 then
+      d += y * 2 + 3
+    else
+      if x ~= y then
+        bake_span(cx - y, cx + y, cy + x, col)
+        bake_span(cx - y, cx + y, cy - x, col)
+      end
+      d += (y - x) * 2 + 5
+      x -= 1
+    end
+    y += 1
+  end
+end
+
+-- midpoint circle outline into the sheet (the launcher's aim ring)
+function bake_circ(cx, cy, r, col)
+  local x = r
+  local y = 0
+  local d = 1 - r
+  while y <= x do
+    sset(cx + x, cy + y, col)
+    sset(cx - x, cy + y, col)
+    sset(cx + x, cy - y, col)
+    sset(cx - x, cy - y, col)
+    sset(cx + y, cy + x, col)
+    sset(cx - y, cy + x, col)
+    sset(cx + y, cy - x, col)
+    sset(cx - y, cy - x, col)
+    if d < 0 then
+      d += y * 2 + 3
+    else
+      d += (y - x) * 2 + 5
+      x -= 1
+    end
+    y += 1
+  end
+end
+
+-- drawball's three discs; color 0 pixels would be transparent in spr(),
+-- so pure black ink is swapped for the GameTank's near-black gray
+function bake_ball_at(sx, sy, c, backdrop)
+  bake_circfill(sx, sy, 5, backdrop)
+  local rim = bpal3[c]
+  if (rim == 0) rim = gt.rgb(1)
+  bake_circfill(sx, sy, 4, rim)
+  bake_circfill(sx, sy, 3, bpal[c])
+  bake_circfill(sx + 1, sy - 1, 1, bpal2[c])
+end
+
+function bake_sprites()
+  local c = 1
+  while c <= 7 do
+    local sx = (c - 1) * 16 + 8
+    -- field ball with drop shadow: cells 128+ (2x2), center (8,7)
+    bake_circfill(sx, 64 + 9, 5, 1)
+    bake_ball_at(sx, 64 + 7, c, gt.rgb(1))
+    -- blinking ball (red backdrop): cells 160+
+    bake_circfill(sx, 80 + 9, 5, 1)
+    bake_ball_at(sx, 80 + 7, c, 8)
+    -- launcher ball with the aim ring, no shadow: cells 96+
+    bake_circ(sx, 48 + 7, 6, 13)
+    bake_ball_at(sx, 48 + 7, c, gt.rgb(1))
+    -- motion-trail stamp (the cart smears trails into a persistent
+    -- framebuffer; we stamp blobs instead): scattered single cells
+    local tc = trailspr[c]
+    bake_circfill((tc % 16) * 8 + 3, (tc \ 16) * 8 + 3, 3, bpal[c])
+    c += 1
+  end
+end
+
+-- spr helpers for the baked sets
+function draw_ball_spr(x, y, c)
+  spr(128 + (c - 1) * 2, x - 8, y - 7, 2, 2)
+end
+
+function draw_ball_blink(x, y, c)
+  spr(160 + (c - 1) * 2, x - 8, y - 7, 2, 2)
+end
+
+function draw_ball_launcher(x, y, c)
+  spr(96 + (c - 1) * 2, x - 8, y - 7, 2, 2)
+end
+
+-- ---------------------------------------------------------------------
+-- entities
+-- ---------------------------------------------------------------------
+
+-- returns the slot used, 0 if the table is full (cap 28; the cart is
+-- unbounded — see PORT_NOTES.md)
+function new_ball(xx, yy, cc)
+  local i = 1
+  while i <= 28 do
+    if ballc[i] == 0 then
+      ballx[i] = xx
+      bally[i] = yy
+      ballvx[i] = 0
+      ballvy[i] = 0
+      ballc[i] = cc
+      ballmul[i] = 1
+      balllm[i] = 0
+      trailx[i] = xx
+      traily[i] = yy
+      ballidx += 1
+      return i
+    end
+    i += 1
+  end
+  return 0
+end
+
+function new_part(xx, yy, tt, cc, rr)
+  add(parts, {x = xx, y = yy, vx = 0, vy = 0, c = cc, t = tt, spread = rr})
+end
+
+function new_text(xx, yy, val, nvx, nvy)
+  add(texts, {x = xx, y = yy, vx = nvx, vy = nvy, val = val, t = 1})
+end
+
+function reset_game()
+  local i = 1
+  while i <= 28 do
+    ballc[i] = 0
+    i += 1
+  end
+  ballidx = 0
+
+  for p in all(parts) do
+    del(parts, p)
+  end
+  for p in all(texts) do
+    del(texts, p)
+  end
+
+  gtime = 0
+  menutime = 0
+
+  launch_vrot = 0
+  launch_rot = 0.25
+  launch_dx = 0
+  launch_dy = 1
+  launch_press = 0
+  avoid_nextlaunch = 1
+  launch_next = 1
+
+  score = 0
+  ballscore = 0
+  maxballscore = 0
+  ballmult = 1
+  maxmult = 1
+  oldscore = 0
+  newscoretimer = 0
+  newballtimer = 0
+  newballappear = 0
+  oldballscore = 0
+  newballscoretimer = 0
+  newmaxtimer = 0
+  newmaxappear = 0
+
+  mainmenu = 1
+  intromenu = 0
+  lastselect = 30
+
+  death = 0
+  suddendeath = 0
+  victory = 0
+  finish = 0
+  finishtimer = 0
+
+  pstam = 100
+  astam = 0.5
+  lstam = 100
+
+  plife = 1
+  llife = 1
+
+  -- six starter balls in the upper field; ballidx counts the color-1
+  -- balls they are "worth" (2^tier), same as the cart
+  local ballcount = 0
+  i = 0
+  while i < 3 do
+    local j = 0
+    while j < 2 do
+      local typ = flr(rnd(3))
+      ballcount += 1 << typ
+      new_ball(16 + j * 64 + rnd(32), 8 + i * 32 + rnd(16), typ + 1)
+      j += 1
+    end
+    i += 1
+  end
+  ballidx = ballcount
+end
+
+-- ---------------------------------------------------------------------
+-- physics
+-- ---------------------------------------------------------------------
+
+function update_grid()
+  local k = 1
+  while k <= 64 do
+    gridcnt[k] = 0
+    k += 1
+  end
+  local i = 1
+  while i <= 28 do
+    if ballc[i] > 0 then
+      -- insert by flr(pos/16); wall clamps keep positions in range
+      local gx = ballx[i] \ 16 + 1
+      local gy = bally[i] \ 16 + 1
+      if (gy > 8) gy = 8
+      local cell = (gy - 1) * 8 + gx
+      local n = gridcnt[cell]
+      if n < 8 then
+        gridcnt[cell] = n + 1
+        gridmem[(cell - 1) * 8 + n + 1] = i
+      end
+      -- lookup neighborhood corner: flr(pos/16 + 0.5), cached per frame
+      -- (cells are 16px, balls move <4px/frame — stale by design, like
+      -- the cart's once-per-frame grid)
+      bgx[i] = (ballx[i] + 8) \ 16 + 1
+      bgy[i] = (bally[i] + 8) \ 16 + 1
+    end
+    i += 1
+  end
+end
+
+-- radial shove from a tier-7 merge
+function bomb(x, y, rad, strv)
+  local i = 1
+  while i <= 28 do
+    if ballc[i] > 0 then
+      local dx = ballx[i] - x
+      local dy = bally[i] - y
+      local dist = sqrt(dx * dx + dy * dy + 0.01)
+      if dist < rad then
+        ballvx[i] += dx * strv / dist
+        ballvy[i] += dy * strv / dist
+      end
+    end
+    i += 1
+  end
+end
+
+function do_coll(i, j)
+  -- cheap rejects before any 32-bit multiply (contact needs |d| < 8)
+  local x1 = ballx[i]
+  local x2 = ballx[j]
+  local dx = x1 - x2
+  if (dx >= 8 or dx <= -8) return
+  local y1 = bally[i]
+  local y2 = bally[j]
+  local dy = y1 - y2
+  if (dy >= 8 or dy <= -8) return
+  local sqrdist = dx * dx + dy * dy
+  if (sqrdist >= 64) return
+  if (ballc[i] == 0 or ballc[j] == 0) return
+
+  local vx1 = ballvx[i]
+  local vy1 = ballvy[i]
+  local vx2 = ballvx[j]
+  local vy2 = ballvy[j]
+
+  -- ~1/sqrdist without a division (table), then 1/dist = dist/sqrdist
+  local inv_sq = 4.0
+  if (sqrdist >= 0.25) inv_sq = invsq[flr(sqrdist * 2) + 1]
+  local adx = abs(dx)
+  local ady = abs(dy)
+  local dist = 0.0
+  if adx > ady then
+    dist = adx * 0.9604 + ady * 0.3978
+  else
+    dist = ady * 0.9604 + adx * 0.3978
+  end
+  local invd = dist * inv_sq
+
+  if ballc[i] == ballc[j] then
+    -- merge j into i
+    x1 = (x1 + x2) / 2
+    y1 = (y1 + y2) / 2
+    vx1 += vx2
+    vy1 += vy2
+    ballx[i] = x1
+    bally[i] = y1
+    ballvx[i] = vx1
+    ballvy[i] = vy1
+
+    local nx = dy * invd
+    local ny = -dx * invd
+
+    local cnew = ballc[i]
+    if cnew < 7 then
+      cnew += 1
+      ballc[i] = cnew
+      local snd = 13
+      if (cnew > 3) snd = 12
+      if (cnew > 5) snd = 14
+      playfx(snd)
+    else
+      bomb(x1, y1, 80, 5)
+      local pp = 0
+      while pp < 20 do
+        local pvx = vx1 * 0.5 + (rnd() - 0.5) * 3
+        local pvy = vy1 * 0.5 + (rnd() - 0.5) * 3
+        add(parts, {x = x1, y = y1, vx = pvx, vy = pvy,
+                    c = 3, t = 0.5, spread = pp * 3 \ 20})
+        pp += 1
+      end
+      if death == 0 and maxallowed10 > 0 then
+        if (victory == 0) finishtimer = 0
+        victory = 1
+        finish = 1
+      end
+      playfx(15)
+      -- popped: retire the merged ball too (score still uses tier 7)
+      ballc[i] = 0
+    end
+
+    ballmult += ballmul[i] * ballmul[j]
+    local addscore = ballmult * ballvalue[cnew]
+    ballscore += addscore / 100
+    score += addscore / 100
+
+    if ny > 0 then
+      ny = -ny
+      nx = -nx
+    end
+    new_text(x1, y1, addscore, nx, ny)
+
+    ballc[j] = 0
+    ballmul[i] = min(ballmul[i] * 2, 8)
+    balllm[i] = 60
+  else
+    if sqrdist > 0 then
+      -- swap the velocity components along the contact axis. Same math as
+      -- the cart's dotpart() exchange, reformulated on the unnormalized
+      -- axis d so no sqrt is needed:  v1' = v1 + ((v2-v1)·d)d/|d|²
+      local k = (vx2 - vx1) * dx + (vy2 - vy1) * dy
+      k *= inv_sq
+      local kx = dx * k
+      local ky = dy * k
+
+      -- positional push apart
+      local push = (max(0, 9 - dist) / 2) * invd
+      local pdx = dx * push
+      local pdy = dy * push
+      ballx[i] = x1 + pdx
+      bally[i] = y1 + pdy
+      ballx[j] = x2 - pdx
+      bally[j] = y2 - pdy
+
+      vx1 += kx
+      vy1 += ky
+      ballvx[i] = vx1
+      ballvy[i] = vy1
+      vx2 -= kx
+      vy2 -= ky
+      ballvx[j] = vx2
+      ballvy[j] = vy2
+
+      local iscombo = 0
+      if balllm[i] <= 55 then
+        ballmul[i] = min(ballmul[i] * 2, 8)
+        balllm[i] = 60
+        iscombo = 1
+      end
+      if balllm[j] <= 55 then
+        ballmul[j] = min(ballmul[j] * 2, 8)
+        balllm[j] = 60
+        iscombo = 1
+      end
+
+      if iscombo == 1 then
+        local bestmult = max(ballmul[i], ballmul[j])
+        ballmul[i] = bestmult
+        ballmul[j] = bestmult
+        add(parts, {x = (x1 + x2) / 2, y = (y1 + y2) / 2,
+                    vx = (vx1 + vx2) * 0.5, vy = (vy1 + vy2) * 0.5,
+                    c = 2, t = 0.25, spread = 0})
+        playfx(11)
+      end
+    end
+  end
+end
+
+function col_balls()
+  local i = 1
+  while i <= 28 do
+    if ballc[i] > 0 then
+      local gx = bgx[i]
+      local cy = bgy[i] - 1
+      local cylast = cy + 1
+      while cy <= cylast do
+        if cy > 0 and cy <= 8 then
+          local cx = gx - 1
+          local cxlast = cx + 1
+          while cx <= cxlast do
+            if cx > 0 and cx <= 8 then
+              local cell = (cy - 1) * 8 + cx
+              local n = gridcnt[cell]
+              local k = (cell - 1) * 8
+              local klast = k + n
+              while k < klast do
+                local j = gridmem[k + 1]
+                if (i > j) do_coll(i, j)
+                k += 1
+              end
+            end
+            cx += 1
+          end
+        end
+        cy += 1
+      end
+    end
+    i += 1
+  end
+end
+
+-- ---------------------------------------------------------------------
+-- update
+-- ---------------------------------------------------------------------
+
+function update_mainmenu()
+  if btnp(2) then
+    menuselect -= 1
+    lastselect = 30
+  end
+  if btnp(3) then
+    menuselect += 1
+    lastselect = 30
+  end
+  menuselect = ((menuselect % 4) + 4) % 4
+  if (lastselect > 0) lastselect -= 1
+
+  if btnp(4) or btnp(5) then
+    intromenu = 1
+    mainmenu = 0
+    playfx(12)
+    avoid_nextlaunch = 1
+  end
+
+  if (gtime == 0) playfx(13)
+  if (gtime == 60) playfx(14)
+
+  -- marching-ball advance (the cart computes animtime*10 % 136 per ball
+  -- per frame; a wrapped accumulator needs no division)
+  if menutime > 1.5 then
+    menu_march += 0.3333
+    if (menu_march >= 136) menu_march -= 136
+  end
+
+  gtime += 1
+  menutime += 0.0333
+end
+
+function update_intromenu()
+  local pressed = 0
+  if (btnp(4) or btnp(5)) pressed = 1
+  if pressed == 1 and avoid_nextlaunch == 0 then
+    maxallowed10 = lifes10[menuselect + 1]
+    inv_maxlife = 0
+    if (maxallowed10 > 0) inv_maxlife = 1 / maxallowed10
+    playfx(14)
+    srand(gtime + 1)
+    reset_game()
+    mainmenu = 0
+    intromenu = 0
+  else
+    avoid_nextlaunch = 0
+  end
+  gtime += 1
+end
+
+function update_game()
+  if (death == 1 or victory == 1) and finishtimer > 60 then
+    if btnp(4) or btnp(5) then
+      reset_game()
       return
     end
   end
-  -- no free slot: pool is full
-  gameover = 1
+
+  if (btnp(6)) displaynumber = 1 - displaynumber
+
+  -- particles (drag 0.95 -> 1 - 1/32 - 1/64 = 0.953, shift-based)
+  for p in all(parts) do
+    p.x += p.vx
+    p.y += p.vy
+    p.vx = p.vx - p.vx / 32 - p.vx / 64
+    p.vy = p.vy - p.vy / 32 - p.vy / 64
+    p.t -= 0.0333
+    if (p.t <= 0) del(parts, p)
+  end
+  for p in all(texts) do
+    p.x += p.vx
+    p.y += p.vy
+    p.vx = p.vx - p.vx / 32 - p.vx / 64
+    p.vy = p.vy - p.vy / 32 - p.vy / 64
+    p.t -= 0.0333
+    if (p.t <= 0) del(texts, p)
+  end
+
+  update_grid()
+
+  local curpress = 0
+  if (btn(4)) curpress = 1
+  local resetmult = 0
+
+  if finish == 0 then
+    -- keyboard aiming (the cart also supports the P8 mouse; GameTank
+    -- has no mouse)
+    local vrot = 0.002
+    if (curpress == 1) vrot = 0.003
+    if (btn(0)) launch_vrot += vrot
+    if (btn(1)) launch_vrot -= vrot
+
+    launch_rot = min(max(0.005, launch_rot + launch_vrot), 0.495)
+    launch_dx = cos(launch_rot)
+    launch_dy = sin(launch_rot)
+
+    if curpress == 1 then
+      launch_vrot = 0
+    else
+      launch_vrot *= 0.8
+    end
+
+    -- no pure-vertical shots (cart keeps a tiny bias so you can't play 1d)
+    if launch_dx == 0 then
+      launch_dx += 0.01
+      launch_dy += 0.01
+    end
+
+    local canrelease = 0
+    if (pstam > 0 and avoid_nextlaunch == 0) canrelease = 1
+
+    if (curpress == 1 and launch_press == 0 and canrelease == 1) playfx(9)
+
+    if curpress == 0 and launch_press == 1 and canrelease == 1 then
+      local nb = new_ball(launch_x, launch_y, launch_next)
+      if nb > 0 then
+        ballvx[nb] = launch_dx * launch_str
+        ballvy[nb] = launch_dy * launch_str
+
+        ballscore = 0
+        ballmult = 1
+        resetmult = 1
+        pstam -= 40
+        astam = 0.5
+
+        playfx(10)
+      end
+    end
+  else
+    finishtimer += 1
+  end
+
+  launch_press = curpress
+  if (curpress == 0) avoid_nextlaunch = 0
+
+  -- integrate + wall bounces + collisions, 2 substeps (cart: 5 — see
+  -- PORT_NOTES.md; contact range 8px vs 3px/substep, no tunneling)
+  local s = 0
+  while s < 2 do
+    local i = 1
+    while i <= 28 do
+      if ballc[i] > 0 then
+        local bvx = ballvx[i]
+        local bvy = ballvy[i]
+        local x = ballx[i] + bvx / 2
+        local y = bally[i] + bvy / 2
+
+        local hurt = 0
+
+        if x > 124 or x < 4 then
+          hurt = 1
+          bvx = -bvx
+          x += bvx
+          if (x > 124) x = 124
+          if (x < 4) x = 4
+          ballvx[i] = bvx
+        end
+        if (y > 112 and bvy > 0.1) or y < 4 then
+          hurt = 1
+          bvy = -bvy
+          y += bvy
+          if (y > 112) y = 112
+          if (y < 4) y = 4
+          ballvy[i] = bvy
+        end
+        ballx[i] = x
+        bally[i] = y
+
+        if hurt == 1 then
+          if balllm[i] <= 55 then
+            ballmul[i] = min(ballmul[i] * 2, 8)
+            balllm[i] = 60
+            new_part(x, y, 0.25, 2, 0)
+            playfx(11)
+          end
+        end
+
+        if (resetmult == 1) ballmul[i] = 1
+      end
+      i += 1
+    end
+    col_balls()
+    s += 1
+  end
+
+  -- drag, life cost, combo cooldown (cart ticks lastmult once per
+  -- substep = 5/frame; we tick 5 per frame to match). Drag 0.98 becomes
+  -- 1 - 1/64 - 1/256 = 0.98047 — shifts instead of a 16.16 multiply.
+  lifecost10 = 0
+  local i = 1
+  while i <= 28 do
+    if ballc[i] > 0 then
+      local bvx = ballvx[i]
+      local bvy = ballvy[i]
+      ballvx[i] = bvx - bvx / 64 - bvx / 256
+      ballvy[i] = bvy - bvy / 64 - bvy / 256
+      lifecost10 += ballcost10[ballc[i]]
+      balllm[i] = max(0, balllm[i] - 5)
+    end
+    i += 1
+  end
+
+  -- score HUD bookkeeping
+  if (maxballscore < ballscore) newmaxtimer = 60
+  if newmaxtimer > 0 then
+    newmaxtimer -= 1
+    newmaxappear = min(60, newmaxappear + 1)
+  else
+    newmaxappear = max(0, newmaxappear - 1)
+  end
+  maxballscore = max(maxballscore, ballscore)
+
+  newballscoretimer = max(0, newballscoretimer - 1)
+  if ballscore ~= oldballscore then
+    newballscoretimer = 32
+    oldballscore = ballscore
+  end
+
+  newscoretimer = max(0, newscoretimer - 1)
+  if score ~= oldscore then
+    newscoretimer = 4
+    oldscore = score
+  end
+
+  maxmult = max(ballmult, maxmult)
+
+  newballtimer = 0
+  if (ballscore > 0) newballtimer = 10
+  newballappear += max(-1, min(1, newballtimer - newballappear))
+
+  if pstam < 100 then
+    pstam = min(100, pstam + astam)
+    astam *= 1.1
+  end
+  lstam += max(-1, min(1, pstam - lstam))
+
+  if finish == 1 and victory == 1 then
+    if (finishtimer == 30) playfx(17)
+  end
+
+  -- life bar / sudden death
+  if maxallowed10 > 0 and death == 0 and victory == 0 then
+    local ratio = lifecost10 * inv_maxlife
+    local r2 = ratio * ratio
+    plife = 100 - (r2 * ratio) * 100
+    if plife < 0 then
+      suddendeath = 1
+      finish = 1
+      if finishtimer >= 120 then
+        suddendeath = 0
+        finishtimer = 0
+        death = 1
+      end
+    else
+      if finishtimer < 120 then
+        suddendeath = 0
+        finish = 0
+        finishtimer = 0
+      else
+        death = 1
+        finish = 1
+      end
+    end
+    llife += max(-1, min(1, plife - llife))
+  end
+
+  gtime += 1
 end
 
 function _update()
-  if gameover == 1 then
-    if btnp(4) then
-      gameover = 0
-      score = 0
-      for i = 1, MAXB do
-        sz[i] = 0
-      end
-    end
+  -- no cls(): every screen fully repaints (game = opaque field strips +
+  -- HUD backdrop; main menu = weave band + black fills). Intro is the
+  -- one sparse screen and clears itself.
+  if (intromenu == 1) cls(0)
+  update_audio()
+  if mainmenu == 1 then
+    update_mainmenu()
     return
   end
+  if intromenu == 1 then
+    update_intromenu()
+    return
+  end
+  update_game()
+end
 
-  if (btn(0)) drop_x -= 3
-  if (btn(1)) drop_x += 3
-  drop_x = mid(10, drop_x, 117)
-  if (btnp(4)) drop()
+-- ---------------------------------------------------------------------
+-- draw helpers
+-- ---------------------------------------------------------------------
 
-  overflow = 0
-  for i = 1, MAXB do
-    if sz[i] > 0 then
-      -- gravity + integrate
-      vy[i] += 0.12
-      px[i] += vx[i]
-      py[i] += vy[i]
-      vx[i] *= 0.96
+-- P8 score format: score is points/100, shown as (score*100) .. "0"
+function print_score(v, x, y, c)
+  local iv = flr(v)
+  local fr = flr((v - iv) * 100 + 0.5)
+  iv += fr \ 100
+  fr %= 100
+  local rx = x
+  if iv > 0 then
+    rx = print(iv, rx, y, c)
+    if (fr < 10) rx = print(0, rx, y, c)
+    rx = print(fr, rx, y, c)
+    rx = print(0, rx, y, c)
+  elseif fr > 0 then
+    rx = print(fr, rx, y, c)
+    rx = print(0, rx, y, c)
+  else
+    rx = print(0, rx, y, c)
+  end
+  return rx
+end
 
-      -- walls and floor
-      local r = radii[sz[i]]
-      if px[i] < 3 + r then
-        px[i] = 3 + r
-        vx[i] = -vx[i] * 0.6
+-- rounded HUD panel: corner cells + edge lines matching the cart's
+-- sspr-stretched strips (gtlua has no sspr)
+function draw_panel(x, y, sx, sy)
+  rectfill(x + 8, y + 1, x + sx - 9, y + 1, 13)
+  rectfill(x + 8, y + 2, x + sx - 9, y + 2, 1)
+  rectfill(x + 8, y + sy - 2, x + sx - 9, y + sy - 2, 1)
+  rectfill(x + 8, y + sy - 1, x + sx - 9, y + sy - 1, 5)
+  rectfill(x, y + 8, x, y + sy - 9, 1)
+  rectfill(x + 1, y + 8, x + 1, y + sy - 9, 13)
+  rectfill(x + 2, y + 8, x + 2, y + sy - 9, 1)
+  rectfill(x + sx - 3, y + 8, x + sx - 3, y + sy - 9, 1)
+  rectfill(x + sx - 2, y + 8, x + sx - 2, y + sy - 9, 13)
+  rectfill(x + sx - 1, y + 8, x + sx - 1, y + sy - 9, 1)
+  spr(66, x, y)
+  spr(67, x + sx - 8, y)
+  spr(82, x, y + sy - 8)
+  spr(83, x + sx - 8, y + sy - 8)
+end
+
+-- stamina/life bar; v/m are 0..100 ints; bg < 0 skips the backing strip.
+-- (v*0.3 becomes v*77>>8 = v*0.3008 in cheap int math.)
+function draw_dbar(px, py, v, m, c, c2, bg)
+  local pe = px + (v * 77) \ 256
+  local pe2 = px + (m * 77) \ 256
+  if (bg >= 0) rectfill(px, py, px + 28, py + 2, bg)
+  rectfill(px, py, pe, py + 2, c2)
+  rectfill(px, py, max(px, pe - 1), py + 1, c)
+  if (m > v) rectfill(pe + 1, py, pe2, py + 2, 6)
+end
+
+-- the cart's boldline() is five 130px Bresenham passes (~1.5 vsyncs of
+-- CPU psets); the guide here is a single line — see PORT_NOTES.md
+function draw_boldline(x1, y1, x2, y2, c)
+  line(x1, y1, x2, y2, c)
+end
+
+-- ---------------------------------------------------------------------
+-- draw
+-- ---------------------------------------------------------------------
+
+function draw_mainmenu()
+  local mx = 40
+  local my = 37
+
+  -- checkerboard weave band (cart: map(0,0,0,1,16,16) over a blue fill;
+  -- here 4 composed row-strip blits)
+  spr(240, 0, 17, 16, 1)
+  spr(224, 0, 25, 16, 2)
+  spr(224, 0, 41, 16, 2)
+  spr(224, 0, 57, 16, 2)
+
+  -- title logos fly in (cart repals sprites for shadows + rainbow
+  -- cycling; GameTank blits can't be repalled, so the sheet colors show).
+  -- The sin/t^2 bounce settles by t=4s; skip its divisions after that.
+  local animtime = min(2, menutime) / 2
+  local a2 = animtime * animtime
+  local a4 = a2 * a2
+  local titlex = a4 * a4 * a2
+  local titleb = flr(-32 + 64 * titlex)
+  local titley = my
+  local title2x = flr(134 - 70 * titlex)
+  local title2y = my
+  if menutime < 4 then
+    titley = flr(my + (sin(menutime + 0.3) * 5) / (menutime * menutime))
+    title2y = flr(my + (sin(menutime) * 10) / menutime)
+  end
+  spr(5, titleb, titley, 4, 2)
+  spr(37, title2x, title2y, 4, 2)
+
+  my = 66
+  local second = 50
+
+  rectfill(0, my + 3, 127, 127, 0)
+  rectfill(0, 0, 127, my - second + 2, 0)
+  rect(0, my + 3, 127, my - second + 2, 1)
+
+  print("nusan - p8jam2", mx, 1, 6)
+  print("v4", 116, 122, 1)
+
+  -- marching balls: march accumulator + boot-time per-ball offsets stand
+  -- in for the cart's per-ball %136 and /13 //14 divisions
+  local phbase = 0.0
+  if (menutime > 1.5) phbase = (menutime - 1.5) * 0.4
+  local easein = 0
+  if menutime < 2 then
+    local ease = 1 - menutime / 2
+    easein = flr(136 * (1 - ease * ease)) - 136
+  end
+  local i = 0
+  local bid = 1
+  while i < 14 do
+    local ss = sin(phbase + phase_off[i + 1])
+    local avance = menu_march + (ss << 2) + ss + march_off[i + 1] - 4
+    if (avance >= 132) avance -= 136
+    if (avance >= 132) avance -= 136
+    local bx = flr(avance) + easein
+    draw_ball_spr(bx, my, bid)
+    draw_ball_spr(128 - bx, my - second, bid)
+    bid += 1
+    if (bid > 7) bid = 1
+    i += 1
+  end
+
+  my = 77
+
+  draw_panel(mx - 7, my + 3, 61, 48)
+
+  i = 1
+  while i <= 4 do
+    local ty = my + i * 10
+    if i == menuselect + 1 then
+      local ls = lastselect
+      local selw = 50 - (ls * ls * ls) \ 540
+      rectfill(mx - 2, ty - 2, mx - 2 + selw, ty + 6, 1)
+      if (i == 1) print("endless", mx, ty, 7)
+      if (i == 2) print("easy", mx, ty, 7)
+      if (i == 3) print("normal", mx, ty, 7)
+      if (i == 4) print("hard", mx, ty, 7)
+    else
+      if (i == 1) print("endless", mx, ty, 13)
+      if (i == 2) print("easy", mx, ty, 13)
+      if (i == 3) print("normal", mx, ty, 13)
+      if (i == 4) print("hard", mx, ty, 13)
+    end
+    i += 1
+  end
+end
+
+function draw_intromenu()
+  local mx = 2
+  local my = 1
+  if (menuselect == 0) my = 24
+  print("goal", 56, my, 7)
+  my += 10
+  print("merge two balls of same color", mx, my, 6)
+  print("to transform them to next color", mx, my + 7, 6)
+
+  my += 24
+  rectfill(0, my - 10, 127, my + 18, 1)
+
+  local i = 1
+  while i <= 7 do
+    local bx = i * 16 - 9
+    spr(50, bx + 4, my + 1)
+    draw_ball_spr(bx, my, i)
+    draw_ball_spr(bx, my + 9, i)
+    i += 1
+  end
+
+  print("?", 119, my + 2, 6)
+
+  if menuselect > 0 then
+    my += 26
+    print("avoid keeping too much balls", mx, my, 6)
+    print("or your life will end soon", mx, my + 7, 6)
+    my += 17
+    rectfill(25, my - 2, 105, my + 13, 1)
+    draw_dbar(29, my + 2, 60, 60, 8, 2, 0)
+    spr(50, 60, my + 1)
+    spr(12, 70, my, 4, 2)
+    draw_dbar(71, my + 2, 15, 15, 8, 2, 7)
+  end
+
+  my += 21
+  print("hold the launch button", mx, my, 6)
+  print("to use precise rotations", mx, my + 7, 6)
+
+  local arrow = 52
+  if (gtime \ 4 % 6 == 0) arrow = 51
+  spr(arrow, 104, my + 4)
+
+  local blinkc = 5
+  if (gtime \ 8 % 2 == 0) blinkc = 7
+  print("press to start", 36, my + 20, blinkc)
+end
+
+function draw_game()
+  -- static field: composed sheet strips (top border, 13 woven lattice
+  -- rows, bottom border) — 9 wide blits instead of ~90 primitives.
+  -- Fully opaque, so no cls() is needed in game mode.
+  spr(208, 0, 0, 16, 1)
+  spr(224, 0, 8, 16, 2)
+  spr(224, 0, 24, 16, 2)
+  spr(224, 0, 40, 16, 2)
+  spr(224, 0, 56, 16, 2)
+  spr(224, 0, 72, 16, 2)
+  spr(224, 0, 88, 16, 2)
+  spr(224, 0, 104, 16, 1)
+  spr(192, 0, 112, 16, 1)
+
+  -- sudden-death flicker (cart tints its persistent trail noise red)
+  if suddendeath == 1 then
+    local k = 0
+    while k < 3 do
+      circfill(8 + rnd(112), 8 + rnd(104), 2, 2)
+      pset(8 + rnd(112), 8 + rnd(104), 2)
+      pset(8 + rnd(112), 8 + rnd(104), 2)
+      k += 1
+    end
+  end
+
+  -- ball motion trails (approximates the cart's framebuffer smears)
+  local i = 1
+  while i <= 28 do
+    if ballc[i] > 0 then
+      local txi = flr(trailx[i])
+      local tyi = flr(traily[i])
+      local mvx = flr(ballx[i]) - txi
+      local mvy = flr(bally[i]) - tyi
+      if abs(mvx) + abs(mvy) >= 2 then
+        spr(trailspr[ballc[i]], txi - 3, tyi - 3)
       end
-      if px[i] > 124 - r then
-        px[i] = 124 - r
-        vx[i] = -vx[i] * 0.6
+      if gtime % 2 == 0 then
+        trailx[i] = ballx[i]
+        traily[i] = bally[i]
       end
-      if py[i] > 124 - r then
-        py[i] = 124 - r
-        vy[i] = -vy[i] * 0.4
-        if (abs(vy[i]) < 0.3) vy[i] = 0
-      end
+    end
+    i += 1
+  end
 
-      -- overflow check: resting above the line
-      if py[i] - r < 18 and abs(vy[i]) < 0.4 then
-        overflow += 1
+  -- aim guide (cart: 5-pass boldline over the trail layer, under the map;
+  -- the strips are opaque so it draws over the lattice in the same color)
+  if finish == 0 then
+    draw_boldline(launch_x, launch_y, flr(launch_x + launch_dx * 90),
+                  flr(launch_y + launch_dy * 90), 1)
+  end
+
+  -- balls (baked composite: shadow + backdrop + drawball discs)
+  local blinkon = 0
+  if (gtime \ 8 % 2 == 0) blinkon = 1
+  i = 1
+  while i <= 28 do
+    if ballc[i] > 0 then
+      local xi = flr(ballx[i])
+      local yi = flr(bally[i])
+      local hot = 0
+      if (ballc[i] == 7) hot = 1
+      if (ballmul[i] >= 8 and balllm[i] > 30) hot = 1
+      if hot == 1 and blinkon == 1 then
+        draw_ball_blink(xi, yi, ballc[i])
+      else
+        draw_ball_spr(xi, yi, ballc[i])
+      end
+      if displaynumber == 1 then
+        print(ballc[i], xi - 1, yi - 2, 0)
+      end
+    end
+    i += 1
+  end
+
+  rectfill(0, 119, 127, 127, 0)
+
+  if finish == 0 then
+    -- HUD panels: one composed 56x16 sheet image each (transparent
+    -- interior, like the cart's corner cells + stretched edges)
+    spr(68, 0, 112, 7, 2)
+
+    local maxcol = 13
+    if (newmaxtimer > 0 and newmaxtimer \ 4 % 2 == 0) maxcol = 7
+    print_score(maxballscore, 5, 115, maxcol)
+    local scorecol = 13
+    if (newscoretimer > 0 and newscoretimer \ 4 % 2 == 0) scorecol = 7
+    print_score(score, 5, 121, scorecol)
+
+    local a2 = newballappear * newballappear
+    local ballmenuy = 130 - (a2 * 12) \ 100
+
+    local bscol = 13
+    if (newballscoretimer > 0 and newballscoretimer \ 4 % 2 == 0) bscol = 7
+    local rx = print("+", 80, ballmenuy, bscol)
+    print_score(ballscore, rx, ballmenuy, bscol)
+    local digits = 1
+    if (ballmult >= 10) digits = 2
+    if (ballmult >= 100) digits = 3
+    if (ballmult >= 1000) digits = 4
+    rx = print("x", 124 - (digits + 1) * 4, ballmenuy, bscol)
+    print(ballmult, rx, ballmenuy, bscol)
+
+    spr(68, 72, 112, 7, 2)
+
+    if newmaxappear > 0 then
+      local sl = 60 - newmaxappear
+      spr(44, 2 - ((sl * sl \ 4) * 33) \ 900, 103, 4, 2)
+    end
+
+    if suddendeath == 0 then
+      line(launch_x, launch_y, flr(launch_x + launch_dx * 20),
+           flr(launch_y + launch_dy * 20), 13)
+      draw_ball_launcher(launch_x, launch_y, launch_next)
+
+      draw_dbar(50, 124, flr(max(0, pstam)), flr(lstam), 13, 5, 1)
+      if maxallowed10 > 0 then
+        local warn = 0
+        if (lifecost10 + 40 > maxallowed10) warn = 1
+        if (warn == 1) spr(12, 49, 0, 4, 2)
+        local lifebg = 0
+        if (warn == 1) lifebg = 7
+        draw_dbar(50, 2, flr(max(0, plife)), flr(llife), 8, 2, lifebg)
       end
     end
   end
 
-  -- pairwise collide / merge (coarse reject in cheap int math first)
-  for i = 1, MAXB do
-    if sz[i] > 0 then
-      for j = 1, MAXB do
-        if j > i and sz[j] > 0 then
-          local rr = radii[sz[i]] + radii[sz[j]]
-          local dxi = flr(px[j]) - flr(px[i])
-          local dyi = flr(py[j]) - flr(py[i])
-          if abs(dxi) <= rr and abs(dyi) <= rr and dxi * dxi + dyi * dyi < rr * rr then
-            local dx = px[j] - px[i]
-            local dy = py[j] - py[i]
-            local d2 = dx * dx + dy * dy
-            if sz[i] == sz[j] and sz[i] < 5 then
-              -- merge j into i
-              sz[i] += 1
-              score += sz[i] * sz[i]
-              px[i] = (px[i] + px[j]) / 2
-              py[i] = (py[i] + py[j]) / 2
-              vy[i] = -1.2
-              sz[j] = 0
-            else
-              -- push apart + exchange a little velocity
-              local d = sqrt(d2)
-              if (d < 0.25) d = 0.25
-              local nx = dx / d
-              local ny = dy / d
-              local push = (rr - d) / 2
-              px[i] -= nx * push
-              py[i] -= ny * push
-              px[j] += nx * push
-              py[j] += ny * push
-              local tvx = vx[i]
-              local tvy = vy[i]
-              vx[i] = vx[i] * 0.4 + vx[j] * 0.5
-              vy[i] = vy[i] * 0.4 + vy[j] * 0.5
-              vx[j] = vx[j] * 0.4 + tvx * 0.5
-              vy[j] = vy[j] * 0.4 + tvy * 0.5
-            end
-          end
-        end
-      end
+  -- particles + score popups
+  for p in all(parts) do
+    if p.c == 3 then
+      circfill(p.x, p.y, 10 - p.t * 20, 8 + p.spread)
+    elseif p.c == 2 then
+      circ(p.x, p.y, 7 - p.t * 24, 7)
     end
   end
+  -- score popups (cart: 4-direction outline; a drop shadow costs 2 print
+  -- calls instead of 10 — see PORT_NOTES.md)
+  for p in all(texts) do
+    local px = flr(p.x)
+    local py = flr(p.y)
+    local rx = print(p.val, px + 1, py + 1, 0)
+    print("0", rx, py + 1, 0)
+    rx = print(p.val, px, py, 7)
+    print("0", rx, py, 7)
+  end
 
-  if (overflow >= 3) gameover = 1
+  if finish == 1 then
+    local gx = 16
+    local gy = 128 - min(96, finishtimer)
+
+    if suddendeath == 1 then
+      print("sudden death : ", 33, 120, 8)
+      print(120 - finishtimer, 92, 120, 8)
+    else
+      rectfill(gx + 3, gy + 3, gx + 94, gy + 61, 0)
+      draw_panel(gx, gy, 97, 64)
+      if death == 1 then
+        local rx = print("game over : ", 30, gy + 6, 7)
+        if (menuselect == 0) print("endless", rx, gy + 6, 7)
+        if (menuselect == 1) print("easy", rx, gy + 6, 7)
+        if (menuselect == 2) print("normal", rx, gy + 6, 7)
+        if (menuselect == 3) print("hard", rx, gy + 6, 7)
+      else
+        local rx = print("victory : ", 34, gy + 6, 7)
+        if (menuselect == 0) print("endless", rx, gy + 6, 7)
+        if (menuselect == 1) print("easy", rx, gy + 6, 7)
+        if (menuselect == 2) print("normal", rx, gy + 6, 7)
+        if (menuselect == 3) print("hard", rx, gy + 6, 7)
+      end
+      local rx = print("final score: ", gx + 5, gy + 18, 6)
+      print_score(score, rx, gy + 18, 6)
+      rx = print("max ball: ", gx + 5, gy + 24, 6)
+      print_score(maxballscore, rx, gy + 24, 6)
+      rx = print("last ball: ", gx + 5, gy + 30, 6)
+      print_score(ballscore, rx, gy + 30, 6)
+      rx = print("max multiplyer: ", gx + 5, gy + 36, 6)
+      rx = print(maxmult, rx, gy + 36, 6)
+      print("x", rx, gy + 36, 6)
+      rx = print("ball count: ", gx + 5, gy + 42, 6)
+      print(ballidx, rx, gy + 42, 6)
+    end
+
+    if (death == 1 or victory == 1) and finishtimer > 60 then
+      local blinkc = 5
+      if (gtime \ 8 % 2 == 0) blinkc = 7
+      print("press to restart", 32, gy + 53, blinkc)
+    end
+  end
 end
 
 function _draw()
-  cls(1)
-
-  -- pool walls
-  rectfill(0, 12, 2, 127, 5)
-  rectfill(125, 12, 127, 127, 5)
-  rectfill(0, 125, 127, 127, 5)
-  -- overflow line
-  line(3, 18, 124, 18, 2)
-
-  if gameover == 1 then
-    rectfill(20, 52, 107, 76, 8)
-    rect(20, 52, 107, 76, 7)
-    rectfill(26, 62, 26 + mid(0, score \ 8, 76), 66, 10)
+  if mainmenu == 1 then
+    draw_mainmenu()
     return
   end
+  if intromenu == 1 then
+    draw_intromenu()
+    return
+  end
+  draw_game()
+end
 
-  -- marbles
-  for i = 1, MAXB do
-    if sz[i] > 0 then
-      local x = flr(px[i])
-      local y = flr(py[i])
-      circfill(x, y, radii[sz[i]], cols[sz[i]])
-      circ(x, y, radii[sz[i]], 7)
-      pset(x - radii[sz[i]] \ 2, y - radii[sz[i]] \ 2, 7)
-    end
+-- ---------------------------------------------------------------------
+-- init
+-- ---------------------------------------------------------------------
+
+function _init()
+  bpal[1] = 1
+  bpal[2] = 13
+  bpal[3] = 6
+  bpal[4] = 9
+  bpal[5] = 10
+  bpal[6] = 8
+  bpal[7] = 14
+  bpal2[1] = 13
+  bpal2[2] = 6
+  bpal2[3] = 7
+  bpal2[4] = 15
+  bpal2[5] = 7
+  bpal2[6] = 14
+  bpal2[7] = 15
+  bpal3[1] = 0
+  bpal3[2] = 1
+  bpal3[3] = 13
+  bpal3[4] = 4
+  bpal3[5] = 9
+  bpal3[6] = 2
+  bpal3[7] = 2
+
+  ballvalue[1] = 1
+  ballvalue[2] = 2
+  ballvalue[3] = 3
+  ballvalue[4] = 5
+  ballvalue[5] = 10
+  ballvalue[6] = 20
+  ballvalue[7] = 100
+
+  ballcost10[1] = 40
+  ballcost10[2] = 35
+  ballcost10[3] = 30
+  ballcost10[4] = 20
+  ballcost10[5] = 15
+  ballcost10[6] = 10
+  ballcost10[7] = 0
+
+  lifes10[1] = 0
+  lifes10[2] = 500
+  lifes10[3] = 400
+  lifes10[4] = 340
+
+  -- sfx approximations (id -> len, frames/note, volume, base, shape)
+  arp3[1] = 0
+  arp3[2] = 4
+  arp3[3] = 7
+  fxlen[9] = 2
+  fxrate[9] = 1
+  fxvol[9] = 30
+  fxbase[9] = 47
+  fxslide[9] = 5
+  fxarp[9] = 0
+  fxlen[10] = 4
+  fxrate[10] = 1
+  fxvol[10] = 45
+  fxbase[10] = 52
+  fxslide[10] = 4
+  fxarp[10] = 0
+  fxlen[11] = 2
+  fxrate[11] = 1
+  fxvol[11] = 22
+  fxbase[11] = 86
+  fxslide[11] = -2
+  fxarp[11] = 0
+  fxlen[12] = 3
+  fxrate[12] = 2
+  fxvol[12] = 55
+  fxbase[12] = 57
+  fxslide[12] = 0
+  fxarp[12] = 1
+  fxlen[13] = 3
+  fxrate[13] = 2
+  fxvol[13] = 50
+  fxbase[13] = 50
+  fxslide[13] = 0
+  fxarp[13] = 1
+  fxlen[14] = 3
+  fxrate[14] = 2
+  fxvol[14] = 60
+  fxbase[14] = 64
+  fxslide[14] = 0
+  fxarp[14] = 1
+  fxlen[15] = 12
+  fxrate[15] = 1
+  fxvol[15] = 70
+  fxbase[15] = 70
+  fxslide[15] = -3
+  fxarp[15] = 0
+  fxlen[17] = 6
+  fxrate[17] = 3
+  fxvol[17] = 60
+  fxbase[17] = 60
+  fxslide[17] = 0
+  fxarp[17] = 1
+
+  -- contact-math reciprocal table: invsq[m] ~ 1/sqrdist for
+  -- sqrdist = (m-0.5)/2 (the only per-frame divisions left are here,
+  -- paid once at boot)
+  local m = 1
+  while m <= 128 do
+    invsq[m] = 1 / (m - 0.5)
+    invsq[m] += invsq[m]
+    m += 1
   end
 
-  -- dropper + next marble
-  rectfill(drop_x - 1, 0, drop_x + 1, 6, 6)
-  circfill(drop_x, 10, radii[next_sz], cols[next_sz])
-  circ(drop_x, 10, radii[next_sz], 7)
+  -- marching-ball per-ball constants (cart: i*136/14 and i/13)
+  m = 0
+  while m < 14 do
+    march_off[m + 1] = (m * 136) / 14
+    phase_off[m + 1] = m / 13
+    m += 1
+  end
 
-  -- score bar
-  rectfill(0, 0, mid(0, score \ 8, 127), 1, 10)
+  -- free single cells for the 7 trail stamps (rows 0-1 gaps)
+  trailspr[1] = 3
+  trailspr[2] = 4
+  trailspr[3] = 9
+  trailspr[4] = 10
+  trailspr[5] = 11
+  trailspr[6] = 25
+  trailspr[7] = 26
+
+  bake_sprites()
+  reset_game()
 end

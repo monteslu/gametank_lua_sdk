@@ -116,27 +116,46 @@ static void enter_spr_mode(void) {
     draw_mode = MODE_SPR;
 }
 
+/* framebuffer row start addresses (ROM table: vram is fixed at $4000) */
+#define VR(n) (unsigned char *)(0x4000 + ((n) << 7))
+#define VR8(n) VR(n), VR(n+1), VR(n+2), VR(n+3), VR(n+4), VR(n+5), VR(n+6), VR(n+7)
+static unsigned char *const vram_row[128] = {
+    VR8(0),   VR8(8),   VR8(16),  VR8(24),  VR8(32),  VR8(40),  VR8(48),  VR8(56),
+    VR8(64),  VR8(72),  VR8(80),  VR8(88),  VR8(96),  VR8(104), VR8(112), VR8(120),
+};
+
 /* print: 3x5 glyphs via CPU writes; returns the x after the last glyph
- * (the PICO-8 width-measuring idiom). Clipped per pixel. */
+ * (the PICO-8 width-measuring idiom). Fully-visible glyphs take a fast
+ * row-pointer walk; edge glyphs fall back to per-pixel clipping. */
 int gt_p8_print(const char *str, int x, int y, int c) {
     unsigned char col = resolve_color(c);
     unsigned char row, bits;
     const unsigned char *g;
+    unsigned char *p;
     x -= cam_x;
     y -= cam_y;
     enter_cpu_mode();
     while (*str) {
         g = gt_font[gt_glyph(*str)];
-        for (row = 0; row < 5; ++row) {
-            int py = y + row;
-            if (py < 0 || py > 127) continue;
-            bits = g[row];
-            if ((bits & 4) && x >= 0 && x <= 127)
-                vram[((unsigned int)py << 7) | (unsigned int)x] = col;
-            if ((bits & 2) && x + 1 >= 0 && x + 1 <= 127)
-                vram[((unsigned int)py << 7) | (unsigned int)(x + 1)] = col;
-            if ((bits & 1) && x + 2 >= 0 && x + 2 <= 127)
-                vram[((unsigned int)py << 7) | (unsigned int)(x + 2)] = col;
+        if (x >= 0 && x <= 125 && y >= 0 && y <= 123) {
+            /* fast path: the whole 3x5 glyph is on screen */
+            p = vram_row[(unsigned char)y] + x;
+            for (row = 0; row < 5; ++row) {
+                bits = g[row];
+                if (bits & 4) p[0] = col;
+                if (bits & 2) p[1] = col;
+                if (bits & 1) p[2] = col;
+                p += 128;
+            }
+        } else if (x >= -2 && x <= 127 && y >= -4 && y <= 127) {
+            for (row = 0; row < 5; ++row) {
+                int py = y + row;
+                if (py < 0 || py > 127) continue;
+                bits = g[row];
+                if ((bits & 4) && x >= 0 && x <= 127) vram_row[py][x] = col;
+                if ((bits & 2) && x + 1 >= 0 && x + 1 <= 127) vram_row[py][x + 1] = col;
+                if ((bits & 1) && x + 2 >= 0 && x + 2 <= 127) vram_row[py][x + 2] = col;
+            }
         }
         x += 4;
         ++str;
@@ -284,7 +303,7 @@ void gt_p8_rect(int x0, int y0, int x1, int y1, int c) {
 static void pset_raw(int x, int y, unsigned char col) {
     if (x < 0 || x > 127 || y < 0 || y > 127) return;
     enter_cpu_mode();
-    vram[((unsigned int)y << 7) | (unsigned int)x] = col;
+    vram_row[(unsigned char)y][(unsigned char)x] = col;
 }
 
 void gt_p8_pset(int x, int y, int c) {

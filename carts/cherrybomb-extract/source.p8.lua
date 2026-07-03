@@ -819,4 +819,897 @@ function draw_game()
  for mypick in all(pickups) do
   local mycol=7
   if t%4<2 then
+   mycol=14
+  end
+  for i=1,15 do
+   pal(i,mycol)
+  end
+  drwoutline(mypick)
+  pal()
+  drwmyspr(mypick)
+ end
+ 
+ --drawing enemies
+ for myen in all(enemies) do
+  if myen.flash>0 then
+   if t%4<2 then
+    pal(3,8)
+    pal(11,14)
+   end
+   myen.flash-=1
+   if myen.boss then
+    myen.spr=80
+   else
+    for i=1,15 do
+     pal(i,7)
+    end
+   end
+  end
+  drwmyspr(myen)
+  pal()
+ end
+  
+ --drawing bullets
+ for mybul in all(buls) do
+  drwmyspr(mybul)
+ end
+ 
+ if muzzle>0 then
+  circfill(ship.x+3,ship.y-2,muzzle,7)
+  circfill(ship.x+4,ship.y-2,muzzle,7)
+ end
+ 
+ --drawing shwaves
+ for mysw in all(shwaves) do
+  circ(mysw.x,mysw.y,mysw.r,mysw.col)
+  mysw.r+=mysw.speed
+  if mysw.r>mysw.tr then
+   del(shwaves,mysw)
+  end
+ end
+ 
+ --drawing particles
+ for myp in all(parts) do
+  local pc=7
+
+  if myp.blue then
+   pc=page_blue(myp.age)
+  else
+   pc=page_red(myp.age)
+  end
+  
+  if myp.spark then
+   pset(myp.x,myp.y,7)
+  else
+   circfill(myp.x,myp.y,myp.size,pc)
+  end
+  
+  myp.x+=myp.sx
+  myp.y+=myp.sy
+  
+  myp.sx=myp.sx*0.85
+  myp.sy=myp.sy*0.85
+  
+  myp.age+=1
+  
+  if myp.age>myp.maxage then
+   myp.size-=0.5
+   if myp.size<0 then
+    del(parts,myp)
+   end
+  end
+ end
+ 
+ --drawing ebuls
+ for myebul in all(ebuls) do
+  drwmyspr(myebul)
+ end
+ 
+ --floats
+ for myfl in all(floats) do
+  local mycol=7
+  if t%4<2 then
+   mycol=8
+  end
+  cprint(myfl.txt,myfl.x,myfl.y,mycol)
+  myfl.y-=0.5
+  myfl.age+=1
+  if myfl.age>60 then
+   del(floats,myfl)
+  end
+ end
+ 
+ print("score:"..makescore(score),40,2,12)
+ 
+ for i=1,4 do
+  if lives>=i then
+   spr(37,i*9-8,1)
+  else
+   spr(38,i*9-8,1)
+  end 
+ end
+
+ spr(48,108,1)
+ print(cher,118,2,14)
+ 
+ --print(#buls,5,5,7)
+end
+
+function makescore(val)
+ if val==0 then
+  return "0"
+ end
+ return val.."00"
+end
+
+function draw_start()
+ cls(0)
+ starfield()
+ print(version,1,1,1)
+
+ spr(21,peekerx,28+sin(time()/3.5)*4 )
+ if sin(time()/3.5)>0.5 then
+  peekerx=30+rnd(60)
+ end
    
+ spr(212,17,30,12,2)
+ cprint("short shwave shmup",64,45,6)
+ 
+ if highscore>0 then
+  cprint("highscore:",64,63,12)
+  cprint(makescore(highscore),64,69,12)
+ end
+
+ cprint("press any key to start",64,90,blink())
+ 
+ rectfill(0,115,128,128,1)
+ cprint("learn how to make this game!",64,116,12)
+ cprint("bit.ly/shmupme",64,122,12)
+ 
+end
+
+function draw_over()
+ draw_game()
+ cprint("game over",64,40,8) 
+ 
+ cprint("score:"..makescore(score),64,60,12)
+ if score>highscore then
+  local c=7
+  if t%4<2 then
+   c=10
+  end
+  cprint("new highscore!",64,66,c) 
+ end
+ 
+ cprint("press any key to continue",64,90,blink())
+end
+
+function draw_win()
+ draw_game()
+ cprint("congratulations",64,40,12)
+ cprint("score:"..makescore(score),64,60,12)
+
+ if score>highscore then
+  local c=7
+  if t%4<2 then
+   c=10
+  end
+  cprint("new highscore!",64,66,c) 
+ end
+
+ cprint("press any key to continue",64,90,blink())
+end
+
+function draw_wavetext()
+ draw_game()
+ if wave==lastwave then
+  cprint("final wave!",64,40,blink())
+ else
+  cprint("wave "..wave.." of "..lastwave,64,40,blink())
+ end
+end
+-->8
+-- waves and enemies
+
+function spawnwave()
+ if wave<lastwave then
+  sfx(28)
+ else
+  music(10)
+ end
+ 
+ if wave==1 then
+  --space invaders
+  attacfreq=60
+  firefreq=20
+  placens({
+   {0,1,1,1,1,1,1,1,1,0},
+   {0,1,1,1,1,1,1,1,1,0},
+   {0,1,1,1,1,1,1,1,1,0},
+   {0,1,1,1,1,1,1,1,1,0}
+  })
+ elseif wave==2 then
+  --red tutorial
+  attacfreq=60
+  firefreq=20
+  placens({
+   {1,1,2,2,1,1,2,2,1,1},
+   {1,1,2,2,1,1,2,2,1,1},
+   {1,1,2,2,2,2,2,2,1,1},
+   {1,1,2,2,2,2,2,2,1,1}
+  })
+ elseif wave==3 then
+  --wall of red
+  attacfreq=50
+  firefreq=20
+  placens({
+   {1,1,2,2,1,1,2,2,1,1},
+   {1,1,2,2,2,2,2,2,1,1},
+   {2,2,2,2,2,2,2,2,2,2},
+   {2,2,2,2,2,2,2,2,2,2}
+  })
+ elseif wave==4 then
+  --spin tutorial
+  attacfreq=50
+  firefreq=15
+  placens({
+   {3,3,0,1,1,1,1,0,3,3},
+   {3,3,0,1,1,1,1,0,3,3},
+   {3,3,0,1,1,1,1,0,3,3},
+   {3,3,0,1,1,1,1,0,3,3}
+  })
+ elseif wave==5 then
+  --chess
+  attacfreq=50
+  firefreq=15
+  placens({
+   {3,1,3,1,2,2,1,3,1,3},
+   {1,3,1,2,1,1,2,1,3,1},
+   {3,1,3,1,2,2,1,3,1,3},
+   {1,3,1,2,1,1,2,1,3,1}
+  })
+ elseif wave==6 then
+  --yellow tutorial
+  attacfreq=40
+  firefreq=10
+  placens({
+   {2,2,2,0,4,0,0,2,2,2},
+   {2,2,0,0,0,0,0,0,2,2},
+   {1,1,0,1,1,1,1,0,1,1},
+   {1,1,0,1,1,1,1,0,1,1}
+  })
+  
+ elseif wave==7 then
+  --double yellow
+  attacfreq=40
+  firefreq=10
+  placens({
+   {3,3,0,1,1,1,1,0,3,3},
+   {4,0,0,2,2,2,2,0,4,0},
+   {0,0,0,2,1,1,2,0,0,0},
+   {1,1,0,1,1,1,1,0,1,1}
+  })
+ elseif wave==8 then
+  --hell
+  attacfreq=30
+  firefreq=10
+  placens({
+   {0,0,1,1,1,1,1,1,0,0},
+   {3,3,1,1,1,1,1,1,3,3},
+   {3,3,2,2,2,2,2,2,3,3},
+   {3,3,2,2,2,2,2,2,3,3}
+  })
+ elseif wave==9 then
+  --boss
+  attacfreq=60
+  firefreq=20
+  placens({
+   {0,0,0,0,5,0,0,0,0,0},
+   {0,0,0,0,0,0,0,0,0,0},
+   {0,0,0,0,0,0,0,0,0,0},
+   {0,0,0,0,0,0,0,0,0,0}
+  })
+ end  
+end
+
+function placens(lvl)
+
+ for y=1,4 do
+  local myline=lvl[y]
+  for x=1,10 do
+   if myline[x]!=0 then
+    spawnen(myline[x],x*12-6,4+y*12,x*3)
+   end
+  end
+ end
+ 
+end
+
+function nextwave()
+ wave+=1
+ 
+ if wave>lastwave then
+  mode="win"
+  lockout=t+30
+  music(4)
+ else
+  if wave==1 then
+   music(0)
+  else
+   music(3)  
+  end
+  
+  mode="wavetext"
+  wavetime=80
+ end
+
+end
+
+function spawnen(entype,enx,eny,enwait)
+ local myen=makespr()
+ myen.x=enx*1.25-16
+ myen.y=eny-66
+ 
+ myen.posx=enx
+ myen.posy=eny
+ 
+ myen.type=entype
+ 
+ myen.wait=enwait
+
+ myen.anispd=0.4
+ 
+ myen.mission="flyin"
+ 
+ if entype==nil or entype==1 then
+  -- green alien
+  myen.spr=21
+  myen.hp=3
+  myen.ani={21,22,23,24}
+  myen.score=1
+ elseif entype==2 then
+  -- red flame guy
+  myen.spr=148
+  myen.hp=2
+  myen.ani={148,149}
+  myen.score=2
+ elseif entype==3 then
+  -- spinning ship
+  myen.spr=184
+  myen.hp=4
+  myen.ani={184,185,186,187}
+  myen.score=3
+ elseif entype==4 then
+  -- yellow guy
+  myen.spr=208
+  myen.hp=20
+  myen.ani={208,210}
+  myen.sprw=2
+  myen.sprh=2
+  myen.colw=16
+  myen.colh=16
+  myen.score=5
+ elseif entype==5 then
+  myen.hp=130
+  myen.spr=84
+  myen.ani={84,88,92,88}
+  myen.sprw=4
+  myen.sprh=3
+  myen.colw=32
+  myen.colh=24
+  
+  myen.x=48
+  myen.y=-24
+  myen.posx=48
+  myen.posy=25
+  
+  myen.boss=true
+ end
+  
+ add(enemies,myen)
+end
+-->8
+--behavior
+
+function doenemy(myen)
+ if myen.wait>0 then
+  myen.wait-=1
+  return
+ end
+ 
+ --debug=myen.hp
+ 
+ if myen.mission=="flyin" then
+  --flying in
+  --basic easing function
+  --x+=(targetx-x)/n
+  
+  local dx=(myen.posx-myen.x)/7
+  local dy=(myen.posy-myen.y)/7
+  
+  if myen.boss then
+   dy=min(dy,1)
+  end
+  myen.x+=dx
+  myen.y+=dy
+  
+  if abs(myen.y-myen.posy)<0.7 then
+   myen.y=myen.posy
+   myen.x=myen.posx
+   if myen.boss then
+    sfx(50)
+    myen.shake=20
+    myen.wait=28
+    myen.mission="boss1"
+    myen.phbegin=t
+   else
+    myen.mission="protec"
+   end
+  end
+  
+ elseif myen.mission=="protec" then
+  -- staying put
+ elseif myen.mission=="boss1" then
+  boss1(myen)
+ elseif myen.mission=="boss2" then
+  boss2(myen)
+ elseif myen.mission=="boss3" then
+  boss3(myen)
+ elseif myen.mission=="boss4" then
+  boss4(myen)
+ elseif myen.mission=="boss5" then
+  boss5(myen)
+ elseif myen.mission=="attac" then  
+  -- attac
+  if myen.type==1 then
+   --green guy
+   myen.sy=1.7
+   myen.sx=sin(t/45)
+   
+   -- just tweaks
+   if myen.x<32 then
+    myen.sx+=1-(myen.x/32)
+   end
+   if myen.x>88 then
+    myen.sx-=(myen.x-88)/32
+   end
+  elseif myen.type==2 then
+   --red guy
+   myen.sy=2.5
+   myen.sx=sin(t/20)
+   
+   -- just tweaks
+   if myen.x<32 then
+    myen.sx+=1-(myen.x/32)
+   end
+   if myen.x>88 then
+    myen.sx-=(myen.x-88)/32
+   end   
+   
+  elseif myen.type==3 then
+   --spinny ship
+   if myen.sx==0 then
+    --flying down
+    myen.sy=2
+    if ship.y<=myen.y then
+     myen.sy=0
+     if ship.x<myen.x then
+      myen.sx=-2
+     else
+      myen.sx=2
+     end
+    end
+   end
+   
+  elseif myen.type==4 then
+   --yellow ship
+   myen.sy=0.35
+   if myen.y>110 then
+    myen.sy=1
+   else
+    
+    if t%25==0 then
+     firespread(myen,8,1.3,rnd())
+    end
+   end   
+  end
+  
+  move(myen)
+ end
+  
+end
+
+function picktimer()
+ if mode!="game" then
+  return
+ end
+
+ if t>nextfire then
+  pickfire()
+  nextfire=t+firefreq+rnd(firefreq)
+ end
+ 
+ if t%attacfreq==0 then
+  pickattac()
+ end
+end
+
+function pickattac()
+ local maxnum=min(10,#enemies)
+ local myindex=flr(rnd(maxnum))
+ 
+ myindex=#enemies-myindex
+ local myen=enemies[myindex]
+ if myen==nil then return end
+ 
+ if myen.mission=="protec" then
+  myen.mission="attac"
+  myen.anispd*=3
+  myen.wait=60
+  myen.shake=60
+ end
+end
+
+function pickfire()
+ local maxnum=min(10,#enemies)
+ local myindex=flr(rnd(maxnum))
+ 
+ for myen in all(enemies) do
+  if myen.type==4 and myen.mission=="protec" then
+   if rnd()<0.5 then
+    firespread(myen,12,1.3,rnd())
+    return
+   end
+  end
+ end
+ 
+ myindex=#enemies-myindex
+ local myen=enemies[myindex]
+ if myen==nil then return end
+ 
+ if myen.mission=="protec" then
+  if myen.type==4 then
+   --yellow guy
+   firespread(myen,12,1.3,rnd())
+  elseif myen.type==2 then
+   --red guy
+   aimedfire(myen,2)
+  else
+   fire(myen,0,2)
+  end
+ end
+end
+
+
+function move(obj)
+ obj.x+=obj.sx
+ obj.y+=obj.sy
+end
+
+function killen(myen)
+ if myen.boss then
+  myen.mission="boss5"
+  myen.phbegin=t
+  myen.ghost=true
+  ebuls={}
+  music(-1)
+  sfx(51)
+  return
+ end
+
+ del(enemies,myen)   
+ sfx(2)
+ 
+
+ explode(myen.x+4,myen.y+4)
+ local cherchance=0.1
+ local scoremult=1
+ 
+ if myen.mission=="attac" then
+  scoremult=2
+  if rnd()<0.5 then
+   pickattac()
+  end
+  cherchance=0.2
+ end
+ 
+ score+=myen.score*scoremult
+ if scoremult!=1 then
+  popfloat(makescore(myen.score*scoremult),myen.x+4,myen.y+4)
+ end
+ 
+ if rnd()<cherchance then
+  dropickup(myen.x,myen.y)
+ end
+end
+
+function dropickup(pix,piy)
+ local mypick=makespr()
+ mypick.x=pix
+ mypick.y=piy
+ mypick.sy=0.75
+ mypick.spr=48
+ add(pickups,mypick)
+end
+
+function plogic(mypick)
+ cher+=1
+ smol_shwave(mypick.x+4,mypick.y+4,14)
+ if cher>=10 then
+  --get a life
+  if lives<4 then
+   lives+=1
+   sfx(31)
+   cher=0
+   popfloat("1up!",mypick.x+4,mypick.y+4)
+  else
+   --points
+   score+=50
+   popfloat(makescore(50),mypick.x+4,mypick.y+4)
+   sfx(30)
+   cher=0
+  end
+ else
+  sfx(30)
+ end
+end
+
+function animate(myen)
+ myen.aniframe+=myen.anispd
+ if flr(myen.aniframe) > #myen.ani then
+  myen.aniframe=1
+ end
+ myen.spr=myen.ani[flr(myen.aniframe)]
+end
+-->8
+--bullets
+
+function fire(myen,ang,spd)
+ local myebul=makespr()
+ myebul.x=myen.x+3
+ myebul.y=myen.y+6
+ 
+ if myen.type==4 then
+  myebul.x=myen.x+7
+  myebul.y=myen.y+13
+ elseif myen.boss then
+  myebul.x=myen.x+15
+  myebul.y=myen.y+23 
+ end
+ 
+ myebul.spr=32
+ myebul.ani={32,33,34,33}
+ myebul.anispd=0.5
+ 
+ myebul.sx=sin(ang)*spd
+ myebul.sy=cos(ang)*spd
+ 
+ myebul.colw=2
+ myebul.colh=2
+ myebul.bulmode=true
+ 
+ if myen.boss!=true then
+  myen.flash=4
+  sfx(29)
+ else
+  sfx(34)
+ end
+ 
+ add(ebuls,myebul)
+ 
+ return myebul
+end
+
+function firespread(myen,num,spd,base)
+ if base==nil then
+  base=0
+ end
+ for i=1,num do
+  fire(myen,1/num*i+base,spd)
+ end
+end
+
+function aimedfire(myen,spd)
+ local myebul=fire(myen,0,spd)
+ 
+ local ang=atan2((ship.y+4)-myebul.y,(ship.x+4)-myebul.x)
+
+ myebul.sx=sin(ang)*spd
+ myebul.sy=cos(ang)*spd 
+end
+
+function cherbomb()
+ local spc=0.25/(cher*2)
+ 
+ for i=0,cher*2 do
+  local ang=0.375+spc*i
+  
+  local newbul=makespr()
+  newbul.x=ship.x
+  newbul.y=ship.y-3
+  newbul.spr=17
+  newbul.dmg=3
+  
+  newbul.sx=sin(ang)*4
+  newbul.sy=cos(ang)*4
+ 
+  add(buls,newbul)
+ end
+ 
+ big_shwave(ship.x+3,ship.y+3)
+ shake=5
+ muzzle=5
+ invul=30
+ flash=3
+ sfx(33)
+ 
+end
+-->8
+--boss
+
+function boss1(myen)
+ -- movement
+ local spd=2
+ 
+ if myen.sx==0 or myen.x>=93 then
+  myen.sx=-spd
+ end
+ if myen.x<=3 then
+  myen.sx=spd
+ end
+ -- shooting
+ if t%30>3 then
+  if t%3==0 then
+   fire(myen,0,2)
+  end
+ end
+ 
+ -- transition
+ if myen.phbegin+8*30<t then
+  myen.mission="boss2"
+  myen.phbegin=t
+  myen.subphase=1
+ end
+ move(myen)
+end
+
+function boss2(myen)
+ local spd=1.5
+ 
+ -- movement
+ if myen.subphase==1 then
+  myen.sx=-spd
+  if myen.x<=4 then
+   myen.subphase=2
+  end
+ elseif myen.subphase==2 then
+  myen.sx=0
+  myen.sy=spd
+  if myen.y>=100 then
+   myen.subphase=3
+  end 
+ elseif myen.subphase==3 then
+  myen.sx=spd
+  myen.sy=0
+  if myen.x>=91 then
+   myen.subphase=4
+  end  
+ elseif myen.subphase==4 then
+  myen.sx=0
+  myen.sy=-spd
+  if myen.y<=25 then
+   -- transition
+   myen.mission="boss3"
+   myen.phbegin=t
+   myen.sy=0
+  end  
+ end 
+ -- shooting
+ if t%15==0 then
+  aimedfire(myen,spd)
+ end
+
+ move(myen)
+end
+
+function boss3(myen)
+ -- movement
+ local spd=0.5
+ 
+ if myen.sx==0 or myen.x>=93 then
+  myen.sx=-spd
+ end
+ if myen.x<=3 then
+  myen.sx=spd
+ end
+
+ -- shooting
+ if t%10==0 then
+  firespread(myen,8,2,time()/2)
+ end 
+ 
+ -- transition
+ if myen.phbegin+8*30<t then
+  myen.mission="boss4"
+  myen.subphase=1
+  myen.phbegin=t
+ end
+ move(myen)
+end
+
+function boss4(myen)
+ local spd=1.5
+ 
+ -- movement
+ if myen.subphase==1 then
+  myen.sx=spd
+  if myen.x>=91 then
+   myen.subphase=2
+  end
+ elseif myen.subphase==2 then
+  myen.sx=0
+  myen.sy=spd
+  if myen.y>=100 then
+   myen.subphase=3
+  end 
+ elseif myen.subphase==3 then
+  myen.sx=-spd
+  myen.sy=0
+  if myen.x<=4 then
+   myen.subphase=4
+  end  
+ elseif myen.subphase==4 then
+  myen.sx=0
+  myen.sy=-spd
+  if myen.y<=25 then
+   -- transition
+   myen.mission="boss1"
+   myen.phbegin=t
+   myen.sy=0
+  end  
+ end 
+
+ -- shooting
+ if t%12==0 then
+  if myen.subphase==1 then
+   fire(myen,0,2)
+  elseif myen.subphase==2 then
+   fire(myen,0.25,2)
+  elseif myen.subphase==3 then
+   fire(myen,0.5,2)
+  elseif myen.subphase==4 then
+   fire(myen,0.75,2)
+  end
+ end
+ -- transition
+ move(myen)
+end
+
+function boss5(myen)
+ myen.shake=10
+ myen.flash=10 
+ 
+ if t%8==0 then
+  explode(myen.x+rnd(32),myen.y+rnd(24))
+  sfx(2)
+  shake=2
+ end
+
+ if myen.phbegin+3*30<t then
+	 if t%4==2 then
+	  explode(myen.x+rnd(32),myen.y+rnd(24))
+	  sfx(2)
+   shake=2
+	 end
+ end
+
+ if myen.phbegin+6*30<t then
+  flash=3
+  score+=100
+  popfloat(makescore(100),myen.x+16,myen.y+6)
+  bigexplode(myen.x+16,myen.y+12)
+  shake=15
+  enemies={}
+  sfx(35)
+ end
+end

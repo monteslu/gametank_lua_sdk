@@ -9,13 +9,57 @@
 
 import { BUILTINS, GT_MEMBERS, CALLBACKS } from "./builtins.js";
 
-export function emit(chunk, symbols, file) {
+// AST annotation keys that point OUT of the tree (symbols, fn infos, pool
+// records). The call-graph walker must not follow them (they contain cycles).
+const WALK_SKIP = new Set([
+  "sym", "poolField", "poolSym", "arraySym", "binding", "bindingSym",
+  "slot", "slots", "targetSyms", "sig", "userFn", "forall", "poolBinding",
+  "param", "localSlots",
+]);
+
+function collectCallees(root, functions) {
+  const callees = new Set();
+  const seen = new Set();
+  const walk = (node) => {
+    if (!node || typeof node !== "object" || seen.has(node)) return;
+    seen.add(node);
+    if (Array.isArray(node)) { for (const n of node) walk(n); return; }
+    if (node.kind === "call" && node.callee?.kind === "name" && functions.has(node.callee.name)) {
+      callees.add(node.callee.name);
+    }
+    for (const [k, v] of Object.entries(node)) {
+      if (!WALK_SKIP.has(k)) walk(v);
+    }
+  };
+  walk(root);
+  return callees;
+}
+
+const BANK_SEGMENTS = {
+  b0: ["B0CODE", "B0RODATA"],
+  b1: ["B1CODE", "B1RODATA"],
+  b2: ["B2CODE", "B2RODATA"],
+};
+const BANK_NUMBER = { b0: 0, b1: 1, b2: 2 };
+
+export function emit(chunk, symbols, file, opts = {}) {
+  const banked = opts.banked === true;
+  const placement = opts.placement ?? {};
+  const bankOf = (name) => (banked ? (placement[name] ?? "fixed") : "fixed");
   const out = [];
   let indent = 1;
   let tempCounter = 0;
+  let currentFnName = null; // for cross-bank call rewriting
+  const stubbed = new Set(); // callee names reached through a far-call stub
   const line = (s) => out.push("    ".repeat(s === "" ? 0 : indent) + s);
   const mangle = (name) => `gtl_${name}`;
   const { globals, functions } = symbols;
+
+  // user-function call graph (also returned for the CLI's bank solver)
+  const callGraph = new Map();
+  for (const [name, fn] of functions) {
+    callGraph.set(name, collectCallees(fn.node.body, functions));
+  }
 
   const ctype = (kind) => (kind === "fixed" ? "long" : "int");
 
@@ -176,11 +220,19 @@ export function emit(chunk, symbols, file) {
       return `${sig.c}(${sig.params.map((p, i) => argAt(e, i, p[0], defaultFor(callee.field, i))).join(", ")})`;
     }
 
-    // user function
+    // user function — cross-bank calls go through a fixed-bank far-call stub
     if (e.userFn) {
       const fn = e.userFn;
       const args = e.args.map((a, i) => expr(a, fn.paramKinds[i] ?? "int"));
-      return `${mangle(callee.name)}(${args.join(", ")})`;
+      let target = mangle(callee.name);
+      if (banked) {
+        const kb = bankOf(callee.name);
+        if (kb !== "fixed" && kb !== bankOf(currentFnName)) {
+          target = `stub_${mangle(callee.name)}`;
+          stubbed.add(callee.name);
+        }
+      }
+      return `${target}(${args.join(", ")})`;
     }
 
     const b = e.sig;
@@ -380,8 +432,10 @@ export function emit(chunk, symbols, file) {
         s.slotVar = sv;
         if (s.binding) s.binding.forallSlot = sv;
         // annotate: member nodes reference s (the forall) for slotVar
+        // (unsigned char index: pools cap at 64, and cc65 emits far tighter
+        // indexing code for 8-bit induction variables)
         const pl = s.poolSym;
-        line(`{ int ${sv};`);
+        line(`{ unsigned char ${sv};`);
         indent++;
         line(`for (${sv} = 0; ${sv} < ${pl.size}; ++${sv}) {`);
         indent++;
@@ -412,7 +466,7 @@ export function emit(chunk, symbols, file) {
       return `${pl.cname}_${f.name}[${sv}] = ${expr(f.expr, fl.kind)};`;
     }).join(" ");
     // statement-expression shape via a helper block emitted inline by callstmt
-    return `{ int ${sv}; for (${sv} = 0; ${sv} < ${pl.size}; ++${sv}) if (!${pl.cname}_used[${sv}]) break; ` +
+    return `{ unsigned char ${sv}; for (${sv} = 0; ${sv} < ${pl.size}; ++${sv}) if (!${pl.cname}_used[${sv}]) break; ` +
            `if (${sv} < ${pl.size}) { ${pl.cname}_used[${sv}] = 1; ++${pl.cname}_n; ${sets} } }`;
   }
 
@@ -424,13 +478,36 @@ export function emit(chunk, symbols, file) {
   out.push(`#include "gt_api.h"`);
   out.push("");
 
-  // prototypes
-  for (const [name, fn] of functions) {
+  // banked builds: functions get external linkage (the far-call stubs in
+  // stubs.s must reach them) and cross-bank callees get a stub prototype.
+  const linkage = banked ? "" : "static ";
+  const signatureOf = (name, fn) => {
     const params = fn.params.length
       ? fn.params.map((p, i) => `${ctype(fn.paramKinds[i])} ${mangle(p)}`).join(", ")
       : "void";
     const ret = fn.hasReturnValue ? ctype(fn.retKind) : "void";
-    out.push(`static ${ret} ${mangle(name)}(${params});`);
+    return { params, ret };
+  };
+
+  // prototypes
+  for (const [name, fn] of functions) {
+    const { params, ret } = signatureOf(name, fn);
+    out.push(`${linkage}${ret} ${mangle(name)}(${params});`);
+  }
+  if (banked) {
+    // a stub prototype for every callee some other bank might reach
+    // (superset is fine: unreferenced externs cost nothing)
+    const candidates = new Set();
+    for (const [caller, callees] of callGraph) {
+      for (const cn of callees) {
+        const kb = bankOf(cn);
+        if (kb !== "fixed" && kb !== bankOf(caller)) candidates.add(cn);
+      }
+    }
+    for (const cn of candidates) {
+      const { params, ret } = signatureOf(cn, functions.get(cn));
+      out.push(`${ret} stub_${mangle(cn)}(${params});`);
+    }
   }
   out.push("");
 
@@ -465,43 +542,113 @@ export function emit(chunk, symbols, file) {
   }
   if (globals.size) out.push("");
 
-  // function bodies
-  for (const s of chunk.stmts) {
-    if (s.kind !== "function") continue;
+  // function bodies, grouped by bank (fixed first, then each banked group
+  // inside #pragma code-name/rodata-name so code AND string literals land
+  // in that bank's segments)
+  const emitFunction = (s) => {
     const fn = functions.get(s.name);
     currentFn = fn;
-    const params = s.params.length
-      ? s.params.map((p, i) => `${ctype(fn.paramKinds[i])} ${mangle(p)}`).join(", ")
-      : "void";
-    const ret = fn.hasReturnValue ? ctype(fn.retKind) : "void";
-    out.push(`static ${ret} ${mangle(s.name)}(${params})`);
+    currentFnName = s.name;
+    const { params, ret } = signatureOf(s.name, fn);
+    out.push(`${linkage}${ret} ${mangle(s.name)}(${params})`);
     out.push("{");
     indent = 1;
     block(s.body);
     out.push("}");
     out.push("");
     currentFn = null;
+    currentFnName = null;
+  };
+
+  const fnStmts = chunk.stmts.filter((s) => s.kind === "function");
+  for (const s of fnStmts) {
+    if (bankOf(s.name) === "fixed") emitFunction(s);
+  }
+  if (banked) {
+    for (const bank of ["b0", "b1", "b2"]) {
+      const group = fnStmts.filter((s) => bankOf(s.name) === bank);
+      if (!group.length) continue;
+      const [codeSeg, rodataSeg] = BANK_SEGMENTS[bank];
+      out.push(`#pragma code-name (push, "${codeSeg}")`);
+      out.push(`#pragma rodata-name (push, "${rodataSeg}")`);
+      out.push("");
+      for (const s of group) emitFunction(s);
+      out.push(`#pragma code-name (pop)`);
+      out.push(`#pragma rodata-name (pop)`);
+      out.push("");
+    }
   }
 
-  // the PICO-8 frame harness
+  // the PICO-8 frame harness. main() lives in the fixed bank; in banked
+  // builds it selects each callback's bank before the call.
   const has = (n) => functions.has(n);
   const thirty = has("_update") && !has("_update60");
+  const callCb = (name, ind) => {
+    if (banked) {
+      const b = bankOf(name);
+      if (b !== "fixed") out.push(`${ind}gt_bank(${BANK_NUMBER[b]});`);
+    }
+    out.push(`${ind}${mangle(name)}();`);
+  };
   out.push("void main(void)");
   out.push("{");
   out.push("    gt_init();");
   out.push("    gt_sheet_init();");
   if (symbols.usesAudio) out.push("    gt_audio_init();");
   if (thirty) out.push("    gt_p8_fps30();");
-  if (has("_init")) out.push(`    ${mangle("_init")}();`);
+  if (has("_init")) callCb("_init", "    ");
   out.push("    for (;;) {");
   out.push("        gt_update_inputs();");
-  if (has("_update60")) out.push(`        ${mangle("_update60")}();`);
-  if (thirty) out.push(`        ${mangle("_update")}();`);
-  if (has("_draw")) out.push(`        ${mangle("_draw")}();`);
+  if (has("_update60")) callCb("_update60", "        ");
+  if (thirty) callCb("_update", "        ");
+  if (has("_draw")) callCb("_draw", "        ");
   out.push("        gt_endframe();");
   out.push("    }");
   out.push("}");
   out.push("");
 
-  return out.join("\n");
+  // far-call stubs (assembled separately, linked into the FIXED bank).
+  // A stub forwards the cc65 fastcall registers blindly: A/X carry the last
+  // argument (sreg its high word for longs) and the return value comes back
+  // the same way — the stub saves A/X around the bank switches and never
+  // touches sreg, so it works for every signature.
+  let stubs = null;
+  if (banked && stubbed.size) {
+    const st = [];
+    st.push("; generated by gtlua — FLASH2M cross-bank far-call stubs");
+    st.push(".PC02");
+    st.push(".import gt_bank_raw, gt_cur_bank");
+    for (const cn of stubbed) st.push(`.import _${mangle(cn)}`);
+    for (const cn of stubbed) st.push(`.export _stub_${mangle(cn)}`);
+    st.push("");
+    st.push('.segment "BSS"');
+    st.push("stub_sav_a: .res 1");
+    st.push("stub_sav_x: .res 1");
+    st.push("");
+    st.push('.segment "CODE"');
+    for (const cn of stubbed) {
+      const bank = BANK_NUMBER[bankOf(cn)];
+      st.push(`_stub_${mangle(cn)}:`);
+      st.push("        sta stub_sav_a");
+      st.push("        stx stub_sav_x");
+      st.push("        lda gt_cur_bank");
+      st.push("        pha");
+      st.push(`        lda #${bank}`);
+      st.push("        jsr gt_bank_raw");
+      st.push("        lda stub_sav_a");
+      st.push("        ldx stub_sav_x");
+      st.push(`        jsr _${mangle(cn)}`);
+      st.push("        sta stub_sav_a");
+      st.push("        stx stub_sav_x");
+      st.push("        pla");
+      st.push("        jsr gt_bank_raw");
+      st.push("        lda stub_sav_a");
+      st.push("        ldx stub_sav_x");
+      st.push("        rts");
+      st.push("");
+    }
+    stubs = st.join("\n");
+  }
+
+  return { c: out.join("\n"), callGraph, stubs };
 }

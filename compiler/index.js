@@ -13,9 +13,13 @@ import { emit } from "./emit.js";
  * Compile gtlua source to C.
  * @param {string} source
  * @param {string} file name used in diagnostics
- * @returns {{ok: boolean, c: string|null, diagnostics: Diagnostic[]}}
+ * @param {object} [opts] — {banked:true, placement:{fnName:"fixed"|"b0"|"b1"|"b2"}}
+ *   enables the FLASH2M banked build: functions land in per-bank segments and
+ *   cross-bank calls are routed through generated far-call stubs.
+ * @returns {{ok: boolean, c: string|null, diagnostics: Diagnostic[],
+ *            callGraph?: Map<string,Set<string>>, stubs?: string|null}}
  */
-export function compile(source, file = "main.lua") {
+export function compile(source, file = "main.lua", opts = {}) {
   const { tokens, diagnostics: lexDiags } = lex(source, file);
   const { chunk, diagnostics: parseDiags } = parse(tokens, file);
   const diagnostics = [...lexDiags, ...parseDiags];
@@ -31,7 +35,8 @@ export function compile(source, file = "main.lua") {
     return { ok: false, c: null, diagnostics };
   }
 
-  return { ok: true, c: emit(chunk, symbols, file), diagnostics };
+  const out = emit(chunk, symbols, file, opts);
+  return { ok: true, c: out.c, diagnostics, callGraph: out.callGraph, stubs: out.stubs };
 }
 
 /** Render diagnostics the way compilers do: file:line:col: severity: message */
