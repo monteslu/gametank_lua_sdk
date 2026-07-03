@@ -198,6 +198,7 @@ export function emit(chunk, symbols, file, opts = {}) {
   let currentFnName = null; // for cross-bank call rewriting
   const narrowedVars = new Set(); // u8 fornum counters currently in scope
   let inlineMap = null;           // inlined callee: param name -> rendered arg
+  let zpParamMap = null;          // leaf zp-fastcall fns: param -> gt_pN
   const inlineStack = new Set();  // fns currently being inlined (recursion guard)
   // opts.inliner === false disables function inlining: like the min/max/mid
   // ternaries it trades size for speed, and a cart at the bank-capacity cliff
@@ -212,6 +213,41 @@ export function emit(chunk, symbols, file, opts = {}) {
   const callGraph = new Map();
   for (const [name, fn] of functions) {
     callGraph.set(name, collectCallees(fn.node.body, functions));
+  }
+
+  // ---- zp-fastcall for user functions ---------------------------------------
+  // Functions with 1-3 all-int params take them in the gt_p0..2 zero-page
+  // slots (the ABI that makes the draw builtins cheap) instead of cc65's
+  // C-stack convention. LEAF fns (no user calls in the body) read the slots
+  // directly — zero copies, zero BSS; non-leaf fns copy the slots into their
+  // static locals first thing so nested zp calls can't clobber them. A call
+  // site with one call-bearing arg stores it first; a fn ever called with
+  // TWO+ call-bearing args stays cdecl (order hazards). Re-landed on top of
+  // the inliner: the tiny fns that previously dominated this path now inline
+  // away entirely, and the original driftmania anomaly's subject
+  // (draw_tiles) no longer exists as a call.
+  const zpCall = new Set();
+  for (const [name, fn] of functions) {
+    if (fn.params.length >= 1 && fn.params.length <= 3 &&
+        fn.params.every((_, i) => (fn.paramKinds[i] ?? "int") === "int")) {
+      zpCall.add(name);
+    }
+  }
+  {
+    const disqualify = (node) => {
+      if (!node || typeof node !== "object") return;
+      if (Array.isArray(node)) { for (const n of node) disqualify(n); return; }
+      if (node.kind === "call" && node.userFn && node.callee?.kind === "name" &&
+          zpCall.has(node.callee.name)) {
+        if (node.args.filter((a) => hasUserCall(a)).length >= 2) {
+          zpCall.delete(node.callee.name);
+        }
+      }
+      for (const [k, v] of Object.entries(node)) {
+        if (!WALK_SKIP.has(k)) disqualify(v);
+      }
+    };
+    for (const [, fn] of functions) disqualify(fn.node.body);
   }
 
   // ---- dead-function elimination -------------------------------------------
@@ -258,6 +294,7 @@ export function emit(chunk, symbols, file, opts = {}) {
       case "bool": return e.value ? "1" : "0";
       case "name":
         if (inlineMap && inlineMap.has(e.name)) return cv(inlineMap.get(e.name), e.tk, want);
+        if (zpParamMap && zpParamMap.has(e.name)) return cv(zpParamMap.get(e.name), e.tk, want);
         return cv(mangle(e.name), e.tk, want);
       case "index": {
         const arr = e.arraySym;
@@ -539,6 +576,13 @@ export function emit(chunk, symbols, file, opts = {}) {
           stubbed.add(callee.name);
         }
       }
+      if (zpCall.has(callee.name)) {
+        const bearing = e.args.map((a) => hasUserCall(a));
+        const order = [...args.keys()].sort((x, y) =>
+          (bearing[y] ? 1 : 0) - (bearing[x] ? 1 : 0));
+        const stores = order.map((i) => `gt_p${i} = ${args[i]}`);
+        return `(${stores.join(", ")}, ${target}())`;
+      }
       return `${target}(${args.join(", ")})`;
     }
 
@@ -699,7 +743,8 @@ export function emit(chunk, symbols, file, opts = {}) {
           ? `${s.target.poolField.pool.cname}_${s.target.poolField.field}[${s.target.poolField.forall.slotVar}]`
           : isElem
             ? indexRef(mangle(s.target.object.name), s.target.index)
-            : mangle(s.target.name);
+            : (zpParamMap && zpParamMap.has(s.target.name)
+                ? zpParamMap.get(s.target.name) : mangle(s.target.name));
         const tk = s.targetKind ?? "int";
         if (s.op === "=") {
           line(`${t} = ${expr(s.value, tk)};`);
@@ -875,7 +920,7 @@ export function emit(chunk, symbols, file, opts = {}) {
   // stubs.s must reach them) and cross-bank callees get a stub prototype.
   const linkage = banked ? "" : "static ";
   const signatureOf = (name, fn) => {
-    const params = fn.params.length
+    const params = (fn.params.length && !zpCall.has(name))
       ? fn.params.map((p, i) => `${ctype(fn.paramKinds[i])} ${mangle(p)}`).join(", ")
       : "void";
     const ret = fn.hasReturnValue ? ctype(fn.retKind) : "void";
@@ -953,7 +998,18 @@ export function emit(chunk, symbols, file, opts = {}) {
     out.push(`${linkage}${ret} ${mangle(s.name)}(${params})`);
     out.push("{");
     indent = 1;
+    if (zpCall.has(s.name)) {
+      const leaf = (callGraph.get(s.name) ?? new Set()).size === 0;
+      if (leaf) {
+        zpParamMap = new Map(fn.params.map((p, i) => [p, `gt_p${i}`]));
+      } else {
+        for (let i = 0; i < fn.params.length; i++) {
+          out.push(`    ${ctype(fn.paramKinds[i])} ${mangle(fn.params[i])} = gt_p${i};`);
+        }
+      }
+    }
     block(s.body);
+    zpParamMap = null;
     out.push("}");
     out.push("");
     currentFn = null;
