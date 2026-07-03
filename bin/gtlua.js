@@ -21,6 +21,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { compile, formatDiagnostics } from "../compiler/index.js";
+import { peephole } from "../compiler/peephole.js";
 
 const REPO = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const SDK = path.join(REPO, "sdk");
@@ -325,7 +326,16 @@ function build(entry, outPath, sheetPath) {
                   "--static-locals", "-I", SDK];
   const AFLAGS = ["--cpu", "W65C02"];
   if (tc.asminc && existsSync(tc.asminc)) AFLAGS.push("-I", tc.asminc);
-  const cc = (src, dst, extra = []) => run(tc.cc65, [...CFLAGS, ...extra, "-o", dst, src]);
+  // compile C then run the gtlua peephole pass over cc65's assembly output
+  // (tail-call fusion + dead reload elimination — see compiler/peephole.js)
+  let phTail = 0, phReload = 0;
+  const cc = (src, dst, extra = []) => {
+    run(tc.cc65, [...CFLAGS, ...extra, "-o", dst, src]);
+    const opt = peephole(readFileSync(dst, "utf8"));
+    writeFileSync(dst, opt.text);
+    phTail += opt.stats.tailCalls;
+    phReload += opt.stats.reloads;
+  };
   const as = (src, obj) => run(tc.ca65, [...AFLAGS, "-o", obj, src]);
   const B = (f) => path.join(buildDir, f);
 

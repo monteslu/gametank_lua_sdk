@@ -299,6 +299,31 @@ cheap). The emitter controls both definition and every call site of user
 functions — pass the first 2-3 int args of NON-RECURSIVE hot functions in zp
 slots. p_check_solid/appr-class callees are called 5-10x/frame everywhere.
 
+### RESULTS SO FAR (2026-07-04, first codegen session)
+
+C2 peephole: BUILT + SHIPPED (compiler/peephole.js, runs on every cc65 .s).
+Verdict: cc65 -Osr is already clean — tail-call fusion + dead-reload rules
+found ~1 rewrite in 18k lines of newleste. Kept as infrastructure (zero cost,
+place to accumulate future rules), but peepholes are NOT where the tax is.
+
+C3 zp-fastcall: BUILT, MEASURED, REVERTED. Design that works: 1-3 all-int-param
+fns take args in gt_p0..2 zp slots (reserved in gt_blitq.s); LEAF fns (no user
+calls in body) map params straight onto the slots — zero copies, zero BSS
+(driftmania only had ~270 BSS bytes free; naive prologue copies overflowed) —
+non-leaf fns copy slots to statics first-thing; single call-bearing args store
+first; fns ever called with 2+ call-bearing args stay cdecl. The generated asm
+was strictly better per call (ckd: pushax + (c_sp),y reads -> lda zp direct).
+MEASURED: combo-pool 4.46->4.00 (WIN), most carts unchanged... but driftmania
+6.20->6.78 (3000-vsync, deterministic, reproduced twice) with IDENTICAL update
+floors (2.9993 both — the loss is draw-side) and near-identical code sizes, and
+a bisect build (GTLUA_ZP_SKIP=draw_tiles) HUNG outright. Per-call cycle math
+says the ABI wins everywhere; the measured loss is unexplained. NOT SHIPPABLE
+until the driftmania anomaly is root-caused — suspects for next time: cc65's
+implicit __fastcall__ (last arg already rides A/X, so 1-arg cdecl call sites
+were cheaper than assumed), bank-layout/alignment shifts in the draw path, or
+an interaction with the queue's blit overlap. The emitter diff lives in this
+session's history; the zp slots stay reserved.
+
 ### C0 FIRST — the ceiling probe
 Before building any of it: hand-asm ONE hot compiled function (celeste2
 box_solid or newleste p_is_flag), measure the per-call delta with the
