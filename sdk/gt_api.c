@@ -199,20 +199,27 @@ void gt_p8_sset(int x, int y, int c) {
     vram[((unsigned int)y << 7) | (unsigned int)x] = col;
 }
 
-/* PICO-8 spr: blit sprite cell n (8x8, 16 per row) with transparency */
+/* PICO-8 spr: blit sprite cell n (8x8, 16 per row) with transparency.
+ * Clip in pixel-widths computed once (pw/ph) instead of the old `-8*w`
+ * runtime multiply+negate+16-bit-compare per call — this is on the hot
+ * per-entity draw path, so the arithmetic is kept to a handful of adds. */
 void gt_p8_spr(int n, int x, int y, int w, int h) {
+    int pw, ph;
     x -= cam_x;
     y -= cam_y;
     if (w < 1) w = 1;
     if (h < 1) h = 1;
-    if (x < -8 * w || x > 127 || y < -8 * h || y > 127) return;
+    pw = w << 3;
+    ph = h << 3;
+    /* fully off-screen: right edge <=0, or left edge >127 (either axis) */
+    if (x > 127 || y > 127 || x + pw <= 0 || y + ph <= 0) return;
     enter_spr_mode();
     vram[GX] = (unsigned char)((n & 15) << 3);
     vram[GY] = (unsigned char)((n >> 4) << 3);
     vram[VX] = (unsigned char)x;
     vram[VY] = (unsigned char)y;
-    vram[WIDTH] = (unsigned char)(w << 3);
-    vram[HEIGHT] = (unsigned char)(h << 3);
+    vram[WIDTH] = (unsigned char)pw;
+    vram[HEIGHT] = (unsigned char)ph;
     gt_draw_busy = 1;
     vram[START] = 1;
 }
