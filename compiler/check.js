@@ -588,6 +588,9 @@ export function check(chunk, file) {
           }
           return;
         }
+        // a "flip" param (spr flip_x/flip_y) is a truthy flag — bool is the
+        // natural value here, so don't reject it the way number args do.
+        if (params[i] && params[i][0] === "flip") { typeOf(a); return; }
         const t = typeOf(a);
         if (t === "bool") err(a, `cannot pass a boolean as a number argument to ${name}()`);
       });

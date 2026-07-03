@@ -57,6 +57,20 @@ test("one-line while shorthand", () => {
   assert.match(c, /while \(\(gtl_x > 0\)\)/);
 });
 
+test("spr without flip: 5 args, no flip packing", () => {
+  const c = cOf("function _update60()\nend\nfunction _draw()\n  spr(1, 10, 20)\nend\n");
+  // zp-fastcall staging: n,x,y in a0..a2, w/h default to 1, flips default to 0
+  assert.match(c, /gt_a0 = 1/);
+  assert.match(c, /gt_a5 = 0 \| \(0 << 1\)/);   // both flips off
+  assert.match(c, /gt_p8_spr_z\(\)/);
+});
+
+test("spr with flip_x/flip_y packs into gt_a5", () => {
+  const c = cOf("function _update60()\nend\nfunction _draw()\n  spr(1, 10, 20, 1, 1, true, false)\nend\n");
+  // flip_x -> bit0, flip_y -> bit1 of gt_a5
+  assert.match(c, /gt_a5 = \(\(1\) \? 1 : 0\) \| \(\(\(0\) \? 1 : 0\) << 1\)/);
+});
+
 test("button glyphs lex as indices", () => {
   const c = cOf("local x = 0\nfunction _update60()\n  if (btnp(🅾️)) x += 1\n  if (btnp(❎)) x -= 1\nend\nfunction _draw()\nend\n");
   // 🅾️=index 4 (mask 16), ❎=index 5 (mask 4096) on the newpress word

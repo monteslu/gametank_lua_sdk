@@ -212,8 +212,9 @@ void gt_p8_sset(int x, int y, int c) {
 /* PICO-8 spr: blit sprite cell n (8x8, 16 per row) with transparency.
  * The hot path lives in asm (gt_blitq.s _gt_p8_spr_z): camera-adjust,
  * offscreen reject, stage a QF_SPR entry, pump. This is the cdecl shim. */
-void gt_p8_spr(int n, int x, int y, int w, int h) {
+void gt_p8_spr(int n, int x, int y, int w, int h, int flip) {
     gt_a0 = n; gt_a1 = x; gt_a2 = y; gt_a3 = w; gt_a4 = h;
+    gt_a5 = flip;                       /* bit0 = flip X, bit1 = flip Y */
     gt_p8_spr_z();
 }
 

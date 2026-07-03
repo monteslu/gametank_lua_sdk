@@ -99,6 +99,6 @@ void __fastcall__ gt_bank(unsigned char b);  /* FLASH2M: switch the $8000 window
 void gt_audio_init(void);
 void gt_note(int ch, int note, int vol);
 void gt_noteoff(int ch);
-void gt_p8_spr(int n, int x, int y, int w, int h);
+void gt_p8_spr(int n, int x, int y, int w, int h, int flip);
 
 #endif

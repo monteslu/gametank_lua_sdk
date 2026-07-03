@@ -278,6 +278,8 @@ export function emit(chunk, symbols, file, opts = {}) {
       // pass an array global by pointer: the bare mangled name decays to
       // int*/long* (the checker validated it's an array reference).
       case "array": return a.kind === "name" ? mangle(a.name) : "0";
+      // a flip flag: any truthy value -> 1, else 0 (packed by the caller).
+      case "flip": return `((${expr(a, "int")}) ? 1 : 0)`;
       default: return expr(a, "any");
     }
   }
@@ -342,6 +344,14 @@ export function emit(chunk, symbols, file, opts = {}) {
     // argument expression could itself draw (a user-function call would
     // clobber the slots mid-sequence) — those sites use the cdecl wrapper.
     if (ZP_BUILTINS[name] && !e.args.some(hasUserCall)) {
+      // spr has 7 params (n,x,y,w,h,flip_x,flip_y) but only 6 zp slots — pack
+      // the two flip flags into gt_a5 as a bitmask (bit0 = X, bit1 = Y). The
+      // asm reads gt_a5 to set WIDTH/HEIGHT bit7 + flip the GX/GY source edge.
+      if (name === "spr") {
+        const stores = [0, 1, 2, 3, 4].map((i) => `gt_a${i} = ${args[i]}`);
+        stores.push(`gt_a5 = ${args[5]} | (${args[6]} << 1)`);
+        return `(${stores.join(", ")}, ${ZP_BUILTINS[name]}())`;
+      }
       const stores = args.map((a, i) => `gt_a${i} = ${a}`);
       return `(${stores.join(", ")}, ${ZP_BUILTINS[name]}())`;
     }
@@ -359,6 +369,11 @@ export function emit(chunk, symbols, file, opts = {}) {
         return `((${word} & ${BTN_MASKS[idx]}u) != 0)`;
       }
     }
+    // spr's cdecl fallback (used when an arg contains a user call): pack the
+    // two flip flags into one int so the 7-param builtin reaches the 6-param C.
+    if (name === "spr") {
+      return `${b.c}(${args[0]}, ${args[1]}, ${args[2]}, ${args[3]}, ${args[4]}, ${args[5]} | (${args[6]} << 1))`;
+    }
     return `${b.c}(${args.join(", ")})`;
   }
 
@@ -370,7 +385,7 @@ export function emit(chunk, symbols, file, opts = {}) {
     if (name === "btn" || name === "btnp") return "0"; // player 0
     if (name === "pal") return "-1";          // pal() == reset
     if (name === "note") return "127";        // default volume
-    if (name === "spr") return "1";           // w,h default 1 cell
+    if (name === "spr") return i >= 5 ? "0" : "1";  // w,h default 1 cell; flips default off
     return "-1";                              // optional color -> current
   }
 

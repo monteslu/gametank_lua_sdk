@@ -207,10 +207,11 @@ _gt_p8_spr_z:
         LDA _gt_a1+1
         SBC _gt_cam_x+1
         BMI @xneg
-        BNE @rej                ; x >= 256: off right
+        BNE @rejn               ; x >= 256: off right
         BIT _gt_ent+1
-        BMI @rej                ; 128..255: off right
+        BMI @rejn               ; 128..255: off right
         BRA @xok
+@rejn:  RTS                     ; near reject trampoline (offscreen clip)
 @xneg:  ; x < 0: reject when x + pw <= 0
         TAX                     ; X = x high
         CLC
@@ -219,10 +220,10 @@ _gt_p8_spr_z:
         STA q_t
         TXA
         ADC q_pwh
-        BMI @rej                ; sum < 0
+        BMI @rejn               ; sum < 0
         BNE @xok                ; sum >= 256: on screen
         LDA q_t
-        BEQ @rej                ; sum == 0: right edge exactly at 0
+        BEQ @rejn               ; sum == 0: right edge exactly at 0
 @xok:
         ; ---- ph = max(h,1) << 3 ----
         LDA _gt_a4
@@ -244,9 +245,9 @@ _gt_p8_spr_z:
         LDA _gt_a2+1
         SBC _gt_cam_y+1
         BMI @yneg
-        BNE @rej
+        BNE @rejn
         BIT _gt_ent+2
-        BMI @rej
+        BMI @rejn
         BRA @yok
 @yneg:  TAX
         CLC
@@ -255,10 +256,10 @@ _gt_p8_spr_z:
         STA q_t
         TXA
         ADC q_phh
-        BMI @rej
+        BMI @rejn
         BNE @yok
         LDA q_t
-        BEQ @rej
+        BEQ @rejn
 @yok:
         ; ---- stage the rest: flags, GX=(n&15)<<3, GY=(n&0xF0)>>1 ----
         LDA #QF_SPR
@@ -268,15 +269,45 @@ _gt_p8_spr_z:
         ASL A
         ASL A
         ASL A
-        STA _gt_ent+3
+        STA _gt_ent+3           ; GX = cell col * 8 (left edge of source cell)
         LDA _gt_a0
         AND #$F0
         LSR A
-        STA _gt_ent+4
+        STA _gt_ent+4           ; GY = cell row * 8 (top edge)
         STZ _gt_ent+7           ; COLOR unused for sprite copies
+        ; ---- hardware flip (gt_a5: bit0 = flip X, bit1 = flip Y) ----
+        ; The blitter mirrors when WIDTH/HEIGHT bit7 is set: it one's-complements
+        ; the source counter, and picks the GRAM quadrant from the INVERTED bit7.
+        ; So the RAW GX counter must sweep [128..255] (bit7 set) for the whole
+        ; blit, so ~counter lands in [0..127] (quadrant 0, the sheet). Solving
+        ; ~(GX+col) = sx0 + pw-1 - col gives  GX_flip = (256 - sx0 - pw) & $FF
+        ; = -(sx0 + pw). Same for GY/ph.
+        LDA _gt_a5
+        AND #$01
+        BEQ @noflipx
+        SEC                     ; GX = 0 - GX - pw   (= 256 - GX - pw)
+        LDA #$00
+        SBC _gt_ent+3
+        SBC _gt_ent+5
+        STA _gt_ent+3
+        LDA _gt_ent+5           ; WIDTH |= $80  (XDIR)
+        ORA #$80
+        STA _gt_ent+5
+@noflipx:
+        LDA _gt_a5
+        AND #$02
+        BEQ @noflipy
+        SEC                     ; GY = 0 - GY - ph
+        LDA #$00
+        SBC _gt_ent+4
+        SBC _gt_ent+6
+        STA _gt_ent+4
+        LDA _gt_ent+6           ; HEIGHT |= $80  (YDIR)
+        ORA #$80
+        STA _gt_ent+6
+@noflipy:
         STZ _gt_draw_mode       ; MODE_NONE: flags register now queue-owned
         JMP _gt_q_push
-@rej:   RTS
 
 ; ---------------------------------------------------------------------------
 ; IRQ = blit complete: acknowledge and mark the blitter idle. Nothing else —
