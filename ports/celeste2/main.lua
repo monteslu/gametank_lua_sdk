@@ -345,14 +345,30 @@ end
 -- solid test for an inclusive pixel box. Rows clamp to the level (the
 -- cart's tile_y behavior); columns fall off to empty.
 function box_solid(x0, y0, x1, y1)
+  -- PERF: this is the collision core (p_check_solid/o_solid call it several
+  -- times a frame). The old body did tile_solid(mget(bget(...))) — THREE
+  -- nested cc65 calls per tile. Inlined: one packed-map read + flag test per
+  -- tile. Out-of-range columns are skipped (mget returned 0 = empty for
+  -- them, which can never produce a hit); rows keep mget's clamp-free reads
+  -- via the same j clamps as before. See docs/performance.md.
   local i = x0 \ 8
   local i1 = x1 \ 8
   local j0 = mid(0, y0 \ 8, lvl_h - 1)
   local j1 = mid(0, y1 \ 8, lvl_h - 1)
+  if (i < 0) i = 0
+  if (i1 > lvl_w - 1) i1 = lvl_w - 1
   while i <= i1 do
     local j = j0
     while j <= j1 do
-      if tile_solid(mget(i, j)) == 1 then return 1 end
+      local idx = j * lvl_w + i
+      local v = map[idx \ 2 + 1]
+      if idx % 2 == 1 then
+        v = (v >> 8) & 255
+      else
+        v = v & 255
+      end
+      if v == 19 then return 1 end
+      if v <= 127 and (fl[v + 1] & 2) ~= 0 then return 1 end
       j += 1
     end
     i += 1
