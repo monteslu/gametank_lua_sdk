@@ -469,14 +469,23 @@ function build(entry, outPath, sheetPath) {
   // so if placement is still failing halfway through the attempts, fall back
   // to the compact call form and start placement over.
   let midInline = true;
+  let fnInline = true;
   let workPlacement = placement;
-  for (let attempt = 0; attempt < 16; attempt++) {
-    if (attempt === 8 && midInline) {
+  for (let attempt = 0; attempt < 24; attempt++) {
+    // size-relief ladder: 0-7 everything on -> 8-15 function inlining off
+    // (mid ternaries STAY: they're smaller than the cdecl mid() call) ->
+    // 16-23 everything off. Each rung restarts from a fresh placement.
+    if (attempt === 8 && fnInline) {
+      fnInline = false;
+      workPlacement = initialPlacement(result.callGraph);
+      console.error("bank placement tight: retrying with function inlining off");
+    }
+    if (attempt === 16 && midInline) {
       midInline = false;
       workPlacement = initialPlacement(result.callGraph);
-      console.error("bank placement tight: retrying with inlining off");
+      console.error("bank placement tight: retrying with all inlining off");
     }
-    result = compileLua(entry, { banked: true, placement: workPlacement, midInline, inliner: midInline });
+    result = compileLua(entry, { banked: true, placement: workPlacement, midInline, inliner: fnInline });
     writeFileSync(B(`${name}.c`), result.c);
     cc(B(`${name}.c`), B(`${name}.s`));
     as(B(`${name}.s`), B(`${name}.o`));
@@ -498,7 +507,7 @@ function build(entry, outPath, sheetPath) {
     if (link.ok) { linked = flashOut; break; }
     lastOverflows = link.overflows;
     const moved = rebalance(workPlacement, sizes, link.overflows, sheetBytes, result.callGraph, usesBg, usesAudio, usesMusic, usesAtlas);
-    if (!moved && attempt >= 8) {
+    if (!moved && attempt >= 17) {
       fail("FLASH2M bank placement failed: " +
         link.overflows.map((o) => `${o.segment} over by ${o.bytes}`).join(", "));
     }

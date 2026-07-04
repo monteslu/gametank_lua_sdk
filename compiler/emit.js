@@ -107,6 +107,40 @@ function hasUserCall(node) {
   return false;
 }
 
+// Every name DECLARED inside a function: params, locals, loop vars, forall
+// bindings. Used by the inliner's capture guard.
+function declaredNames(fn) {
+  const out = new Set(fn.params);
+  (function walk(node) {
+    if (!node || typeof node !== "object") return;
+    if (Array.isArray(node)) { for (const n of node) walk(n); return; }
+    if (node.kind === "local") for (const n of node.names) out.add(n);
+    if (node.kind === "fornum") out.add(node.name);
+    if (node.kind === "forall" && node.binding?.name) out.add(node.binding.name);
+    for (const [k, v] of Object.entries(node)) {
+      if (!WALK_SKIP.has(k)) walk(v);
+    }
+  })(fn.node.body);
+  return out;
+}
+
+// Free names of a function body: references that aren't its own declarations.
+// If any of these collides with a name declared in the CALLER, inlining the
+// body there would capture the caller's local instead of the global — skip.
+function freeNames(fn) {
+  const own = declaredNames(fn);
+  const out = new Set();
+  (function walk(node) {
+    if (!node || typeof node !== "object") return;
+    if (Array.isArray(node)) { for (const n of node) walk(n); return; }
+    if (node.kind === "name" && !own.has(node.name)) out.add(node.name);
+    for (const [k, v] of Object.entries(node)) {
+      if (!WALK_SKIP.has(k)) walk(v);
+    }
+  })(fn.node.body);
+  return out;
+}
+
 // How many times does the named variable appear in this expression tree?
 function countUses(node, name) {
   if (!node || typeof node !== "object") return 0;
@@ -200,6 +234,25 @@ export function emit(chunk, symbols, file, opts = {}) {
   let inlineMap = null;           // inlined callee: param name -> rendered arg
   let zpParamMap = null;          // leaf zp-fastcall fns: param -> gt_pN
   const inlineStack = new Set();  // fns currently being inlined (recursion guard)
+  const declaredCache = new Map(); // fn name -> Set of names declared inside it
+  const freeCache = new Map();     // fn name -> Set of free (outer) names it uses
+  const declaredOf = (n) => {
+    if (!declaredCache.has(n)) declaredCache.set(n, declaredNames(functions.get(n)));
+    return declaredCache.get(n);
+  };
+  const freeOf = (n) => {
+    if (!freeCache.has(n)) freeCache.set(n, freeNames(functions.get(n)));
+    return freeCache.get(n);
+  };
+  // capture guard: safe to paste callee's body text into the current fn?
+  const noCapture = (calleeName) => {
+    if (!currentFnName || !functions.has(currentFnName)) return false;
+    const callerDecls = declaredOf(currentFnName);
+    for (const f of freeOf(calleeName)) {
+      if (callerDecls.has(f)) return false;
+    }
+    return true;
+  };
   // opts.inliner === false disables function inlining: like the min/max/mid
   // ternaries it trades size for speed, and a cart at the bank-capacity cliff
   // needs the compact call form to link (the build driver retries with it off)
@@ -228,7 +281,11 @@ export function emit(chunk, symbols, file, opts = {}) {
   // (draw_tiles) no longer exists as a call.
   const zpCall = new Set();
   for (const [name, fn] of functions) {
-    if (fn.params.length >= 1 && fn.params.length <= 5 &&
+    // params <= 3 ONLY: extending to 5 was measured a net loss — combo-pool
+    // gameplay 4.99 -> 5.50 (a hot 4-5 param physics fn is slower through
+    // the slots) vs celeste2's -0.07 win. gt_p3/gt_p4 stay reserved for a
+    // future per-shape gate.
+    if (fn.params.length >= 1 && fn.params.length <= 3 &&
         fn.params.every((_, i) => (fn.paramKinds[i] ?? "int") === "int")) {
       zpCall.add(name);
     }
@@ -521,7 +578,8 @@ export function emit(chunk, symbols, file, opts = {}) {
         if (body && !inlineStack.has(callee.name) &&
             e.args.length === fn.params.length && body.stmts.length > 1) {
           const chain = returnChain(body);
-          if (chain && fn.params.every((_, i) => cheapPure(e.args[i]))) {
+          if (chain && fn.params.every((_, i) => cheapPure(e.args[i])) &&
+              noCapture(callee.name)) {
             const rendered = new Map(fn.params.map((pname, i) =>
               [pname, `(${expr(e.args[i], fn.paramKinds[i] ?? "int")})`]));
             const saved = inlineMap;
@@ -540,7 +598,7 @@ export function emit(chunk, symbols, file, opts = {}) {
         const st = body && body.stmts.length === 1 ? body.stmts[0] : null;
         if (st && st.kind === "return" && st.value &&
             !inlineStack.has(callee.name) &&
-            e.args.length === fn.params.length) {
+            e.args.length === fn.params.length && noCapture(callee.name)) {
           // side-effecting args (user calls) must be pasted EXACTLY once —
           // zero uses would drop the effect, two would double it — and at
           // most ONE such arg may inline (pasting reorders evaluation from
