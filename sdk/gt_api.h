@@ -99,7 +99,11 @@ void gt_p8_line(int x0, int y0, int x1, int y1, int c);
 void gt_p8_border(int c);
 void gt_p8_sset(int x, int y, int c);
 int gt_p8_print(const char *str, int x, int y, int c);
+#ifdef GT_NUM8
+int gt_p8_print_num(int v, int x, int y, int c);
+#else
 int gt_p8_print_num(long v, int x, int y, int c);
+#endif
 void gt_sheet_load(const unsigned char *packed);
 void gt_sheet_init(void);   /* generated per-build: loads the sheet or no-op */
 void __fastcall__ gt_bank(unsigned char b);  /* FLASH2M: switch the $8000 window */

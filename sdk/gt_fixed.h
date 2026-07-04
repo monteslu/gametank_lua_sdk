@@ -4,6 +4,30 @@
 #ifndef GT_FIXED_H
 #define GT_FIXED_H
 
+#ifdef GT_NUM8
+/* 8.8 mode (--num8): fixed is 8.8 in a 16-bit int — range +-127.996, steps
+ * of 1/256. Same public names, int signatures; the emitter never touches the
+ * zp fa/fb fastcall (that unit is 16.16 asm and isn't linked). min/max/mid/
+ * abs/sgn are scale-invariant, so the int helpers serve both kinds. */
+int  gt_fmul(int a, int b);
+int  gt_fdiv(int a, int b);
+int  gt_fsqrt(int x);
+int  gt_ffmod(int a, int b);
+int  gt_fsin(int turns);
+int  gt_fcos(int turns);
+int  gt_fatan2(int dx, int dy);
+int  gt_p8_rnd(int x);
+void gt_p8_srand(int seed);
+int  gt_p8_time(void);
+int  gt_ifdiv(int a, int b);
+int  gt_ifmod(int a, int b);
+int  gt_absi(int x);
+int  gt_sgni(int x);
+int  gt_mini(int a, int b);
+int  gt_maxi(int a, int b);
+int  gt_midi(int a, int b, int c);
+#else
+
 long gt_fmul(long a, long b);
 long gt_fdiv(long a, long b);
 
@@ -41,5 +65,8 @@ long gt_fatan2(long dx, long dy);
 long gt_p8_rnd(long x);
 void gt_p8_srand(long seed);
 long gt_p8_time(void);
+#endif /* GT_NUM8 */
+
+void gt_time_tick(void);
 
 #endif

@@ -289,6 +289,14 @@ export function emit(chunk, symbols, file, opts = {}) {
   // ternaries it trades size for speed, and a cart at the bank-capacity cliff
   // needs the compact call form to link (the build driver retries with it off)
   const inliner = opts.inliner !== false;
+  // opts.num8: the fixed kind is 8.8 in a 16-bit int (range +-127.996,
+  // steps of 1/256) instead of PICO-8's 16.16 in a long. Every fixed op
+  // halves (or better); semantics are approximate, not bit-exact — a
+  // per-cart choice, verified per-game. See docs/performance.md.
+  const N8 = !!opts.num8;
+  const FSH = N8 ? 8 : 16;             // fraction bits
+  const FONE = N8 ? 256 : 65536;       // 1.0
+  const FL = N8 ? "" : "L";            // literal suffix
   const stubbed = new Set(); // callee names reached through a far-call stub
   const line = (s) => out.push("    ".repeat(s === "" ? 0 : indent) + s);
   const mangle = (name) => `gtl_${name}`;
@@ -355,21 +363,25 @@ export function emit(chunk, symbols, file, opts = {}) {
     }
   }
 
-  const ctype = (kind) => (kind === "fixed" ? "long" : "int");
+  const ctype = (kind) => (kind === "fixed" ? (N8 ? "int" : "long") : "int");
 
   // ---- conversions -----------------------------------------------------------
 
   function cv(text, from, to) {
     if (from === to || to === "any") return text;
-    if (from === "int" && to === "fixed") return `((long)${text} << 16)`;
-    if (from === "fixed" && to === "int") return `(int)(${text} >> 16)`;
+    if (from === "int" && to === "fixed") {
+      return N8 ? `(${text} << 8)` : `((long)${text} << 16)`;
+    }
+    if (from === "fixed" && to === "int") {
+      return N8 ? `(${text} >> 8)` : `(int)(${text} >> 16)`;
+    }
     return text;
   }
 
   function fixedLit(node) {
-    const bits = node.fixed | 0;
+    const bits = N8 ? (Math.round(node.value * 256) | 0) : (node.fixed | 0);
     const frac = !Number.isInteger(node.value);
-    return frac ? `${bits}L /* ${node.value} */` : `${bits}L`;
+    return frac ? `${bits}${FL} /* ${node.value} */` : `${bits}${FL}`;
   }
 
   // emit expression at the requested kind ("int" | "fixed" | "bool" | "any")
@@ -471,8 +483,11 @@ export function emit(chunk, symbols, file, opts = {}) {
       }
       case "/": {
         if (e.divConst) {
-          if (e.left.tk === "int" && 16 - lg >= 0) {
-            return cv(`((long)${expr(e.left, "int")} << ${16 - lg})`, "fixed", want);
+          if (e.left.tk === "int" && FSH - lg >= 0) {
+            const sh = FSH - lg;
+            const body = N8 ? `(${expr(e.left, "int")} << ${sh})`
+                            : `((long)${expr(e.left, "int")} << ${sh})`;
+            return cv(body, "fixed", want);
           }
           return cv(`(${expr(e.left, "fixed")} >> ${lg})`, "fixed", want);
         }
@@ -482,15 +497,17 @@ export function emit(chunk, symbols, file, opts = {}) {
         const ok = e.operandKind ?? "int";
         if (e.divConst) {
           if (ok === "int") return cv(`(${expr(e.left, "int")} >> ${lg})`, "int", want);
-          return cv(`(int)(${expr(e.left, "fixed")} >> ${16 + lg})`, "int", want);
+          return cv(N8 ? `(${expr(e.left, "fixed")} >> ${8 + lg})`
+                       : `(int)(${expr(e.left, "fixed")} >> ${16 + lg})`, "int", want);
         }
         if (ok === "int") return cv(`gt_ifdiv(${expr(e.left, "int")}, ${expr(e.right, "int")})`, "int", want);
-        return cv(`(int)(${fixedCall("gt_fdiv", e.left, e.right)} >> 16)`, "int", want);
+        return cv(N8 ? `(${fixedCall("gt_fdiv", e.left, e.right)} >> 8)`
+                     : `(int)(${fixedCall("gt_fdiv", e.left, e.right)} >> 16)`, "int", want);
       }
       case "%": {
         if (e.divConst) {
           if (k === "int") return cv(`(${expr(e.left, "int")} & ${e.divConst - 1})`, "int", want);
-          return cv(`(${expr(e.left, "fixed")} & ${(e.divConst * 65536) - 1}L)`, "fixed", want);
+          return cv(`(${expr(e.left, "fixed")} & ${(e.divConst * FONE) - 1}${FL})`, "fixed", want);
         }
         if (k === "int") return cv(`gt_ifmod(${expr(e.left, "int")}, ${expr(e.right, "int")})`, "int", want);
         return cv(`gt_ffmod(${expr(e.left, "fixed")}, ${expr(e.right, "fixed")})`, "fixed", want);
@@ -505,7 +522,8 @@ export function emit(chunk, symbols, file, opts = {}) {
         return cv(`(${expr(e.left, k)} >> ${expr(e.right, "int")})`, k, want);
       case ">>>": {
         if (k === "int") return cv(`(int)((unsigned int)${expr(e.left, "int")} >> ${expr(e.right, "int")})`, "int", want);
-        return cv(`(long)((unsigned long)${expr(e.left, "fixed")} >> ${expr(e.right, "int")})`, "fixed", want);
+        return cv(N8 ? `(int)((unsigned)${expr(e.left, "fixed")} >> ${expr(e.right, "int")})`
+                     : `(long)((unsigned long)${expr(e.left, "fixed")} >> ${expr(e.right, "int")})`, "fixed", want);
       }
       default:
         return "0";
@@ -521,7 +539,7 @@ export function emit(chunk, symbols, file, opts = {}) {
   function fixedCall(fn, left, right) {
     const L = expr(left, "fixed");
     const R = expr(right, "fixed");
-    if (!touchesFixedRuntime(left) && !touchesFixedRuntime(right)) {
+    if (!N8 && !touchesFixedRuntime(left) && !touchesFixedRuntime(right)) {
       return `(fa = ${L}, fb = ${R}, ${fn}_zp())`;
     }
     return `${fn}(${L}, ${R})`;
@@ -767,7 +785,7 @@ export function emit(chunk, symbols, file, opts = {}) {
     if (name === "cls") return "0";
     if (name === "camera") return "0";
     if (name === "bg_draw") return "0";      // bg_draw() -> source offset 0,0
-    if (name === "rnd") return "65536L";     // rnd() == rnd(1.0)
+    if (name === "rnd") return `${FONE}${FL}`;   // rnd() == rnd(1.0)
     if (name === "btn" || name === "btnp") return "0"; // player 0
     if (name === "pal") return "-1";          // pal() == reset
     if (name === "note") return "127";        // default volume
@@ -783,13 +801,15 @@ export function emit(chunk, symbols, file, opts = {}) {
     const anyFixed = kinds.some((k) => k === "fixed");
     switch (b.special) {
       case "flr":
-        return a0.tk === "int" ? expr(a0, "int") : `(int)(${expr(a0, "fixed")} >> 16)`;
+        return a0.tk === "int" ? expr(a0, "int")
+          : (N8 ? `(${expr(a0, "fixed")} >> 8)` : `(int)(${expr(a0, "fixed")} >> 16)`);
       case "ceil":
-        return a0.tk === "int" ? expr(a0, "int") : `(int)((${expr(a0, "fixed")} + 0xFFFFL) >> 16)`;
+        return a0.tk === "int" ? expr(a0, "int")
+          : (N8 ? `((${expr(a0, "fixed")} + 0xFF) >> 8)` : `(int)((${expr(a0, "fixed")} + 0xFFFFL) >> 16)`);
       case "abs":
-        return anyFixed ? `gt_absf(${expr(a0, "fixed")})` : `gt_absi(${expr(a0, "int")})`;
+        return anyFixed ? `gt_abs${N8 ? "i" : "f"}(${expr(a0, "fixed")})` : `gt_absi(${expr(a0, "int")})`;
       case "sgn":
-        return a0.tk === "int" ? `gt_sgni(${expr(a0, "int")})` : `gt_sgnf(${expr(a0, "fixed")})`;
+        return a0.tk === "int" ? `gt_sgni(${expr(a0, "int")})` : `gt_sgn${N8 ? "i" : "f"}(${expr(a0, "fixed")})`;
       case "min": case "max": {
         // int min/max of cheap PURE args inline as a ternary: a cc65 cdecl
         // call (3 pushes + jsr + compare) is ~250 cycles for what is 2
@@ -797,24 +817,26 @@ export function emit(chunk, symbols, file, opts = {}) {
         // (collision clamps, camera). Multi-eval is safe because cheapPure()
         // admits only literals, plain variables, and simple arithmetic.
         const second = e.args[1] ?? { kind: "number", value: 0, isInt: true };
-        if (!anyFixed && cheapPure(a0) && cheapPure(second)) {
-          const A = expr(a0, "int"), B = expr(second, "int");
+        const mk = anyFixed ? "fixed" : "int";
+        if ((!anyFixed || N8) && cheapPure(a0) && cheapPure(second)) {
+          const A = expr(a0, mk), B = expr(second, mk);
           const op = b.special === "min" ? "<" : ">";
           return `((${A}) ${op} (${B}) ? (${A}) : (${B}))`;
         }
-        const fn = `gt_${b.special}${anyFixed ? "f" : "i"}`;
+        const fn = `gt_${b.special}${anyFixed && !N8 ? "f" : "i"}`;
         const sec = e.args[1] ? expr(e.args[1], anyFixed ? "fixed" : "int") : (anyFixed ? "0L" : "0");
         return `${fn}(${expr(a0, anyFixed ? "fixed" : "int")}, ${sec})`;
       }
       case "mid": {
         // median-of-3 inline (each arg evaluated at most twice) — same
         // rationale as min/max above.
-        if (!anyFixed && e.args.every((a) => cheapPure(a))) {
-          const A = expr(e.args[0], "int"), B = expr(e.args[1], "int"), C = expr(e.args[2], "int");
+        if ((!anyFixed || N8) && e.args.every((a) => cheapPure(a))) {
+          const mk = anyFixed ? "fixed" : "int";
+          const A = expr(e.args[0], mk), B = expr(e.args[1], mk), C = expr(e.args[2], mk);
           return `((${A}) < (${B}) ? ((${B}) < (${C}) ? (${B}) : ((${A}) < (${C}) ? (${C}) : (${A})))` +
                  ` : ((${A}) < (${C}) ? (${A}) : ((${B}) < (${C}) ? (${C}) : (${B}))))`;
         }
-        const fn = `gt_mid${anyFixed ? "f" : "i"}`;
+        const fn = `gt_mid${anyFixed && !N8 ? "f" : "i"}`;
         const k = anyFixed ? "fixed" : "int";
         return `${fn}(${expr(e.args[0], k)}, ${expr(e.args[1], k)}, ${expr(e.args[2], k)})`;
       }
@@ -932,7 +954,7 @@ export function emit(chunk, symbols, file, opts = {}) {
         if (kind === "int") {
           inc = step === 1 ? `++${v}` : step === -1 ? `--${v}` : `${v} += ${Math.trunc(step)}`;
         } else {
-          inc = `${v} += ${(Math.round(step * 65536) | 0)}L`;
+          inc = `${v} += ${(Math.round(step * FONE) | 0)}${FL}`;
         }
         // 8-bit narrowing: a counting loop whose bounds are compile-time
         // constants in [0, 254] (255 would wrap the ++ and never terminate),
@@ -1083,18 +1105,18 @@ export function emit(chunk, symbols, file, opts = {}) {
       continue;
     }
     if (g.kind === "array") {
-      const ct = g.elemKind === "fixed" ? "long" : (g.elemBytes ? "unsigned char" : "int");
+      const ct = g.elemKind === "fixed" ? ctype("fixed") : (g.elemBytes ? "unsigned char" : "int");
       if (g.initVal === 0) {
         out.push(`${ct} ${mangle(name)}[${g.size}];`);
       } else {
         const v = g.elemKind === "fixed"
-          ? `${Math.round(g.initVal * 65536) | 0}L`
+          ? `${Math.round(g.initVal * FONE) | 0}${FL}`
           : String(Math.trunc(g.initVal));
         out.push(`${ct} ${mangle(name)}[${g.size}] = { ${Array(g.size).fill(v).join(", ")} };`);
       }
     } else if (g.kind === "fixed") {
-      const bits = (Math.round(g.value * 65536) | 0);
-      out.push(`long ${mangle(name)} = ${bits}L; /* ${g.value} */`);
+      const bits = (Math.round(g.value * FONE) | 0);
+      out.push(`${ctype("fixed")} ${mangle(name)} = ${bits}${FL}; /* ${g.value} */`);
     } else {
       out.push(`int ${mangle(name)} = ${Math.trunc(g.value)};`);
     }

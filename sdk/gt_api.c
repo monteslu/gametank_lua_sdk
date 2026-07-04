@@ -164,11 +164,18 @@ int gt_p8_print(const char *str, int x, int y, int c) {
     return x + gt_cam_x;
 }
 
-/* print a 16.16 number: integer part (P8 prints integers bare) */
+/* print a fixed number: integer part (P8 prints integers bare) */
+#ifdef GT_NUM8
+int gt_p8_print_num(int v, int x, int y, int c) {
+    char buf[8];
+    char *p = buf + 7;
+    int iv = v >> 8;
+#else
 int gt_p8_print_num(long v, int x, int y, int c) {
     char buf[8];
     char *p = buf + 7;
     int iv = (int)(v >> 16);
+#endif
     unsigned int uv;
     unsigned char neg = 0;
     *p = 0;
@@ -454,10 +461,17 @@ void gt_starfield_init(int n) {
     if (n > GT_STARS_MAX) n = GT_STARS_MAX;
     star_n = (unsigned char)n;
     for (i = 0; i < star_n; ++i) {
+#ifdef GT_NUM8
+        star_x[i]    = (unsigned char)(gt_p8_rnd(127 << 8) >> 8);
+        star_row[i]  = (unsigned char)(gt_p8_rnd(127 << 8) >> 8);
+        star_frac[i] = 0;
+        s = (unsigned char)(8 + (gt_p8_rnd(24 << 8) >> 8));
+#else
         star_x[i]    = (unsigned char)(gt_p8_rnd(128L << 16) >> 16);
         star_row[i]  = (unsigned char)(gt_p8_rnd(128L << 16) >> 16);
         star_frac[i] = 0;
         s = (unsigned char)(8 + (gt_p8_rnd(24L << 16) >> 16));
+#endif
         star_s[i]    = s;
         /* colour by speed tier, baked once (pset colour never changes) */
         star_col[i]  = (s < 16) ? p8pal[1] : (s < 24) ? p8pal[13] : p8pal[6];

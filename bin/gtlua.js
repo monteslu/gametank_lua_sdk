@@ -313,7 +313,7 @@ function rebalance(placement, sizes, overflows, sheetBytes, callGraph, usesBg, u
 
 // ---- build ------------------------------------------------------------------
 
-function build(entry, outPath, sheetPath) {
+function build(entry, outPath, sheetPath, num8 = false) {
   if (!existsSync(entry)) fail(`no such file: ${entry}`);
   const tc = findToolchain();
   const projDir = path.dirname(path.resolve(entry));
@@ -324,6 +324,9 @@ function build(entry, outPath, sheetPath) {
 
   const CFLAGS = ["-t", "none", "-Osr", "--cpu", "65c02", "--codesize", "500",
                   "--static-locals", "-I", SDK];
+  // --num8: fixed becomes 8.8-in-an-int everywhere — the game C and every
+  // SDK unit must agree on the width, so the define rides the shared CFLAGS
+  if (num8) CFLAGS.push("-DGT_NUM8");
   const AFLAGS = ["--cpu", "W65C02"];
   if (tc.asminc && existsSync(tc.asminc)) AFLAGS.push("-I", tc.asminc);
   // compile C then run the gtlua peephole pass over cc65's assembly output
@@ -340,7 +343,7 @@ function build(entry, outPath, sheetPath) {
   const B = (f) => path.join(buildDir, f);
 
   // 1. lua -> C (flat 32 KB attempt first)
-  let result = compileLua(entry);
+  let result = compileLua(entry, { num8 });
   const usesAudio = result.c.includes("gt_audio_init(");
   // sfx()/music() pull in the tracker (gt_music.c). Its data + per-frame
   // sequencer are small and read across arbitrary game banks every frame, so
@@ -372,7 +375,7 @@ function build(entry, outPath, sheetPath) {
   as(path.join(SDK, "vectors.s"), B("vectors.o"));
   as(path.join(SDK, "interrupt.s"), B("interrupt.o"));
   as(path.join(SDK, "gt_blitq.s"), B("gt_blitq.o"));
-  as(path.join(SDK, "gt_fixed_asm.s"), B("gt_fixed_asm.o"));
+  if (!num8) as(path.join(SDK, "gt_fixed_asm.s"), B("gt_fixed_asm.o"));
   as(B("gt_api.s"), B("gt_api.o"));
   as(B("gt_fixed.s"), B("gt_fixed.o"));
   as(B("gt_math.s"), B("gt_math.o"));
@@ -384,7 +387,7 @@ function build(entry, outPath, sheetPath) {
 
   const baseObjs = [
     B("crt0.o"), B("vectors.o"), B("interrupt.o"), B("gt_blitq.o"),
-    B("gt_api.o"), B("gt_fixed.o"), B("gt_fixed_asm.o"), B("gt_math.o"),
+    B("gt_api.o"), B("gt_fixed.o"), ...(num8 ? [] : [B("gt_fixed_asm.o")]), B("gt_math.o"),
     ...(usesBg ? [B("gt_bg.o")] : []),
     ...(usesAudio ? [B("gt_audio.o")] : []),
     ...(usesMusic ? [B("gt_music.o")] : []),
@@ -485,7 +488,7 @@ function build(entry, outPath, sheetPath) {
       workPlacement = initialPlacement(result.callGraph);
       console.error("bank placement tight: retrying with all inlining off");
     }
-    result = compileLua(entry, { banked: true, placement: workPlacement, midInline, inliner: fnInline });
+    result = compileLua(entry, { banked: true, placement: workPlacement, midInline, inliner: fnInline, num8 });
     writeFileSync(B(`${name}.c`), result.c);
     cc(B(`${name}.c`), B(`${name}.s`));
     as(B(`${name}.s`), B(`${name}.o`));
@@ -543,11 +546,13 @@ if (cmd === "build") {
   const outPath = oIdx !== -1 ? rest[oIdx + 1] : undefined;
   const sIdx = rest.indexOf("--sheet");
   const sheetPath = sIdx !== -1 ? rest[sIdx + 1] : undefined;
+  const nIdx = rest.indexOf("--num8");
   const entry = rest.filter((a, i) =>
     i !== oIdx && i !== (oIdx === -1 ? -2 : oIdx + 1) &&
-    i !== sIdx && i !== (sIdx === -1 ? -2 : sIdx + 1))[0];
-  if (!entry) fail("usage: gtlua build <main.lua> [--sheet gfx.bin] [-o game.gtr]");
-  build(entry, outPath, sheetPath);
+    i !== sIdx && i !== (sIdx === -1 ? -2 : sIdx + 1) &&
+    i !== nIdx)[0];
+  if (!entry) fail("usage: gtlua build <main.lua> [--sheet gfx.bin] [--num8] [-o game.gtr]");
+  build(entry, outPath, sheetPath, nIdx !== -1);
 } else if (cmd === "c") {
   if (!rest[0]) fail("usage: gtlua c <main.lua>");
   process.stdout.write(compileLua(rest[0]).c);

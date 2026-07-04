@@ -4,6 +4,47 @@
  * once profiling says so. */
 #include "gt_fixed.h"
 
+#ifdef GT_NUM8
+/* ---- 8.8 mode: fixed is a 16-bit int, 8 fraction bits ------------------- */
+
+int gt_fmul(int a, int b) {
+    /* (a*b) >> 8 through a 32-bit intermediate; wraps like the 16.16 core */
+    return (int)(((long)a * b) >> 8);
+}
+
+int gt_fdiv(int a, int b) {
+    long q;
+    if (b == 0) return (a < 0) ? (int)0x8001 : 0x7FFF;   /* P8 saturates */
+    q = ((long)a << 8) / b;
+    return (int)q;
+}
+
+int gt_fsqrt(int x) {
+    /* Newton on 8.8: two refinements from an 8-bit integer seed */
+    int res, t;
+    unsigned char i;
+    if (x <= 0) return 0;
+    res = (x >= 256) ? (x >> 1) : 256;
+    for (i = 0; i < 8; ++i) {
+        t = gt_fdiv(x, res);
+        res = (res + t) >> 1;
+        if (res <= 0) { res = 1; break; }
+    }
+    return res;
+}
+
+int gt_ffmod(int a, int b) {
+    /* floored modulo, sign of divisor: masking the fraction bits of the
+     * quotient IS floor toward -inf in two's complement 8.8 (the exact
+     * parallel of the 16.16 version below) */
+    int q;
+    if (b == 0) return 0;
+    q = gt_fdiv(a, b) & (int)0xFF00;
+    return a - gt_fmul(q, b);
+}
+
+#else /* !GT_NUM8: the 16.16 core */
+
 /* GT_FIXED_ASM: gt_fmul and gt_fdiv are provided by hand-tuned 65C02 in
  * gt_fixed_asm.s (bit-identical PICO-8 semantics; a fixed-mul statement drops
  * from ~9.3K to ~2.8K cycles, ~3.3x, measured on the fmul microbench).
@@ -82,6 +123,7 @@ long gt_ffmod(long a, long b) {
     q = gt_fdiv(a, b) & (long)0xFFFF0000L;
     return a - gt_fmul(q, b);
 }
+#endif /* !GT_NUM8 */
 
 int gt_ifdiv(int a, int b) {
     int q, r;
@@ -101,13 +143,15 @@ int gt_ifmod(int a, int b) {
 }
 
 int  gt_absi(int x)  { return x < 0 ? -x : x; }
-long gt_absf(long x) { return x < 0 ? -x : x; }
 int  gt_sgni(int x)  { return x < 0 ? -1 : 1; }
-int  gt_sgnf(long x) { return x < 0 ? -1 : 1; }
 int  gt_mini(int a, int b)  { return a < b ? a : b; }
 int  gt_maxi(int a, int b)  { return a > b ? a : b; }
+#ifndef GT_NUM8
+long gt_absf(long x) { return x < 0 ? -x : x; }
+int  gt_sgnf(long x) { return x < 0 ? -1 : 1; }
 long gt_minf(long a, long b) { return a < b ? a : b; }
 long gt_maxf(long a, long b) { return a > b ? a : b; }
+#endif
 
 int gt_midi(int a, int b, int c) {
     int t;
@@ -116,9 +160,11 @@ int gt_midi(int a, int b, int c) {
     return a > b ? a : b;
 }
 
+#ifndef GT_NUM8
 long gt_midf(long a, long b, long c) {
     long t;
     if (a > b) { t = a; a = b; b = t; }
     if (b > c) { b = c; }
     return a > b ? a : b;
 }
+#endif
