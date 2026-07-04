@@ -299,6 +299,23 @@ cheap). The emitter controls both definition and every call site of user
 functions — pass the first 2-3 int args of NON-RECURSIVE hot functions in zp
 slots. p_check_solid/appr-class callees are called 5-10x/frame everywhere.
 
+### BOARD STATE (end of the codegen program's first arc)
+
+SHIPPED, all verified regression-free: peephole pass (near-inert, kept as
+infrastructure) · u8 loop counters · array8 byte arrays · index folding
+(constant peel + narrow-gated pointer fold) · automatic inlining (single-
+return, wrapper chains, if-return chains -> ternaries) · dead-function
+elimination · zp-fastcall for 1-5 int-param functions (leaf slot-direct) ·
+pool-field byte narrowing. Entity-shape stack: 3.0x vs naive (561 -> 186
+cyc/update; ideal asm 40). Helper calls are free (probe: 256 calls/frame =
+4.0 vsyncs cdecl, 2.0 locked with the inliner). The flat-bg "bug" was closed
+as boot latency (see git 5c54721).
+
+REMAINING TRACKS, in value order: statement-body inliner tier (local + stmts
+shape — needs temps and statement-context substitution) · zp-fastcall for
+fixed/long params (4-byte slots) · local-scalar narrowing for constant-
+assigned state variables · revisit cc65 -Oi/register-keyword experiments.
+
 ### NEXT TOP TRACK: automatic small-function inlining (measured 2026-07-04)
 
 Inlining driftmania's 4-line draw_tiles() at its 3 call sites (a mechanical
