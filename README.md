@@ -107,8 +107,10 @@ end
 
 `gt.bg_compose` reads tiles from the loaded `--sheet` (cell N is at sheet cell
 `(N%16, N//16)`), clears the page to color 0, and paints the `cw×ch` window
-starting at map cell `(cx,cy)`; tile 0 is left empty. It's a one-time,
-several-frame cost — call it at level load, not every frame.
+starting at map cell `(cx,cy)`; tile 0 is left empty. It's a one-time cost of
+up to a second or so of CPU time (the canvas clear alone is 64 KB of writes) —
+call it at level load, not every frame, and expect the screen to sit black
+until `_init` returns.
 
 The bg page is a **256×256 canvas** (`cw`/`ch` up to 32 cells), so a level
 bigger than one screen composes once and **scrolls for free**: `gt.bg_draw(sx,
