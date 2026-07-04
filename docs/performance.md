@@ -192,8 +192,12 @@ it. Fixed-point add/subtract are cheap, but fixed `*`/`/`/`%` are not (see §1).
 ### The compiler's own optimizations (so you don't hand-tune them)
 
 The emitter narrows counting-loop variables to bytes when bounds are provably
-0-254, collapses `arr[x + 1]` to `arr[x]` at compile time, and folds the
-1-based `-1` into the symbol address for byte-counter indexes. Measured on the
+0-254, collapses `arr[x + 1]` to `arr[x]` at compile time, folds the
+1-based `-1` into the symbol address for byte-counter indexes, and
+strength-reduces `x * C` (C up to 255, e.g. tile sizes like 14 or 24) to
+shift-adds — a constant multiply that used to cost ~250 cycles through the
+cc65 runtime now costs ~40, so `spr(n, col * 14, row * 14)` grid math is
+cheap. Measured on the
 entity-update probe: the full stack (narrowed counters + `array8` + index
 folds) runs **3.0× faster than the same Lua compiled naively** (561 → 186
 cycles per update). Single-`return` helpers AND
@@ -331,7 +335,7 @@ feels productive and changes nothing players feel.
 | ufo-swamp / celeste-like | 3.0 | 20 | light + lean |
 | cherry-bomb (combat) | 4.5 (was 4.8) | 13 | entity volume; compiler recovered ~0.3 |
 | combo-pool (gameplay) | 5.0 | 12 | physics floor 4.0 |
-| driftmania | 5.7 (was 10.1) | 10.5 | chunk atlas + inline |
+| driftmania | 5.6 (was 10.1) | 10.7 | chunk atlas + inline + shift-add multiplies |
 | celeste2 (gameplay) | 6.7 (was 14.6) | 9.0 | footgun fixes + compiler inlining |
 | newleste | 7.1 (was 11.1) | 8.5 | physics 3x + canvas map |
 
