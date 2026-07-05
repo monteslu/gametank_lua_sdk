@@ -87,7 +87,11 @@ static void await_drawing(void) {
 static void enter_cpu_mode(void) {
     if (gt_draw_mode == MODE_CPU) return;
     await_drawing();
-    flags_mirror = DMA_NMI | DMA_CPU_TO_VRAM;   /* DMA off: CPU owns VRAM */
+    /* keep frameflip (PAGE_OUT): the video scans the page selected by the
+     * LIVE $2007 — dropping the bit mid-frame points the display at the page
+     * being DRAWN (flicker + half-drawn content on real hardware and any
+     * scan-faithful emulator). Same rule for every $2007 write below. */
+    flags_mirror = DMA_NMI | DMA_CPU_TO_VRAM | frameflip;
     *dma_flags = flags_mirror;
     banks_mirror = bankflip;                    /* write the DRAW page */
     *bank_reg = banks_mirror;
@@ -99,7 +103,7 @@ static void enter_cpu_mode(void) {
 static void enter_gram_mode(void) {
     if (gt_draw_mode == MODE_GRAM) return;
     await_drawing();
-    flags_mirror = DMA_NMI | DMA_ENABLE | DMA_IRQ | DMA_GCARRY;
+    flags_mirror = DMA_NMI | DMA_ENABLE | DMA_IRQ | DMA_GCARRY | frameflip;
     *dma_flags = flags_mirror;
     banks_mirror = bankflip | BANK_CLIP_X | BANK_CLIP_Y;
     *bank_reg = banks_mirror;
@@ -112,7 +116,7 @@ static void enter_gram_mode(void) {
     gt_draw_busy = 1;
     vram[START] = 1;
     await_drawing();
-    flags_mirror = DMA_NMI;      /* DMA off, CPU_TO_VRAM off -> GRAM writes */
+    flags_mirror = DMA_NMI | frameflip;  /* DMA off, CPU_TO_VRAM off -> GRAM writes */
     *dma_flags = flags_mirror;
     gt_draw_mode = MODE_GRAM;
 }

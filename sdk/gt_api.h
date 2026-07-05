@@ -19,6 +19,7 @@ extern unsigned int gt_ticks;
  * are zp too so camera()/btn()/btnp() emit as inline zp ops. */
 extern int gt_a0, gt_a1, gt_a2, gt_a3, gt_a4, gt_a5;
 extern int gt_p0, gt_p1, gt_p2, gt_p3, gt_p4;   /* zp-fastcall USER-fn params */
+extern char frameflip;            /* DMA_PAGE_OUT bit state (gt_api.c) */
 extern int gt_cam_x, gt_cam_y;
 extern unsigned int gt_pad0, gt_pad1, gt_rpt0, gt_rpt1;
 extern volatile unsigned char gt_qhead, gt_qtail;

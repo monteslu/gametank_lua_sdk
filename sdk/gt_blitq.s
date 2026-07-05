@@ -27,6 +27,7 @@
 ; ---------------------------------------------------------------------------
 .import   _gt_draw_busy
 .import   _gt_draw_mode
+.import   _frameflip
 .export   _gt_a0, _gt_a1, _gt_a2, _gt_a3, _gt_a4, _gt_a5
 .export   _gt_cam_x, _gt_cam_y
 .export   _gt_pad0, _gt_pad1, _gt_rpt0, _gt_rpt1
@@ -98,8 +99,9 @@ _gt_q_kick:
         LDX _gt_qtail
         CPX _gt_qhead
         BEQ @empty
-        LDA _gt_q+0,x           ; per-blit dma flags
-        STA DMA_Flags
+        LDA _gt_q+0,x           ; per-blit dma flags...
+        ORA _frameflip          ; ...plus the LIVE page bit: the video scans
+        STA DMA_Flags           ; from $2007 — never point it at the draw page
         ; bank: colorfill entries use the frame's write bank; COPY entries
         ; carry their own bank byte in the (otherwise unused) color slot, so
         ; one queue can mix sheet sprites with blits from other GRAM groups
