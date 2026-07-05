@@ -84,113 +84,67 @@ _gt_q:     .res 256             ; 32 entries x 8 bytes
 .segment "CODE"
 
 ; ---------------------------------------------------------------------------
-; gt_q_kick: if the queue has an entry, program + start it (does NOT ack).
-; Called ONLY from the main thread, under SEI, when the blitter is idle
-; (the "pump": every enqueue and the drain loop advance the chain). The IRQ
-; handler deliberately does NOT touch the queue or the blitter registers —
-; chaining blits from interrupt context while the emulator materializes the
-; finished blit lazily proved to be a timing-sensitive crash (runaway after
-; a variable number of frames); the pump keeps every VDMA access on the
-; main thread, the pattern the runtime always used. Clobbers A,X. When the
-; queue is empty, the blitter is done working: clear _gt_draw_busy.
+; gt_q_push — the DIRECT draw path (depth-1 write-through).
+;
+; HISTORY (measured): the pre-queue runtime re-programmed modes inside every
+; primitive (spr 932 cycles); the ring queue got a blit down to ~600 — but
+; that is still 5x what the upstream C SDK pays, and the gap is pure
+; bureaucracy: ring copy, pump, kick indirection, and an IRQ-chained
+; consumer. Native GameTank games poke the eight registers and go. So does
+; this: a primitive stages _gt_ent (zp stores, as before) and gt_q_push
+; waits for the blitter to go idle (usually it already is — the previous
+; blit drained while the game computed this one's arguments: the same
+; overlap the ring bought, without the machinery), pokes the registers
+; straight from zero page, starts, and returns. ~100 cycles.
+;
+; The ring symbols (_gt_q/_gt_qhead/_gt_qtail) remain exported for C-side
+; compatibility: head==tail forever, so existing drain loops fall through.
+; The completion IRQ still fires per blit and just clears _gt_draw_busy.
+;
+; EMULATOR RULE (load-bearing): the dummy $4000 read BEFORE writing new
+; flags/registers forces the lazy materializer to draw the finished blit
+; under the state it actually ran with. Harmless on hardware.
 ; ---------------------------------------------------------------------------
-_gt_q_kick:
+_gt_q_push:
+@wait:  LDA _gt_draw_busy       ; previous blit still draining?
+        BNE @wait               ;   (IRQ clears it; spin is the overlap tax)
         LDA VDMA_Base           ; dummy read: force emulator catch-up FIRST
-        LDX _gt_qtail
-        CPX _gt_qhead
-        BEQ @empty
-        LDA _gt_q+0,x           ; per-blit dma flags...
+        LDA _gt_ent+0           ; per-blit dma flags...
         ORA _frameflip          ; ...plus the LIVE page bit: the video scans
         STA DMA_Flags           ; from $2007 — never point it at the draw page
-        ; bank: colorfill entries use the frame's write bank; COPY entries
-        ; carry their own bank byte in the (otherwise unused) color slot, so
-        ; one queue can mix sheet sprites with blits from other GRAM groups
-        ; (gt.gspr's composed-canvas sprites).
+        ; bank: colorfill blits use the frame's write bank; COPY blits carry
+        ; their own bank byte in the (otherwise unused) color slot, so sheet
+        ; sprites mix freely with composed-canvas blits (gt.gspr).
         AND #$08                ; DMA_COLORFILL_ENABLE?
         BNE @fill
-        LDA _gt_q+7,x           ; copy: bank rides in the color slot
+        LDA _gt_ent+7           ; copy: bank rides in the color slot
         BRA @bank
 @fill:  LDA _gt_qbank
 @bank:  STA Bank_Reg
-        LDA _gt_q+1,x
+        LDA _gt_ent+1
         STA VDMA_Base
-        LDA _gt_q+2,x
+        LDA _gt_ent+2
         STA VDMA_Base+1
-        LDA _gt_q+3,x
+        LDA _gt_ent+3
         STA VDMA_Base+2
-        LDA _gt_q+4,x
+        LDA _gt_ent+4
         STA VDMA_Base+3
-        LDA _gt_q+5,x
+        LDA _gt_ent+5
         STA VDMA_W
-        LDA _gt_q+6,x
+        LDA _gt_ent+6
         STA VDMA_H
-        LDA _gt_q+7,x
+        LDA _gt_ent+7
         STA VDMA_Col
         LDA #1
+        STA _gt_draw_busy       ; busy BEFORE start: the IRQ can fire fast
         STA DMA_Start           ; kick
-        TXA
-        CLC
-        ADC #8
-        STA _gt_qtail
-        RTS
-@empty:
-        STZ _gt_draw_busy
         RTS
 
-; ---------------------------------------------------------------------------
-; gt_q_push: commit the staged entry (_gt_ent) into the ring and pump.
-; The producer fast path: callers do 8 zp stores + JSR — no C-stack args.
-; If the ring is full, pump until the blitter frees a slot (never a blind
-; spin). Clobbers A,X.
-; ---------------------------------------------------------------------------
-_gt_q_push:
-@full:  LDA _gt_qhead
-        CLC
-        ADC #8
-        CMP _gt_qtail
-        BNE @room
-        JSR _gt_q_pump          ; ring full: advance the chain, retry
-        BRA @full
-@room:  LDX _gt_qhead
-        LDA _gt_ent+0
-        STA _gt_q+0,x
-        LDA _gt_ent+1
-        STA _gt_q+1,x
-        LDA _gt_ent+2
-        STA _gt_q+2,x
-        LDA _gt_ent+3
-        STA _gt_q+3,x
-        LDA _gt_ent+4
-        STA _gt_q+4,x
-        LDA _gt_ent+5
-        STA _gt_q+5,x
-        LDA _gt_ent+6
-        STA _gt_q+6,x
-        LDA _gt_ent+7
-        STA _gt_q+7,x
-        TXA
-        CLC
-        ADC #8
-        STA _gt_qhead
-        ; FALLS THROUGH into the pump
-
-; ---------------------------------------------------------------------------
-; gt_q_pump: if the blitter is idle and work is queued, start the next blit.
-; The ONLY place blits start. Interrupt-state preserved (php/sei/plp) so it
-; is safe from any context; the completion IRQ only clears _gt_draw_busy.
-; Clobbers A,X.
-; ---------------------------------------------------------------------------
+; gt_q_pump / gt_q_kick: kept as no-op entry points — the direct path has no
+; deferred work to advance. C-side callers (bg_drain, await_drawing) loop on
+; qhead != qtail, which is never true now.
 _gt_q_pump:
-        PHP
-        SEI
-        LDA _gt_draw_busy
-        BNE @out
-        LDA _gt_qtail
-        CMP _gt_qhead
-        BEQ @out
-        INC _gt_draw_busy       ; 0 -> 1
-        JSR _gt_q_kick
-@out:   PLP
+_gt_q_kick:
         RTS
 
 ; ---------------------------------------------------------------------------
