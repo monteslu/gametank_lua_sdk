@@ -1406,6 +1406,7 @@ function game_init()
 end
 
 function _init()
+  gt.autocls(0)                 -- frame clear rides the post-flip vsync wait
   local i = 1
   while i <= 32 do
     frwob[i] = sin((i - 1) / 32) * 2.5
@@ -1422,7 +1423,6 @@ end
 -- update
 -- ---------------------------------------------------------------------
 function _update()
-  cls()                          -- clear kicks off while logic runs
 
   frames += 1
   if time_ticking == 1 then

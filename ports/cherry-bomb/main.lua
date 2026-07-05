@@ -1327,17 +1327,17 @@ function _init()
 end
 
 function _update()
- -- cls first: its DMA runs under the whole frame's logic
+ -- autocls: the clear drains inside the post-flip vsync wait, off-budget
  if mode==MLOGO then
-  if logot<60 then cls(12) else cls(0) end
+  if logot<60 then gt.autocls(12) else gt.autocls(0) end
  elseif mode==MSTART then
-  cls(0)
+  gt.autocls(0)
  else
   if flash>0 then
    flash-=1
-   cls(2)
+   gt.autocls(2)
   else
-   cls(0)
+   gt.autocls(0)
   end
  end
 

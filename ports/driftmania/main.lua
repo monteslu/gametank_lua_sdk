@@ -1376,6 +1376,7 @@ function reset()
 end
 
 function _init()
+  gt.autocls(3)                 -- frame clear rides the post-flip vsync wait
   gd_init()
   atlas_init()
   reset()
@@ -1739,7 +1740,6 @@ function hud()
 end
 
 function _draw()
-  cls(3)
   camera(camxi, camyi)
 
   -- visible chunk window (24px chunks; div3 tables avoid runtime divides)
