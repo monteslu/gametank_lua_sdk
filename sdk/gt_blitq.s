@@ -38,7 +38,7 @@
 .export   _gt_a0, _gt_a1, _gt_a2, _gt_a3, _gt_a4, _gt_a5
 .export   _gt_cam_x, _gt_cam_y
 .export   _gt_pad0, _gt_pad1, _gt_rpt0, _gt_rpt1
-.export   _gt_qhead, _gt_qtail, _gt_qbank
+.export   _gt_qhead, _gt_qtail, _gt_qbank, _gt_push_waits
 .export   _gt_q
 .export   _gt_ent
 .export   _gt_p0, _gt_p1, _gt_p2, _gt_p3, _gt_p4
@@ -73,6 +73,7 @@ _gt_rpt1:  .res 2
 _gt_qhead: .res 1               ; producer index (multiples of 8)
 _gt_qtail: .res 1               ; consumer index (advanced by the pump)
 _gt_qbank: .res 1               ; this frame's $2005 byte for blits
+_gt_push_waits: .res 2          ; ring-full poll count (diagnostic)
 _gt_ent:   .res 8               ; entry staging: C fills, gt_q_push commits
 _gt_p0:    .res 2               ; zp-fastcall USER-function arg slots: the
 _gt_p1:    .res 2               ;   emitter passes 1-5 int params here instead
@@ -159,7 +160,10 @@ _gt_q_push:
         ADC #8
         CMP _gt_qtail
         BNE @room
-        JSR _gt_q_pump          ; ring full: start/advance the drain, retry
+        INC _gt_push_waits      ; diagnostic: ring-full poll (u16)
+        BNE @nw
+        INC _gt_push_waits+1
+@nw:    JSR _gt_q_pump          ; ring full: start/advance the drain, retry
         BRA @full
 @room:  LDX _gt_qhead
         LDA _gt_ent+0
