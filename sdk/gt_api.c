@@ -994,25 +994,18 @@ void gt_starfield_draw(void) {
 #endif /* GT_STARFIELD */
 
 #ifdef GT_FLAKES
-/* ---- ambient flake field ---------------------------------------------------
- * Drifting screen-space particles with a sine wobble (snow, drifting motes,
- * slow clouds at size 0-2). Port loops paid ~350 cycles per flake per frame
- * (eight 8.8 array ops in Lua + a rectfill call for a 1-3px square); this
- * owns the state and pokes the framebuffer in CPU mode like the starfield.
- * Semantics match the reference port exactly: x/y in 8.8 screen space,
- * wobble = sin8 LUT indexed by (phase>>2)&63, y wraps at 0x7FFF, x respawns
- * right of 132 to -4.0 and left of -4 to +127.996. draw(camdx8, camdy8)
- * subtracts the camera deltas so the field parallaxes with the world. */
+/* ---- ambient flake field --------------------------------------------------
+ * The draw loop lives in gt_flakes.s (~175 cycles/flake vs ~2,500 for the
+ * same loop through cc65 — measured, see the asm header). This C side only
+ * fills the asm unit's byte-split state at init time.
+ * Reference semantics (newleste snow): x/y 8.8 screen space, 64-entry sine
+ * wobble, y wraps at $7FFF, x respawns right at 32767 when px < -4. */
+extern unsigned char fl_n, fl_xl[], fl_xh[], fl_yl[], fl_yh[], fl_ph[];
+extern unsigned char fl_spdl[], fl_spdh[], fl_adv[], fl_w[], fl_h[], fl_ci[];
+extern unsigned char fl_rxl[], fl_rxh[], fl_ry[];
+extern signed char fl_sinl[];
+extern unsigned char fl_sinh[];
 #define GT_FLAKES_MAX 32
-static int  fl_x8[GT_FLAKES_MAX];
-static int  fl_y8[GT_FLAKES_MAX];
-static int  fl_ph[GT_FLAKES_MAX];       /* wobble phase, grows by spd/32 */
-static unsigned char fl_spd[GT_FLAKES_MAX];  /* dx per frame, 8.8 low byte + */
-static unsigned char fl_spdh[GT_FLAKES_MAX]; /* high byte (speeds > 255/256) */
-static unsigned char fl_sz[GT_FLAKES_MAX];   /* square size-1: 0..2 */
-static unsigned char fl_col_p8[GT_FLAKES_MAX]; /* p8 colour index (rectfill_z resolves) */
-static signed char   fl_sin[64];             /* sin LUT, +-96 in 8.8-ish */
-static unsigned char fl_n;
 
 #ifdef GT_BANKED
 #pragma code-name ("B2CODE")
@@ -1022,82 +1015,38 @@ static unsigned char fl_n;
 #endif
 void GT_FL_INIT(int n) {
     unsigned char i;
+    int v, sp;
     if (n > GT_FLAKES_MAX) n = GT_FLAKES_MAX;
     fl_n = (unsigned char)n;
     for (i = 0; i < 64; ++i) {
-        /* sin(i/64) * 96 — matches flr(sin()*256)/2.67: gentle wobble.
-         * (the reference uses *256; at 8.8 y-units per frame that is up to
-         * 1 px/frame of wobble — same table scaled is visually identical
-         * because the port table also gets used raw; keep *256 exact) */
-        fl_sin[i] = (signed char)0;
-    }
-    /* exact reference table: flr(sin((i)/64) * 256 + 0.5) clamped to s8
-     * range via /2 twice at use — instead store s16 steps in two halves?
-     * Simpler and exact: compute from gt_sintab (16.16 or 8.8 master). */
-    for (i = 0; i < 64; ++i) {
-        int v;
+        /* flr(sin(i/64) * 256 + 0.5), like the reference table */
 #ifdef GT_NUM8
-        v = gt_fsin((int)(i << 2));          /* i/64 turns in 8.8 */
+        v = gt_fsin((int)(i << 2));
 #else
-        v = (int)(gt_fsin((long)i << 10) >> 8);  /* i/64 turns, 16.16 -> 8.8 */
+        v = (int)(gt_fsin((long)i << 10) >> 8);
 #endif
-        /* v is sin in 8.8: -256..256; halve to fit s8 and halve the wobble
-         * amplitude symmetrically at use by adding twice */
-        fl_sin[i] = (signed char)(v >> 1);
+        fl_sinl[i] = (signed char)v;
+        fl_sinh[i] = (v & 0x8000U) ? 0xFF : 0;
     }
     for (i = 0; i < fl_n; ++i) {
-#ifdef GT_NUM8
-        fl_x8[i] = gt_p8_rnd(127 << 8);
-        fl_y8[i] = gt_p8_rnd(127 << 8);
-        fl_sz[i] = (unsigned char)(gt_p8_rnd(320) >> 8);      /* rnd(1.25) */
-        { int sp = 64 + (gt_p8_rnd(5 << 8) & 0x7F00) ; fl_spd[i] = (unsigned char)sp; fl_spdh[i] = (unsigned char)(sp >> 8); }
-        fl_col_p8[i] = (unsigned char)(6 + (gt_p8_rnd(2 << 8) >> 8));
-#else
-        fl_x8[i] = (int)(gt_p8_rnd(127L << 16) >> 8);
-        fl_y8[i] = (int)(gt_p8_rnd(127L << 16) >> 8);
-        fl_sz[i] = (unsigned char)(gt_p8_rnd((long)(1.25 * 65536)) >> 16);
-        { long sp = 64 + ((gt_p8_rnd(5L << 16) >> 8) & 0x7F00); fl_spd[i] = (unsigned char)sp; fl_spdh[i] = (unsigned char)((int)sp >> 8); }
-        fl_col_p8[i] = (unsigned char)(6 + (int)(gt_p8_rnd(2L << 16) >> 16));
-#endif
+        v = gt_p8_rnd_int(128) << 8;
+        fl_xl[i] = (unsigned char)v;
+        fl_xh[i] = (unsigned char)((unsigned int)v >> 8);
+        v = gt_p8_rnd_int(128) << 8;
+        fl_yl[i] = (unsigned char)v;
+        fl_yh[i] = (unsigned char)((unsigned int)v >> 8);
         fl_ph[i] = 0;
-    }
-}
-
-#ifdef GT_BANKED
-#pragma code-name ("B0CODE")
-#define GT_FL_DRAW gt_flakes_draw_impl
-static void gt_flakes_draw_impl(int camdx8, int camdy8);
-#else
-#define GT_FL_DRAW gt_flakes_draw
-#endif
-#ifdef GT_BANKED
-static
-#endif
-void GT_FL_DRAW(int camdx8, int camdy8) {
-    unsigned char i, px, py, sz;
-    int x8, y8, adv;
-    for (i = 0; i < fl_n; ++i) {
-        x8 = fl_x8[i] + ((int)fl_spdh[i] << 8) + fl_spd[i] - camdx8;
-        /* wobble: LUT value added twice = the reference's full amplitude */
-        y8 = fl_y8[i] + fl_sin[(fl_ph[i] >> 2) & 63] * 2 - camdy8;
-        y8 &= 0x7FFF;
-        adv = (((int)fl_spdh[i] << 8) | fl_spd[i]) >> 5;
-        if (adv > 12) adv = 12;
-        fl_ph[i] += adv;
-        px = (unsigned char)(x8 >> 8);
-        py = (unsigned char)((y8 >> 8) & 127);
-        if (x8 > (132 << 8)) { x8 = -1024; y8 = gt_p8_rnd_int(128) << 8; }
-        else if (x8 < -1024) { x8 = 32767; y8 = gt_p8_rnd_int(128) << 8; }
-        fl_x8[i] = x8;
-        fl_y8[i] = y8;
-        if (px > 127 || py > 127) continue;
-        sz = fl_sz[i];
-        gt_a0 = px;
-        gt_a1 = py;
-        gt_a2 = px + sz;
-        gt_a3 = py + sz;
-        gt_a4 = fl_col_p8[i];
-        gt_p8_rectfill_z();
+        /* speed 64 + rnd(5)*256 in 8.8, like the reference */
+        sp = 64 + (gt_p8_rnd_int(5) << 8);
+        fl_spdl[i] = (unsigned char)sp;
+        fl_spdh[i] = (unsigned char)((unsigned int)sp >> 8);
+        { int a = sp >> 5; if (a > 12) a = 12; fl_adv[i] = (unsigned char)a; }
+        /* reference pas = flr(rnd(1.25)): 0 four times in five, else 1;
+         * the ring W/H field wants size+1 */
+        fl_w[i] = fl_h[i] = (unsigned char)((gt_p8_rnd_int(5) == 4) ? 2 : 1);
+        fl_ci[i]  = (unsigned char)(p8pal[6 + gt_p8_rnd_int(2)] ^ 0xFF);
+        fl_rxl[i] = 0xFF; fl_rxh[i] = 0x7F;   /* snow re-enters from the right */
+        fl_ry[i]  = 1;                        /* and rerolls its row */
     }
 }
 #ifdef GT_BANKED
@@ -1106,12 +1055,6 @@ void gt_flakes_init(int n) {
     unsigned char saved_bank = gt_cur_bank;
     gt_bank(2);
     gt_flakes_init_impl(n);
-    gt_bank(saved_bank);
-}
-void gt_flakes_draw(int camdx8, int camdy8) {
-    unsigned char saved_bank = gt_cur_bank;
-    gt_bank(0);
-    gt_flakes_draw_impl(camdx8, camdy8);
     gt_bank(saved_bank);
 }
 #endif

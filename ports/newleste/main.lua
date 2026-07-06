@@ -1411,14 +1411,7 @@ function game_init()
     clw[i] = w
     clh[i] = flr(16 - w * 0.1875)
   end
-  for i = 1, 25 do
-    pax8[i] = flr(rnd(128) * 256)
-    pay8[i] = flr(rnd(128) * 256)
-    pas[i] = flr(rnd(1.25))
-    paspd8[i] = 64 + flr(rnd(5) * 256)
-    paoff8[i] = flr(rnd(1) * 256)
-    pac[i] = 6 + flr(rnd(2))
-  end
+  gt.flakes_init(25)
   load_level(1)
 end
 
@@ -1677,25 +1670,7 @@ function _draw()
 
   -- snow particles (screen space) — 8.8 ints + the snowsin LUT: was a real
   -- sin() + gt_minf + six long-array hits per flake per frame
-  local camy8 = flr(cam_spdy * 256)
-  for i = 1, 25 do
-    pax8[i] += paspd8[i] - cams8
-    pay8[i] += snowsin[((paoff8[i] \ 4) & 63) + 1] - camy8
-    pay8[i] = pay8[i] & 0x7FFF
-    local adv = paspd8[i] \ 32
-    if (adv > 12) adv = 12
-    paoff8[i] += adv
-    local x = pax8[i] \ 256
-    local y = pay8[i] \ 256
-    rectfill(x, y, x + pas[i], y + pas[i], pac[i])
-    if x > 132 then
-      pax8[i] = -1024
-      pay8[i] = flr(rnd(128) * 256)
-    elseif x < -4 then
-      pax8[i] = 32767
-      pay8[i] = flr(rnd(128) * 256)
-    end
-  end
+  gt.flakes_draw(cams8, flr(cam_spdy * 256))
 
   -- dead particles (world space)
   camera(draw_x, draw_y)

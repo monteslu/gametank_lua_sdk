@@ -335,8 +335,14 @@ export function emit(chunk, symbols, file, opts = {}) {
     // gameplay 4.99 -> 5.50 (a hot 4-5 param physics fn is slower through
     // the slots) vs celeste2's -0.07 win. gt_p3/gt_p4 stay reserved for a
     // future per-shape gate.
+    // under --num8 a fixed param IS int-width, so fixed-taking functions
+    // (positions, speeds — the hot physics helpers) are zp-eligible too;
+    // newleste's profile showed 18% of the frame in incsp2 stack cleanup
+    // from exactly these calls
+    const zpKindOk = (k) => k === "int" || (N8 && k === "fixed");
     if (fn.params.length >= 1 && fn.params.length <= 5 &&
-        fn.params.every((_, i) => (fn.paramKinds[i] ?? "int") === "int")) {
+        fn.params.every((_, i) => zpKindOk(fn.paramKinds[i] ?? "int")) &&
+        (!fn.hasReturnValue || fn.retKind === "int" || (N8 && fn.retKind === "fixed"))) {
       zpCall.add(name);
     }
   }

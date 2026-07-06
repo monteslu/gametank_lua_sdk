@@ -537,6 +537,8 @@ function build(entry, outPath, sheetPath, num8 = false) {
   as(path.join(SDK, "interrupt.s"), B("interrupt.o"));
   as(path.join(SDK, "gt_blitq.s"), B("gt_blitq.o"));
   as(path.join(SDK, num8 ? "gt_fixed8_asm.s" : "gt_fixed_asm.s"), B("gt_fixed_asm.o"));
+  const usesFlakes = result.c.includes("gt_flakes");
+  if (usesFlakes) as(path.join(SDK, "gt_flakes.s"), B("gt_flakes.o"));
   as(B("gt_api.s"), B("gt_api.o"));
   as(B("gt_fixed.s"), B("gt_fixed.o"));
   as(B("gt_math.s"), B("gt_math.o"));
@@ -552,6 +554,7 @@ function build(entry, outPath, sheetPath, num8 = false) {
     ...(usesBg ? [B("gt_bg.o")] : []),
     ...(usesAudio ? [B("gt_audio.o")] : []),
     ...(usesMusic ? [B("gt_music.o")] : []),
+    ...(usesFlakes ? [B("gt_flakes.o")] : []),
     B("sheet.o"),
   ];
 
