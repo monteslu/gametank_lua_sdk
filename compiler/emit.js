@@ -410,7 +410,7 @@ export function emit(chunk, symbols, file, opts = {}) {
       case "index": {
         const arr = e.arraySym;
         if (!arr) return "0";
-        return cv(indexRef(mangle(e.object.name), e.index), arr.elemKind, want);
+        return cv(indexRef(mangle(e.object.name), e.index, true), arr.elemKind, want);
       }
       case "len": {
         if (e.poolSym) return cv(`${mangle(e.expr.name)}_n`, "int", want);
@@ -566,17 +566,22 @@ export function emit(chunk, symbols, file, opts = {}) {
   // ubiquitous 0-based-math pattern) collapses to arr[x]; arr[7] folds
   // numerically; the general arr[i] becomes (arr - 1)[i] — the -1 rides the
   // symbol's address, not a runtime subtract.
-  function indexRef(sym, idxNode) {
+  function indexRef(sym, idxNode, byteElems) {
     const [base, c] = peelIndex(idxNode);
     const off = c - 1;
     if (base === null) return `${sym}[${off}]`;
     const b = expr(base, "int");
     if (off === 0) return `${sym}[${b}]`;
-    // the pointer-fold form only pays off when the index is a narrowed (u8)
-    // loop counter — measured: it WINS ~30% there but LOSES on celeste2's
-    // 16-bit while-counter indexes, where cc65's pointer path is worse than
-    // the plain subtract. Peeled constants above are always a win.
-    if (base.kind === "name" && narrowedVars.has(base.name)) {
+    // The pointer-fold form pays ONLY for BYTE-element arrays with a
+    // narrowed (u8) counter, where cc65 emits `lda _arr-1,y` direct
+    // (measured +30%). For INT/fixed arrays the fold breaks cc65's
+    // known-global indexed addressing and every access goes through the
+    // computed-pointer path — STORES land in jsr staspidx at ~90 cycles
+    // apiece (measured: 2065 cycles per snow flake in newleste, 6x the
+    // instruction-count estimate, via 25->10 count scaling). Int arrays
+    // keep the explicit subtract: (i-1) stays u8, cc65 does asl/tay/
+    // lda _arr,y direct.
+    if (byteElems && base.kind === "name" && narrowedVars.has(base.name)) {
       return `(${sym} ${off > 0 ? "+" : "-"} ${Math.abs(off)})[${b}]`;
     }
     return `${sym}[${b} ${off > 0 ? "+" : "-"} ${Math.abs(off)}]`;
@@ -959,7 +964,7 @@ export function emit(chunk, symbols, file, opts = {}) {
         const t = isField
           ? `${s.target.poolField.pool.cname}_${s.target.poolField.field}[${s.target.poolField.forall.slotVar}]`
           : isElem
-            ? indexRef(mangle(s.target.object.name), s.target.index)
+            ? indexRef(mangle(s.target.object.name), s.target.index, !!s.target.arraySym?.elemBytes)
             : (zpParamMap && zpParamMap.has(s.target.name)
                 ? zpParamMap.get(s.target.name) : mangle(s.target.name));
         const tk = s.targetKind ?? "int";
