@@ -13,7 +13,11 @@
  * gt_bank(2)-then-read pattern; a linked-but-unmapped blob uploads garbage
  * and plays silence, which a clean link does NOT catch). */
 #ifdef GT_BANKED
+#if GT_FW_BANK == 1
+#pragma rodata-name ("B1RODATA")
+#else
 #pragma rodata-name ("B0RODATA")
+#endif
 #endif
 #include "gt_acp_fw.h"
 #ifdef GT_BANKED
@@ -34,7 +38,11 @@
 /* 108 MIDI notes, 2 bytes each (MSB, LSB) — from the MIT gametank_sdk.
  * Non-static: gt_music.c (sfx/music) reads the same table via `extern`. */
 #ifdef GT_BANKED
+#if GT_FW_BANK == 1
+#pragma rodata-name ("B1RODATA")
+#else
 #pragma rodata-name ("B0RODATA")
+#endif
 #endif
 const unsigned char gt_pitch_table[216] = {
     0x00,0x4D,0x00,0x51,0x00,0x56,0x00,0x5B,0x00,0x61,0x00,0x66,0x00,0x6C,0x00,0x73,0x00,0x7A,0x00,0x81,0x00,0x89,0x00,0x91,
@@ -59,7 +67,11 @@ static unsigned char audio_ready = 0;
  * gt_cur_bank lives in gt_bank.s. */
 #ifdef GT_BANKED
 extern unsigned char gt_cur_bank;
+#if GT_FW_BANK == 1
+#pragma code-name ("B1CODE")
+#else
 #pragma code-name ("B0CODE")
+#endif
 #define GT_AUDIO_INIT gt_audio_init_impl
 #define GT_NOTE gt_note_impl
 #define GT_NOTEOFF gt_noteoff_impl
@@ -137,19 +149,19 @@ void GT_NOTEOFF(int ch) {
 #pragma code-name ("CODE")
 void gt_audio_init(void) {
     unsigned char saved_bank = gt_cur_bank;
-    gt_bank(0);
+    gt_bank(GT_FW_BANK);
     gt_audio_init_impl();
     gt_bank(saved_bank);
 }
 void gt_note(int ch, int note, int vol) {
     unsigned char saved_bank = gt_cur_bank;
-    gt_bank(0);
+    gt_bank(GT_FW_BANK);
     gt_note_impl(ch, note, vol);
     gt_bank(saved_bank);
 }
 void gt_noteoff(int ch) {
     unsigned char saved_bank = gt_cur_bank;
-    gt_bank(0);
+    gt_bank(GT_FW_BANK);
     gt_noteoff_impl(ch);
     gt_bank(saved_bank);
 }

@@ -369,7 +369,7 @@ end
 -- bullets (enemy fire: positions in 16ths, spd16 = speed*16)
 
 function fire(fx,fy,ang,spd16)
- -- TODO sfx(29) (enemy shot) / sfx(34) (boss shot)
+ sfx(4,3)                       -- enemy shot (orig sfx 29/34)
  add(ebuls,{x=fx,y=fy,sx=flr(sin(ang)*spd16),sy=flr(cos(ang)*spd16),af=0})
 end
 
@@ -397,7 +397,7 @@ function cherbomb()
  muzzle=5
  invul=30
  flash=3
- -- TODO sfx(33)
+ sfx(3,1)                       -- cherry bomb blast (orig sfx 33)
 end
 
 -->8
@@ -409,13 +409,13 @@ function plogic(px2,py2)
  if cher>=10 then
   if lives<4 then
    lives+=1
-   -- TODO sfx(31)
+   sfx(5,2)                      -- extra life (orig sfx 31)
    cher=0
    popfloat(0,1,px2+4,py2+4)
   else
    score+=50
    popfloat(50,0,px2+4,py2+4)
-   -- TODO sfx(30)
+   sfx(1,2)                      -- cherries banked for score (orig sfx 30)
    cher=0
   end
  else
@@ -427,7 +427,7 @@ end
 function hitship()
  explode(shipx+4,shipy+4,1)
  lives-=1
- -- TODO sfx(1)
+ sfx(6,1)                       -- ship hit (orig sfx 1)
  shake=12
  invul=60
  shipx=60
@@ -482,7 +482,7 @@ function prow(ry,hi,lo)
 end
 
 function spawnwave()
- -- TODO sfx(28) on normal waves, music(10) on the final wave
+ sfx(7,2)                       -- wave incoming (orig sfx 28 / music 10)
  if wave==1 then
   --space invaders
   attacfreq=60
@@ -727,7 +727,7 @@ function bossrun()
   eb_flash=10
   if tick%8==0 then
    explode(eb_x\16+flr(rnd(32)),eb_y\16+flr(rnd(24)),0)
-   -- TODO sfx(2)
+   sfx(3,1)                      -- boss death throes (orig sfx 2)
    shake=2
   end
   if eb_phb+90<tick then
@@ -744,7 +744,7 @@ function bossrun()
    bigexplode(eb_x\16+16,eb_y\16+12)
    shake=15
    eb_die=1
-   -- TODO sfx(35)
+   sfx(3,1)                      -- boss final blast (orig sfx 35)
   end
  end
 end
@@ -811,14 +811,14 @@ function update_game()
    cherbomb()
    cher=0
   else
-   -- TODO sfx(32) (empty-bomb click)
+   sfx(4,2)                      -- empty-bomb click (orig sfx 32)
   end
  end
 
  if btn(5) then
   if bultimer<=0 then
    add(buls,{x=(shipx+1)*16,y=(shipy-3)*16,sx=0,sy=-64,spr=16,dmg=1,colw=6})
-   -- TODO sfx(0)
+   sfx(2,0)                      -- player shot (orig sfx 0)
    muzzle=5
    bultimer=4
   end
@@ -875,7 +875,7 @@ function update_game()
      e.y=e.posy*16
      e.x=e.posx*16
      if e.type==5 then
-      -- TODO sfx(50)
+      sfx(6,1)                   -- boss slam-in (orig sfx 50)
       e.shake=20
       e.wait=28
       e.mission=MI_B1
@@ -976,7 +976,7 @@ function update_game()
      if e.mission!=MI_FLYIN then
       e.hp-=b.dmg
      end
-     -- TODO sfx(3)
+     sfx(4,3)                   -- bullet hit registered (orig sfx 3)
      if e.type==5 then e.flash=5 else e.flash=2 end
      if e.hp<=0 then
       -- killen(), inlined
@@ -984,10 +984,10 @@ function update_game()
        e.mission=MI_B5    -- ghost + death throes
        e.phbegin=tick
        for eb in all(ebuls) do del(ebuls,eb) end
-       -- TODO music(-1), sfx(51)
+       sfx(3,1)                  -- boss down (orig music stop + sfx 51)
       else
        del(enemies,e)
-       -- TODO sfx(2)
+       sfx(3,1)                  -- enemy explodes (orig sfx 2)
        explode(exp+4,eyp+4,0)
        local cherchance=13   -- 0.1 in 1/128ths
        local scoremult=1

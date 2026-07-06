@@ -619,6 +619,7 @@ function build(entry, outPath, sheetPath, num8 = false) {
   let midInline = true;
   let fnInline = true;
   let workPlacement = placement;
+  let fwB1 = false;
   for (let attempt = 0; attempt < 24; attempt++) {
     // size-relief ladder: 0-7 everything on -> 8-15 function inlining off
     // (mid ternaries STAY: they're smaller than the cdecl mid() call) ->
@@ -627,6 +628,16 @@ function build(entry, outPath, sheetPath, num8 = false) {
       fnInline = false;
       workPlacement = initialPlacement(result.callGraph);
       console.error("bank placement tight: retrying with function inlining off");
+    }
+    if (attempt === 4 && usesAudio && !fwB1) {
+      // the 4KB ACP firmware defaults to bank 0; carts whose update loop
+      // owns bank 0 need it in bank 1 instead
+      fwB1 = true;
+      run(tc.cc65, [...CFLAGS, "-DGT_BANKED", "-DGT_FW_BANK=1",
+                    "-o", B("gt_audio.s"), path.join(SDK, "gt_audio.c")]);
+      as(B("gt_audio.s"), B("gt_audio.o"));
+      workPlacement = initialPlacement(result.callGraph);
+      console.error("bank placement tight: audio firmware to bank 1");
     }
     if (attempt === 8 && !apiDefs.includes("-DGT_INPUT_B2")) {
       // which bank the SDK input block fits in is per-cart: b0-heavy carts
