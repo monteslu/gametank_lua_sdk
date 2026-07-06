@@ -1023,7 +1023,10 @@ function update_game()
    local ew=ecw(e.type)
    local eh=ech(e.type)
    for b in all(buls) do
-    if col(exp,eyp,ew,eh,b.x\16,b.y\16,b.colw,8)==1 then
+    local by2=b.y\16
+    if eyp<=by2+7 and by2<=eyp+eh-1 then
+     local bx2=b.x\16
+     if exp<=bx2+b.colw-1 and bx2<=exp+ew-1 then
      smol_shwave(b.x\16+4,b.y\16+4,9)
      del(buls,b)
      smol_spark(exp+4,eyp+4)
@@ -1060,6 +1063,7 @@ function update_game()
       end
       break
      end
+     end
     end
    end
   end
@@ -1094,7 +1098,9 @@ function update_game()
  -- collision ship x ebuls
  if invul<=0 then
   for eb in all(ebuls) do
-   if col(eb.x\16,eb.y\16,2,2,shipx,shipy,8,8)==1 then
+   local ebx2=eb.x\16
+   local eby2=eb.y\16
+   if eby2<=shipy+7 and shipy<=eby2+1 and ebx2<=shipx+7 and shipx<=ebx2+1 then
     hitship()
    end
   end

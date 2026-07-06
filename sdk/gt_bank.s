@@ -18,20 +18,38 @@
 VIA_ORA  = $2801
 VIA_DDRA = $2803
 
-.segment "BSS"
+; DATA (not BSS): starts at $FF — an impossible bank — so the FIRST switch
+; always programs the hardware shifter. The same-bank early-out below would
+; otherwise no-op the boot-time gt_bank(0) against a zeroed tracker while
+; the cart's power-on shifter state is random.
+.segment "DATA"
 gt_cur_bank:
-_gt_cur_bank: .res 1              ; C-visible alias (extern unsigned char gt_cur_bank)
+_gt_cur_bank: .byte $FF           ; C-visible alias (extern unsigned char gt_cur_bank)
 
 .segment "CODE"
 
 ; void __fastcall__ gt_bank(unsigned char b);
 _gt_bank := gt_bank_raw
 
+; The generic path shifts 7 bits through a carry dance: ~235 cycles per
+; switch — and every cross-bank stub switches TWICE (call + restore). A
+; profiled combat frame spent ~30% of its cycles in here. gtlua only ever
+; switches to banks 0/1/2, whose bit sequences are constants: straight-
+; lined below at ~105 cycles (~2.2x). Same-bank requests return in 9.
 gt_bank_raw:
-        sta     gt_cur_bank
-        lda     #$07            ; CLK/MOSI/CS as outputs
-        sta     VIA_DDRA
-        lda     gt_cur_bank
+        cmp     gt_cur_bank
+        bne     @go
+        rts
+@go:    sta     gt_cur_bank
+        ldx     #$07            ; CLK/MOSI/CS as outputs
+        stx     VIA_DDRA
+        cmp     #0
+        beq     @b0
+        cmp     #1
+        beq     @b1
+        cmp     #2
+        beq     @b2
+        ; ---- general fallback (any bank number) ----
         asl     a               ; discard bit 7: bits 6..0 now sit in 7..1
         ldx     #7
 @bit:   asl     a               ; next data bit (bit 6 first) -> carry
@@ -44,7 +62,57 @@ gt_bank_raw:
         pla
         dex
         bne     @bit
-        stz     VIA_ORA         ; CS low, CLK low
+        jmp     @latch
+        ; ---- bank 0: seven 0-bits ----
+@b0:    stz     VIA_ORA
+        inc     VIA_ORA
+        stz     VIA_ORA
+        inc     VIA_ORA
+        stz     VIA_ORA
+        inc     VIA_ORA
+        stz     VIA_ORA
+        inc     VIA_ORA
+        stz     VIA_ORA
+        inc     VIA_ORA
+        stz     VIA_ORA
+        inc     VIA_ORA
+        stz     VIA_ORA
+        inc     VIA_ORA
+        jmp     @latch
+        ; ---- bank 1: six 0-bits then a 1-bit ----
+@b1:    stz     VIA_ORA
+        inc     VIA_ORA
+        stz     VIA_ORA
+        inc     VIA_ORA
+        stz     VIA_ORA
+        inc     VIA_ORA
+        stz     VIA_ORA
+        inc     VIA_ORA
+        stz     VIA_ORA
+        inc     VIA_ORA
+        stz     VIA_ORA
+        inc     VIA_ORA
+        lda     #$02            ; MOSI high, CLK low
+        sta     VIA_ORA
+        inc     VIA_ORA
+        jmp     @latch
+        ; ---- bank 2: five 0-bits, a 1-bit, a 0-bit ----
+@b2:    stz     VIA_ORA
+        inc     VIA_ORA
+        stz     VIA_ORA
+        inc     VIA_ORA
+        stz     VIA_ORA
+        inc     VIA_ORA
+        stz     VIA_ORA
+        inc     VIA_ORA
+        stz     VIA_ORA
+        inc     VIA_ORA
+        lda     #$02
+        sta     VIA_ORA
+        inc     VIA_ORA
+        stz     VIA_ORA
+        inc     VIA_ORA
+@latch: stz     VIA_ORA         ; CS low, CLK low
         lda     #$04
         sta     VIA_ORA         ; CS rise: latch the new bank
         stz     VIA_ORA
