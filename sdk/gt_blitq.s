@@ -87,6 +87,7 @@ q_pwh:     .res 1               ; spr_z scratch: pixel-width high byte
 q_phl:     .res 1               ;                pixel-height low
 q_phh:     .res 1               ;                pixel-height high
 q_t:       .res 1               ;                clip-sum low byte
+q_s:       .res 1               ;                clip high-byte scratch
 
 .segment "BSS"
 
@@ -395,6 +396,18 @@ _gt_p8_spr_z:
         BCC @norm
 @wide:  JMP _gt_p8_spr_wide
 @norm:
+        ; ---- claim a ring slot NOW and stage into it directly: push's
+        ; 8-byte gt_ent->ring copy (+ its checks) disappears per sprite.
+        ; X = slot base for the whole staging path (clip scratch moved to
+        ; zp q_s so nothing clobbers it).
+@slot:  LDA _gt_qhead
+        CLC
+        ADC #8
+        CMP _gt_qtail
+        BNE @free
+        JSR _gt_q_pump          ; ring full (measured ~never): drain, retry
+        BRA @slot
+@free:  LDX _gt_qhead
         ; ---- pw = max(w,1) << 3 (16-bit result: A=lo, q_pwh=hi) ----
         LDA _gt_a3
         BNE :+
@@ -406,27 +419,27 @@ _gt_p8_spr_z:
         ROL q_pwh
         ASL A
         ROL q_pwh
-        STA _gt_ent+5           ; entry WIDTH (low byte, matches C truncation)
+        STA _gt_q+5,X         ; entry WIDTH (low byte, matches C truncation)
         ; ---- x = gt_a1 - cam_x (16-bit signed) ----
         SEC
         LDA _gt_a1
         SBC _gt_cam_x
-        STA _gt_ent+1           ; entry VX candidate
+        STA _gt_q+1,X         ; entry VX candidate
         LDA _gt_a1+1
         SBC _gt_cam_x+1
         BMI @xneg
         BNE @rejn               ; x >= 256: off right
-        BIT _gt_ent+1
+        BIT _gt_q+1,X
         BMI @rejn               ; 128..255: off right
         BRA @xok
 @rejn:  RTS                     ; near reject trampoline (offscreen clip)
 @xneg:  ; x < 0: reject when x + pw <= 0
-        TAX                     ; X = x high
+        STA q_s                 ; x high (X holds the ring slot)
         CLC
-        LDA _gt_ent+1
-        ADC _gt_ent+5
+        LDA _gt_q+1,X
+        ADC _gt_q+5,X
         STA q_t
-        TXA
+        LDA q_s
         ADC q_pwh
         BMI @rejn               ; sum < 0
         BNE @xok                ; sum >= 256: on screen
@@ -444,25 +457,25 @@ _gt_p8_spr_z:
         ROL q_phh
         ASL A
         ROL q_phh
-        STA _gt_ent+6           ; entry HEIGHT
+        STA _gt_q+6,X         ; entry HEIGHT
         ; ---- y = gt_a2 - cam_y (16-bit signed) ----
         SEC
         LDA _gt_a2
         SBC _gt_cam_y
-        STA _gt_ent+2           ; entry VY candidate
+        STA _gt_q+2,X         ; entry VY candidate
         LDA _gt_a2+1
         SBC _gt_cam_y+1
         BMI @yneg
         BNE @rejn
-        BIT _gt_ent+2
+        BIT _gt_q+2,X
         BMI @rejn
         BRA @yok
-@yneg:  TAX
+@yneg:  STA q_s
         CLC
-        LDA _gt_ent+2
-        ADC _gt_ent+6
+        LDA _gt_q+2,X
+        ADC _gt_q+6,X
         STA q_t
-        TXA
+        LDA q_s
         ADC q_phh
         BMI @rejn
         BNE @yok
@@ -471,19 +484,19 @@ _gt_p8_spr_z:
 @yok:
         ; ---- stage the rest: flags, GX=(n&15)<<3, GY=(n&0xF0)>>1 ----
         LDA #QF_SPR
-        STA _gt_ent+0
+        STA _gt_q+0,X
         LDA _gt_a0
         AND #$0F
         ASL A
         ASL A
         ASL A
-        STA _gt_ent+3           ; GX = cell col * 8 (left edge of source cell)
+        STA _gt_q+3,X           ; GX = cell col * 8 (left edge of source cell)
         LDA _gt_a0
         AND #$F0
         LSR A
-        STA _gt_ent+4           ; GY = cell row * 8 (top edge)
+        STA _gt_q+4,X           ; GY = cell row * 8 (top edge)
         LDA _gt_qbank           ; copy blits carry their bank in the color slot
-        STA _gt_ent+7           ; (sheet sprites: the frame's write bank)
+        STA _gt_q+7,X           ; (sheet sprites: the frame's write bank)
         ; ---- hardware flip (gt_a5: bit0 = flip X, bit1 = flip Y) ----
         ; The blitter mirrors when WIDTH/HEIGHT bit7 is set: it one's-complements
         ; the source counter, and picks the GRAM quadrant from the INVERTED bit7.
@@ -496,27 +509,31 @@ _gt_p8_spr_z:
         BEQ @noflipx
         SEC                     ; GX = 0 - GX - pw   (= 256 - GX - pw)
         LDA #$00
-        SBC _gt_ent+3
-        SBC _gt_ent+5
-        STA _gt_ent+3
-        LDA _gt_ent+5           ; WIDTH |= $80  (XDIR)
+        SBC _gt_q+3,X
+        SBC _gt_q+5,X
+        STA _gt_q+3,X
+        LDA _gt_q+5,X           ; WIDTH |= $80  (XDIR)
         ORA #$80
-        STA _gt_ent+5
+        STA _gt_q+5,X
 @noflipx:
         LDA _gt_a5
         AND #$02
         BEQ @noflipy
         SEC                     ; GY = 0 - GY - ph
         LDA #$00
-        SBC _gt_ent+4
-        SBC _gt_ent+6
-        STA _gt_ent+4
-        LDA _gt_ent+6           ; HEIGHT |= $80  (YDIR)
+        SBC _gt_q+4,X
+        SBC _gt_q+6,X
+        STA _gt_q+4,X
+        LDA _gt_q+6,X           ; HEIGHT |= $80  (YDIR)
         ORA #$80
-        STA _gt_ent+6
+        STA _gt_q+6,X
 @noflipy:
         STZ _gt_draw_mode       ; MODE_NONE: flags register now queue-owned
-        JMP _gt_q_push
+        TXA                     ; commit: head += 8, then drain-check
+        CLC
+        ADC #8
+        STA _gt_qhead
+        JMP _gt_q_pump
 
 ; ---------------------------------------------------------------------------
 ; IRQ = blit complete: acknowledge and mark the blitter idle. Nothing else —
