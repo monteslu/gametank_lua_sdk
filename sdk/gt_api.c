@@ -109,7 +109,19 @@ static void enter_cpu_mode(void) {
 
 /* GRAM CPU-write mode: dummy clipped 1x1 blit latches sheet quadrant 0,
  * then DMA off routes CPU writes into GRAM (hardware ref 3.4). */
-static void enter_gram_mode(void) {
+/* FLASH2M: the GRAM-mode dance is cold (sset/sheet-load setup) — the body
+ * rides bank 0; the fixed stub keeps it callable from any bank. */
+#ifdef GT_BANKED
+#pragma code-name ("B0CODE")
+#define GT_ENTER_GRAM enter_gram_mode_impl
+static void enter_gram_mode_impl(void);
+#else
+#define GT_ENTER_GRAM enter_gram_mode
+#endif
+#ifdef GT_BANKED
+static
+#endif
+void GT_ENTER_GRAM(void) {
     if (gt_draw_mode == MODE_GRAM) return;
     await_drawing();
     flags_mirror = DMA_NMI | DMA_ENABLE | DMA_IRQ | DMA_GCARRY | frameflip;
@@ -129,6 +141,18 @@ static void enter_gram_mode(void) {
     *dma_flags = flags_mirror;
     gt_draw_mode = MODE_GRAM;
 }
+#ifdef GT_BANKED
+#pragma code-name ("CODE")
+static void enter_gram_mode(void) {
+    unsigned char saved_bank;
+    if (gt_draw_mode == MODE_GRAM) return;  /* fast path: no bank switch —
+        a boot-time bake makes thousands of sset calls through here */
+    saved_bank = gt_cur_bank;
+    gt_bank(0);
+    enter_gram_mode_impl();
+    gt_bank(saved_bank);
+}
+#endif
 
 /* framebuffer row start addresses (ROM table: vram is fixed at $4000) */
 #define VR(n) (unsigned char *)(0x4000 + ((n) << 7))
@@ -1074,10 +1098,22 @@ void gt_p8_border(int c) {
 }
 #endif
 
-/* ---- input: latch + two reads per pad (active-low), per the C SDK ---- */
+/* ---- input: latch + two reads per pad (active-low), per the C SDK ----
+ * FLASH2M: the block banks to 0 by default; -DGT_INPUT_B2 moves it to
+ * bank 2 (a placement-ladder rung — which bank has room is per-cart). */
+#ifdef GT_INPUT_B2
+#define GT_INPUT_BANK 2
+#else
+#define GT_INPUT_BANK 0
+#endif
 #ifdef GT_BANKED
+#ifdef GT_INPUT_B2
+#pragma code-name ("B2CODE")
+#pragma rodata-name ("B2RODATA")
+#else
 #pragma code-name ("B0CODE")
 #pragma rodata-name ("B0RODATA")
+#endif
 #define GT_UPDATE_INPUTS gt_update_inputs_impl
 #define GT_BTN gt_p8_btn_impl
 #define GT_BTNP gt_p8_btnp_impl
@@ -1168,14 +1204,14 @@ unsigned char GT_BTNP(int i, int pl) {
 #pragma rodata-name ("RODATA")
 void gt_update_inputs(void) {
     unsigned char saved_bank = gt_cur_bank;
-    gt_bank(0);
+    gt_bank(GT_INPUT_BANK);
     gt_update_inputs_impl();
     gt_bank(saved_bank);
 }
 unsigned char gt_p8_btn(int i, int pl) {
     unsigned char saved_bank = gt_cur_bank;
     unsigned char r;
-    gt_bank(0);
+    gt_bank(GT_INPUT_BANK);
     r = gt_p8_btn_impl(i, pl);
     gt_bank(saved_bank);
     return r;
@@ -1183,7 +1219,7 @@ unsigned char gt_p8_btn(int i, int pl) {
 unsigned char gt_p8_btnp(int i, int pl) {
     unsigned char saved_bank = gt_cur_bank;
     unsigned char r;
-    gt_bank(0);
+    gt_bank(GT_INPUT_BANK);
     r = gt_p8_btnp_impl(i, pl);
     gt_bank(saved_bank);
     return r;

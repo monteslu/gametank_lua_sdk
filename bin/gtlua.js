@@ -97,6 +97,50 @@ function runLink(cmd, args) {
   return { ok: false, overflows, text };
 }
 
+// Sum every non-game module's bytes per bank from an ld65 map (SDK objects,
+// the embedded sheet, cross-bank stubs). This is the REAL immovable load —
+// the capacity model uses it instead of hand-tuned constants, which went
+// stale every time an SDK body moved banks.
+const MAP_SEG_BIN = {
+  B0CODE: "b0", B0RODATA: "b0", B1CODE: "b1", B1RODATA: "b1",
+  B2CODE: "b2", B2RODATA: "b2", SHEET: "b2",
+  CODE: "fixed", RODATA: "fixed", DATA: "fixed",
+};
+function sdkLoadFromMap(mapPath) {
+  let txt;
+  try { txt = readFileSync(mapPath, "utf8"); } catch { return null; }
+  const sec = txt.split("Modules list:")[1]?.split("Segment list:")[0];
+  if (!sec) return null;
+  const load = { b0: 0, b1: 0, b2: 0, fixed: 0 };
+  const port = { b0: 0, b1: 0, b2: 0, fixed: 0 };
+  let mod = null;
+  for (const ln of sec.split("\n")) {
+    // module headers: "path/foo.o:" AND library members "none.lib(bar.o):"
+    const mh = ln.match(/^([\w./-]+\.o|[\w./-]+\.lib\([\w.-]+\.o\)):/);
+    if (mh) { mod = mh[1].split("/").pop(); continue; }
+    if (!mod) continue;
+    const sm = ln.match(/^\s+(\w+)\s+Offs=\S+\s+Size=(\S+)/);
+    if (!sm) continue;
+    const bin = MAP_SEG_BIN[sm[1]];
+    if (!bin) continue;
+    (mod === "main.o" ? port : load)[bin] += parseInt(sm[2], 16);
+  }
+  return { load, port };
+}
+
+// scale each function's size estimate so per-bank sums match the REAL bytes
+// ld65 measured — the ~2 bytes/line heuristic runs ~10% off, which is the
+// whole gap between converging and thrashing on carts at the capacity cliff
+function calibrateSizes(sizes, placement, realPort) {
+  const est = { b0: 0, b1: 0, b2: 0, fixed: 0 };
+  for (const [n, bin] of Object.entries(placement)) est[bin] += sizes.get(n) ?? 0;
+  for (const [n, bin] of Object.entries(placement)) {
+    if (!est[bin] || !realPort[bin]) continue;
+    const f = Math.min(3, Math.max(0.5, realPort[bin] / est[bin]));
+    sizes.set(n, Math.round((sizes.get(n) ?? 0) * f));
+  }
+}
+
 function compileLua(entry, opts = {}) {
   const source = readFileSync(entry, "utf8");
   const result = compile(source, path.basename(entry), opts);
@@ -220,7 +264,7 @@ function initialPlacement(callGraph) {
 const SEG_BIN = { B0CODE: "b0", B1CODE: "b1", B2CODE: "b2", CODE: "fixed", RODATA: "fixed", B0RODATA: "b0", B1RODATA: "b1", B2RODATA: "b2" };
 
 // rebalance after a link overflow: move functions out of the fat bins
-function rebalance(placement, sizes, overflows, sheetBytes, callGraph, usesBg, usesAudio, usesMusic, usesAtlas) {
+function rebalance(placement, sizes, overflows, sheetBytes, callGraph, usesBg, usesAudio, usesMusic, usesAtlas, sdkLoad) {
   const bins = { b0: [], b1: [], b2: [], fixed: [] };
   for (const [name, bin] of Object.entries(placement)) bins[bin].push(name);
   const estUsed = (bin) => bins[bin].reduce((a, n) => a + (sizes.get(n) ?? 0), 0);
@@ -238,12 +282,19 @@ function rebalance(placement, sizes, overflows, sheetBytes, callGraph, usesBg, u
   // to converge.
   const B2_SDK_RESERVE =
     (usesBg ? 700 : 0) + (usesAtlas ? 500 : 0) + 2600 + (usesMusic ? 2800 : 0);
-  const capacity = {
-    b0: BANK_SIZE - BANK_MARGIN - (usesAudio ? 4400 : 0) - 3400 /* SDK B0 bodies: print+font+glyphs, spr splitter, pal/sset/starfield, rect/border, fsqrt/ffmod */,
-    b1: BANK_SIZE - BANK_MARGIN - 1450 /* gt_math B1CODE+B1RODATA (sin/atan tables ride bank 1) */,
-    b2: BANK_SIZE - BANK_MARGIN - sheetBytes - B2_SDK_RESERVE,
-    fixed: estUsed("fixed") + 2500,
-  };
+  const capacity = sdkLoad
+    ? { // measured from the failed link's map: the true immovable load
+        b0: BANK_SIZE - BANK_MARGIN - sdkLoad.b0,
+        b1: BANK_SIZE - BANK_MARGIN - sdkLoad.b1,
+        b2: BANK_SIZE - BANK_MARGIN - sdkLoad.b2,
+        fixed: BANK_SIZE - BANK_MARGIN - sdkLoad.fixed,
+      }
+    : { // first-attempt estimates (no map yet)
+        b0: BANK_SIZE - BANK_MARGIN - (usesAudio ? 4400 : 0) - 3400,
+        b1: BANK_SIZE - BANK_MARGIN - 1450,
+        b2: BANK_SIZE - BANK_MARGIN - sheetBytes - B2_SDK_RESERVE,
+        fixed: estUsed("fixed") + 2500,
+      };
 
   const CALLBACKS = new Set(["_update", "_update60", "_draw", "_init"]);
   let moved = false;
@@ -328,16 +379,32 @@ function rebalance(placement, sizes, overflows, sheetBytes, callGraph, usesBg, u
     // so the >=200 code-size filter would leave the actual rodata owners
     // unmovable and the placement stuck. Let rodata overflows move anything.
     const minSize = segment.includes("RODATA") ? 0 : 200;
+    if (process.env.GTLUA_DEBUG) {
+      console.error(`[juggle] ${segment} over ${bytes}; cap b0=${capacity.b0 - estUsed("b0")} b1=${capacity.b1 - estUsed("b1")} b2=${capacity.b2 - estUsed("b2")} fixed=${capacity.fixed - estUsed("fixed")}`);
+    }
+    // callbacks ARE movable between banks: they're already bank-placed and
+    // main() reaches them through stubs — pinning them wedged carts whose
+    // update loop IS most of a bank (moving smaller helpers can never cover
+    // the overflow). They stay out of `fixed` (no stub back-path needed).
     const movable = bins[bin]
-      .filter((n) => !CALLBACKS.has(n) && (sizes.get(n) ?? 0) >= minSize)
+      .filter((n) => (sizes.get(n) ?? 0) >= minSize)
       .sort((a, b) => (sizes.get(b) ?? 0) - (sizes.get(a) ?? 0));
     for (const n of movable) {
       if (need <= 0) break;
       const sz = sizes.get(n) ?? 0;
+      // the capacity model picks the roomiest target but never vetoes the
+      // move: our size estimates run ~10% light, and a model that vetoes on
+      // its own arithmetic wedges the loop repeating the same overflow while
+      // ld65 (the ground truth) keeps rejecting the link
       const targets = ["b2", bin === "b0" ? "b1" : "b0", "fixed"]
-        .filter((t) => t !== bin && capacity[t] - estUsed(t) >= sz);
+        .filter((t) => t !== bin && !(t === "fixed" && CALLBACKS.has(n)))
+        .sort((x, y) => (capacity[y] - estUsed(y)) - (capacity[x] - estUsed(x)));
       if (!targets.length) continue;
       const target = targets[0];
+      // fit-check the roomiest target, but keep scanning smaller candidates
+      // rather than giving up: a too-big function is not a reason to wedge
+      if (capacity[target] - estUsed(target) < sz) continue;
+      if (process.env.GTLUA_DEBUG) console.error(`[juggle]   move ${n} (${sz}) ${bin} -> ${target}`);
       placement[n] = target;
       bins[target].push(n);
       bins[bin].splice(bins[bin].indexOf(n), 1);
@@ -457,29 +524,26 @@ function build(entry, outPath, sheetPath, num8 = false) {
   // 4. overflow -> FLASH2M banked build
   const over = link32.overflows.reduce((a, o) => a + o.bytes, 0);
   console.error(`32 KB cart overflows by ~${over} bytes — re-targeting the 2 MB FLASH2M cart`);
-  const sizes = functionSizes(B(`${name}.s`));
-  // fold each function's string-literal bytes into its size: a function's
-  // rodata rides its bank (the emitter pushes rodata-name with code-name),
-  // so the packer must see the full footprint — B1RODATA overflows were
-  // unfixable when a small-code menu function owned a fat string pool.
-  {
-    const fnRe = /^void gtl_(\w+)\(void\)\s*$|^\w[^\n]*gtl_(\w+)\([^;{]*\)\s*$/;
+  let sizes = functionSizes(B(`${name}.s`));
+  // fold each function's rodata (string literals + literal-run tables) into
+  // its size: rodata rides the function's bank (the emitter pushes
+  // rodata-name with code-name), so the packer must see the full footprint.
+  const foldRodataSizes = (cSource, map) => {
     let cur = null;
-    for (const ln of result.c.split("\n")) {
+    for (const ln of cSource.split("\n")) {
       const m = ln.match(/^[\w ]*\bgtl_(\w+)\([^;]*\)$/);
       if (m && !ln.includes(";")) { cur = m[1]; continue; }
       if (!cur) continue;
       for (const str of ln.matchAll(/"((?:[^"\\]|\\.)*)"/g)) {
-        sizes.set(cur, (sizes.get(cur) ?? 0) + str[1].length + 1);
+        map.set(cur, (map.get(cur) ?? 0) + str[1].length + 1);
       }
-      // literal-run tables are proc-local statics: rodata the .s size
-      // parser can't see (cc65 emits them outside the .proc)
       const lit = ln.match(/static const (int|long) gtl__lit\d+\[(\d+)\]/);
       if (lit) {
-        sizes.set(cur, (sizes.get(cur) ?? 0) + (lit[1] === "long" ? 4 : 2) * parseInt(lit[2], 10));
+        map.set(cur, (map.get(cur) ?? 0) + (lit[1] === "long" ? 4 : 2) * parseInt(lit[2], 10));
       }
     }
-  }
+  };
+  foldRodataSizes(result.c, sizes);
   const sheetBytes = sheetPath
     ? (usesBg ? 8192 : packbits(Array.from(readFileSync(sheetPath))).length)
     : 0;
@@ -559,12 +623,22 @@ function build(entry, outPath, sheetPath, num8 = false) {
     // size-relief ladder: 0-7 everything on -> 8-15 function inlining off
     // (mid ternaries STAY: they're smaller than the cdecl mid() call) ->
     // 16-23 everything off. Each rung restarts from a fresh placement.
-    if (attempt === 8 && fnInline) {
+    if (attempt === 12 && fnInline) {
       fnInline = false;
       workPlacement = initialPlacement(result.callGraph);
       console.error("bank placement tight: retrying with function inlining off");
     }
-    if (attempt === 12 && !apiDefs.includes("-DGT_NO_BLITFONT")) {
+    if (attempt === 8 && !apiDefs.includes("-DGT_INPUT_B2")) {
+      // which bank the SDK input block fits in is per-cart: b0-heavy carts
+      // (big update loop + audio firmware) need it in bank 2 and vice versa
+      apiDefs.push("-DGT_INPUT_B2");
+      run(tc.cc65, [...CFLAGS, "-DGT_BANKED", ...apiDefs,
+                    "-o", B("gt_api.s"), path.join(SDK, "gt_api.c")]);
+      as(B("gt_api.s"), B("gt_api.o"));
+      workPlacement = initialPlacement(result.callGraph);
+      console.error("bank placement tight: input block to bank 2");
+    }
+    if (attempt === 20 && !apiDefs.includes("-DGT_NO_BLITFONT")) {
       // final size relief: drop the GRAM blit font (~1 KB across banks);
       // print falls back to the per-pixel CPU path — correct, just slower
       apiDefs.push("-DGT_NO_BLITFONT");
@@ -583,6 +657,12 @@ function build(entry, outPath, sheetPath, num8 = false) {
     writeFileSync(B(`${name}.c`), result.c);
     cc(B(`${name}.c`), B(`${name}.s`));
     as(B(`${name}.s`), B(`${name}.o`));
+    // re-measure per attempt: the .s parsed before the loop can be stale
+    // (previous run's build dir) and the inlining rungs change which
+    // functions even exist — a stale map makes the mover shuffle size-0
+    // ghosts while the real hogs stay put
+    sizes = functionSizes(B(`${name}.s`));
+    foldRodataSizes(result.c, sizes);
     writeFileSync(B("stubs.s"), (result.stubs ?? "; no cross-bank calls\n") + "\n");
     as(B("stubs.s"), B("stubs.o"));
 
@@ -600,7 +680,9 @@ function build(entry, outPath, sheetPath, num8 = false) {
     ]);
     if (link.ok) { linked = flashOut; break; }
     lastOverflows = link.overflows;
-    const moved = rebalance(workPlacement, sizes, link.overflows, sheetBytes, result.callGraph, usesBg, usesAudio, usesMusic, usesAtlas);
+    const mapInfo = sdkLoadFromMap(B(`${name}.map`));
+    if (mapInfo) calibrateSizes(sizes, workPlacement, mapInfo.port);
+    const moved = rebalance(workPlacement, sizes, link.overflows, sheetBytes, result.callGraph, usesBg, usesAudio, usesMusic, usesAtlas, mapInfo?.load ?? null);
     if (!moved && attempt >= 17) {
       fail("FLASH2M bank placement failed: " +
         link.overflows.map((o) => `${o.segment} over by ${o.bytes}`).join(", "));
