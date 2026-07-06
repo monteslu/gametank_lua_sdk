@@ -1169,7 +1169,7 @@ export function emit(chunk, symbols, file, opts = {}) {
         // constant-byte-only fields (state ids, sprite numbers, colors) store
         // as bytes: half the RAM, and the u8 forall index + u8 element is the
         // fast entity-access shape
-        const ct = (fl.kind === "int" && !fl.notByte) ? "unsigned char" : ctype(fl.kind);
+        const ct = (fl.kind === "int" && (fl.forceByte || !fl.notByte)) ? "unsigned char" : ctype(fl.kind);
         out.push(`${ct} ${g.cname}_${fname}[${g.size}];`);
       }
       out.push(`unsigned char ${g.cname}_used[${g.size}];`);

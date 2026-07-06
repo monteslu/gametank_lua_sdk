@@ -80,10 +80,26 @@ export function check(chunk, file) {
           if (size === null || !Number.isInteger(size) || size < 1 || size > 64) {
             err(s, "pool(n) needs a constant capacity between 1 and 64");
           }
+          // pool(n, "f1,f2,...") — the listed fields are DECLARED byte-wide
+          // (values 0-255, stored in one byte, ~2-3x faster per access on
+          // the 65C02). Explicit like array8: the compiler trusts the list
+          // and errors only if a listed field turns out fixed-typed.
+          const byteFields = new Set();
+          if (init.args[1]) {
+            if (init.args[1].kind !== "string") {
+              err(init.args[1], 'pool(n, "fields") takes a comma-separated string of byte-wide field names');
+            } else {
+              for (const f of init.args[1].value.split(",")) {
+                const t = f.trim();
+                if (t) byteFields.add(t);
+              }
+            }
+          }
           globals.set(name, {
             kind: "pool",
             size: size ?? 1,
             fields: new Map(),   // fieldName -> {kind}
+            byteFields,
             node: s,
           });
           return;
@@ -249,7 +265,10 @@ export function check(chunk, file) {
               let rk = vt;
               if (s.op === "/=") rk = "fixed";
               if (s.op !== "=" && s.op !== "\\=") rk = join(rk, fl.kind);
-              if (rk === "fixed" && fl.kind !== "fixed") { fl.kind = "fixed"; changed = true; }
+              if (rk === "fixed" && fl.kind !== "fixed") {
+                if (fl.forceByte) err(s, `pool field '${s.target.poolField.field}' is declared byte-wide but assigned a fixed-point value`);
+                fl.kind = "fixed"; changed = true;
+              }
               // byte evidence: this + the add() literals are the ONLY store
               // paths (the parser rejects member targets in multi-assign).
               // Any compound op or non-constant / out-of-range value
@@ -448,7 +467,17 @@ export function check(chunk, file) {
           return "void";
         }
         if (pl.fields.size === 0) {
-          for (const f of t.fields) pl.fields.set(f.name, { kind: "int" });
+          for (const f of t.fields) {
+            pl.fields.set(f.name, { kind: "int",
+              forceByte: pl.byteFields ? pl.byteFields.has(f.name) : false });
+          }
+          if (pl.byteFields) {
+            for (const bf of pl.byteFields) {
+              if (!pl.fields.has(bf)) {
+                err(call, `pool byte field '${bf}' is not a field of this pool`);
+              }
+            }
+          }
         }
         const seen = new Set();
         for (const f of t.fields) {

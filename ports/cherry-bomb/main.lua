@@ -96,11 +96,11 @@ local bossoff = array(4)  -- boss ani frame offsets {0,4,8,4}
 
 -- entity pools (original uses unbounded tables; capacities documented
 -- in PORT_NOTES.md — overflowing add()s drop silently)
-local enemies = pool(40)
-local buls = pool(28)
-local ebuls = pool(48)
-local parts = pool(56)
-local shwaves = pool(12)
+local enemies = pool(40, "type,wait,anispd,mission,flash,shake,subphase")
+local buls = pool(28, "spr,dmg,colw")
+local ebuls = pool(48, "af")
+local parts = pool(56, "age,size2,maxage,blue,spark")
+local shwaves = pool(12, "r,tr,col,speed")
 local pickups = pool(8)
 local floats = pool(8)
 
@@ -148,7 +148,7 @@ end
 -- swarm drains from a pending queue at PEX_BUDGET particles per frame, so
 -- a cloud builds over 2-3 frames — invisible at 30fps, and the effect
 -- parameters are unchanged per particle.
-local pend = pool(6)   -- x, y, blue, big, fleft, sleft
+local pend = pool(6, "blue,big,fleft,sleft")   -- x, y, blue, big, fleft, sleft
 
 function pump_explosions()
  -- the original spawned a whole burst instantly into the 56-slot pool, so
@@ -1325,8 +1325,8 @@ function draw_game()
   p2.sy-=(p2.sy\8)+(p2.sy\32)
   p2.age+=1
   if p2.age>p2.maxage then
-   p2.size2-=1
-   if p2.size2<0 then del(parts,p2) end
+   -- size2 is byte-wide: guard the decrement instead of testing <0
+   if p2.size2>0 then p2.size2-=1 else del(parts,p2) end
   end
  end
 
