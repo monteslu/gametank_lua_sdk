@@ -20,6 +20,8 @@ local needed = 0
 local win = 0
 local dead = 0
 local wob = 0.0
+local wob8 = 0                  -- 64ths-of-a-turn mirror for the bob LUT
+local bobsin = array(64)
 
 -- walls per room (up to 10 rects)
 local wx0 = array(10)
@@ -92,7 +94,39 @@ function load_room(n)
   frogs = 0
 end
 
+-- r3 discs sset into GRAM cells once (no sheet: cell space is free); a
+-- per-frame circfill through the C circle machinery costs ~2k cycles vs
+-- ~190 for the sprite blit. Cell 1 = frog body, cell 2 = ufo dome.
+function make_disc(cell, c)
+  local bx = (cell % 16) * 8
+  local by = (cell \ 16) * 8
+  local yy = 0
+  while yy < 8 do
+    local xx = 0
+    while xx < 8 do
+      sset(bx + xx, by + yy, 0)
+      xx += 1
+    end
+    yy += 1
+  end
+  local dy = -3
+  while dy <= 3 do
+    local w = flr(sqrt(9 - dy * dy))
+    local xx = -w
+    while xx <= w do
+      sset(bx + 3 + xx, by + 3 + dy, c)
+      xx += 1
+    end
+    dy += 1
+  end
+end
+
 function _init()
+  make_disc(1, 11)
+  make_disc(2, 12)
+  for i = 1, 64 do
+    bobsin[i] = flr(sin((i - 1) / 64) * 2)
+  end
   gt.autocls(0)               -- frame clear rides the post-flip vsync wait
   load_room(1)
 end
@@ -120,6 +154,7 @@ function _update()
   end
 
   wob += 0.04
+  wob8 = (wob8 + 3) & 63        -- 0.04 turns ~ 2.56/64; 3 keeps the wave rate
 
   -- thrust
   if btn(4) and fuel > 0 then
@@ -199,8 +234,8 @@ function _draw()
   -- frogs
   for i = 1, fn do
     if flive[i] == 1 then
-      local hop = flr(sin(wob + i * 0.3) * 2)
-      circfill(fx[i], fy[i] + hop, 3, 11)
+      local hop = bobsin[((wob8 + i * 19) & 63) + 1]
+      spr(1, fx[i] - 3, fy[i] + hop - 3)
       pset(fx[i] - 1, fy[i] + hop - 2, 7)
       pset(fx[i] + 1, fy[i] + hop - 2, 7)
     end
@@ -222,14 +257,19 @@ function _draw()
   if hurt % 8 < 4 then
     local x = flr(ux)
     local y = flr(uy)
-    circfill(x, y - 2, 3, 12)                 -- dome
+    spr(2, x - 3, y - 5)                      -- dome (r3 disc cell)
     rectfill(x - 6, y, x + 6, y + 2, 6)       -- saucer
     pset(x - 4, y + 3, 10)
     pset(x, y + 3, 10)
     pset(x + 4, y + 3, 10)
     if btn(4) and fuel > 0 then
-      line(x - 2, y + 4, x - 1, y + 6, 9)
-      line(x + 2, y + 4, x + 1, y + 6, 9)
+      -- thruster legs as their exact Bresenham pixels in fills: a 3px
+      -- diagonal line() walks pset_raw in CPU mode and drains the queued
+      -- blits first — these two lines were 24% of all executed cycles
+      rectfill(x - 2, y + 4, x - 2, y + 4, 9)
+      rectfill(x - 1, y + 5, x - 1, y + 6, 9)
+      rectfill(x + 2, y + 4, x + 2, y + 4, 9)
+      rectfill(x + 1, y + 5, x + 1, y + 6, 9)
     end
   end
 
