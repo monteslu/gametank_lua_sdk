@@ -1102,8 +1102,14 @@ local tms = 0
 local tcs = 0.0
 
 -- camera (fixed-point target, int applied)
-local camx = 0.0
-local camy = 0.0
+-- camera as int world position + fractional remainder: the smooth-follow
+-- accumulator spans the whole 656px world, which overflows the 8.8 number
+-- range under --num8. The chase delta is always small, so only the
+-- fraction needs to be a number; flr(camx) == camxw by construction.
+local camxw = 0
+local camyw = 0
+local camxf = 0.0
+local camyf = 0.0
 local camxi = 0
 local camyi = 0
 
@@ -1357,8 +1363,10 @@ function reset()
   tmm = 0
   tms = 0
   tcs = 0
-  camx = spawnx - 64
-  camy = spawny - 64
+  camxw = spawnx - 64
+  camyw = spawny - 64
+  camxf = 0
+  camyf = 0
   camxi = mid(0, spawnx - 64, 592)
   camyi = mid(0, spawny - 64, 592)
   for i = 1, 64 do tlc[i] = -1 end
@@ -1590,10 +1598,16 @@ function _update()
   local lead = min(spd * 4.95, 30)
   local ctx = carx - 64 + flr(fwdx * lead)
   local cty = cary - 64 + flr(fwdy * lead)
-  camx += (ctx - camx) * 0.75
-  camy += (cty - camy) * 0.75
-  camxi = mid(0, flr(camx), 592)
-  camyi = mid(0, flr(camy), 592)
+  camxf += ((ctx - camxw) - camxf) * 0.75
+  camyf += ((cty - camyw) - camyf) * 0.75
+  local cw = flr(camxf)
+  camxw += cw
+  camxf -= cw
+  cw = flr(camyf)
+  camyw += cw
+  camyf -= cw
+  camxi = mid(0, camxw, 592)
+  camyi = mid(0, camyw, 592)
 
   -- ---- audio (gt.note approximations of the cart's sfx) ----
   local tp = spd * 4
