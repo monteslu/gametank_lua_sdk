@@ -1794,9 +1794,31 @@ function _draw()
   for cy = cy0, cy1 do
     local rb = cy * 30
     local wy = cy * 24
+    local runk = -1
+    local runx = 0
+    local runw = 0
     for cx = cx0, cx1 do
       local cg = cgrid[rb + cx + 1]
+      -- flat fill run merging: plain solid chunks extend the open run
+      local flatk = -1
       if cg != 0 then
+        local r0 = cg & 31
+        if r0 != 0 and (cg >> 5) == 0 then
+          local k0 = ckd(r0)
+          if (k0 < 16) flatk = k0
+        end
+      end
+      if flatk != runk or flatk < 0 then
+        if (runk >= 0) rectfill(runx, wy, runx + runw - 1, wy + 23, runk)
+        runk = -1
+        if flatk >= 0 then
+          runk = flatk
+          runx = cx * 24
+          runw = 0
+        end
+      end
+      if (runk >= 0) runw += 24
+      if cg != 0 and flatk < 0 then
         local wx = cx * 24
         local r = cg & 31
         if r != 0 then
@@ -1825,6 +1847,7 @@ function _draw()
         end
       end
     end
+    if (runk >= 0) rectfill(runx, wy, runx + runw - 1, wy + 23, runk)
   end
 
   -- tire trails
