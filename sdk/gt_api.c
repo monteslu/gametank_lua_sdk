@@ -1309,11 +1309,17 @@ unsigned char gt_p8_btnp(int i, int pl) {
 
 /* ---- lifecycle ---- */
 
+/* headroom meter: every pass through the vsync-wait poll loop bumps this.
+ * Idle cycles ~= polls * ~40, so tooling can report work-vs-slack per
+ * frame (the pace itself pins at 2.0 once a 30fps cart makes rate — this
+ * is the number that says HOW MUCH room is left under the lock). */
+unsigned long gt_idle_polls;
+
 static void await_vsync(void) {
     gt_frameflag = 1;
     /* pump while waiting: completed blits would otherwise leave the ring
      * idle for the whole vsync spin — this is where queued pixel time hides */
-    while (gt_frameflag) { gt_q_pump(); }
+    while (gt_frameflag) { gt_q_pump(); ++gt_idle_polls; }
 }
 
 static void flip_pages(void) {
