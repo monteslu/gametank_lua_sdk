@@ -313,17 +313,34 @@ function tile_at(x, y)
 end
 
 -- ---------------------------------------------------------------------
--- sfx (SILENT — the ACP audio firmware does not fit; see PORT_NOTES.md).
--- The cart's __sfx__ 9-22 were converted to a gtlua note-event player
--- (scripts/p8sfx.mjs) and wired through here, but linking gt.note pulls
--- the 4312-byte ACP firmware RODATA into the FLASH2M FIXED bank, whose
--- 16 KB already holds 13.9 KB of runtime CODE + ~1.5 KB RODATA — adding
--- the firmware overflows the fixed bank's RODATA by 3758 bytes. The SDK
--- can't bank that RODATA, so sfx ids just flow through sfx_play (a no-op)
--- and audio can be reinstated the moment the SDK banks the firmware blob.
+-- sfx: the cart's __sfx__ ids mapped to SDK built-in effects. (The old
+-- firmware-doesn't-fit blocker is gone — the ACP firmware now rides in a
+-- game bank, relocated by the placement ladder when banks are tight.)
+-- Channels: 0 = movement (jump/dash/land spam keeps to itself),
+-- 1 = world (springs, crumbling floors, death), 2 = pickups/awards.
 -- ---------------------------------------------------------------------
 function sfx_play(n)
-  -- silent: the ACP firmware overflows the fixed bank for a game this size
+  if n == 18 or n == 19 then
+    sfx(0, 0)                   -- jump / wall jump
+  elseif n == 20 then
+    sfx(2, 0)                   -- dash whoosh
+  elseif n == 21 or n == 22 then
+    sfx(4, 0)                   -- failed dash / dash restore tick
+  elseif n == 16 then
+    sfx(5, 1)                   -- spring bounce
+  elseif n == 13 then
+    sfx(6, 1)                   -- fall-floor crumbling
+  elseif n == 12 then
+    sfx(4, 1)                   -- fall-floor reappears
+  elseif n == 17 then
+    sfx(3, 1)                   -- death burst
+  elseif n == 15 then
+    sfx(7, 1)                   -- respawn rise
+  elseif n == 10 then
+    sfx(1, 2)                   -- berry collected / flies off
+  elseif n == 9 then
+    sfx(5, 2)                   -- 1000-point award
+  end
 end
 
 function psfx(n)
