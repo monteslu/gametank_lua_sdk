@@ -1250,6 +1250,7 @@ void gt_p8_fps30(void) { fps30 = 1; }
 
 void gt_init(void) {
     unsigned char i;
+    { extern unsigned int gt_rng_state; gt_rng_state = 0xABCDU; }
     gt_frameflag = 0;
     gt_draw_busy = 0;
     gt_ticks = 0;

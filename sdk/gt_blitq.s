@@ -33,6 +33,8 @@
 .import   _gt_p8_rectfill_slow
 .import   _gt_p8_spr_wide
 .export   _gt_p8_rectfill_z
+.export   _gt_rng_next
+.export   _gt_rng_state
 .export   _gt_a0, _gt_a1, _gt_a2, _gt_a3, _gt_a4, _gt_a5
 .export   _gt_cam_x, _gt_cam_y
 .export   _gt_pad0, _gt_pad1, _gt_rpt0, _gt_rpt1
@@ -188,6 +190,45 @@ _gt_q_pump:
 
 ; kept as an alias for any external kick callers
 _gt_q_kick = _gt_q_pump
+
+; ---------------------------------------------------------------------------
+; gt_rng_next: 16-bit xorshift (7,9,8) — returns the next state in A/X
+; (lo/hi, cc65 int return). An explosion spawns ~250 rnd() calls in one
+; frame; the old 32-bit xorshift walked cc65's long-shift loops for ~700
+; cycles per call. This is ~40. Never yields 0 (nonzero seed cycles the
+; full 65535-value orbit).
+; ---------------------------------------------------------------------------
+.bss
+_gt_rng_state: .res 2
+
+.code
+_gt_rng_next:
+        ; s ^= s << 7:
+        ;   (s<<7).hi = (hi&1)<<7 | lo>>1   (bits 8..1 of s)
+        ;   (s<<7).lo = (lo&1)<<7
+        LDA _gt_rng_state+1
+        LSR A                   ; carry = hi bit0
+        LDA _gt_rng_state
+        ROR A                   ; A = (hi&1)<<7 | lo>>1
+        EOR _gt_rng_state+1
+        STA _gt_rng_state+1     ; hi'
+        LDA _gt_rng_state
+        LSR A                   ; carry = lo bit0
+        LDA #0
+        ROR A                   ; A = (lo&1)<<7
+        EOR _gt_rng_state
+        STA _gt_rng_state       ; lo'
+        ; s ^= s >> 9: lo ^= hi' >> 1
+        LDA _gt_rng_state+1
+        LSR A
+        EOR _gt_rng_state
+        STA _gt_rng_state       ; lo''
+        ; s ^= s << 8: hi ^= lo''  (A holds lo'')
+        EOR _gt_rng_state+1
+        STA _gt_rng_state+1     ; hi''
+        TAX                     ; X = hi (cc65 int return = A lo, X hi)
+        LDA _gt_rng_state
+        RTS
 
 ; ---------------------------------------------------------------------------
 ; gt_p8_rectfill_z: the hot fill call, fast path fully in asm.

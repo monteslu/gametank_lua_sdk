@@ -171,6 +171,64 @@ function smol_spark(sx2,sy2)
  addpart(sx2,sy2,flr(rnd(128))-64,flr(rnd(48))-48,flr(rnd(2)),2+flr(rnd(8)),10+flr(rnd(10)),0,1)
 end
 
+-- Particle discs baked into free sheet cells: a circfill per fireball
+-- particle per frame is ~9 queue entries + Bresenham each, and an
+-- explosion keeps ~30 alive for 150 frames (the measured 8-9 vsync
+-- plateau). A baked disc blits as ONE sprite. r0..3 covers explode()'s
+-- whole swarm; r>=4 (bigexplode tails, central blobs) keeps circfill.
+-- Ramp indices 1..6 = red ramp {7,10,9,8,2,5}, 7..10 = blue-only {6,12,13,1}
+-- (age<=5 is white=index 1 in both ramps).
+local dcell = array(40)
+local rampc = array(10)
+
+function bake_disc(cell, r, c)
+ local bx=(cell%16)*8
+ local by=(cell\16)*8
+ local yy=0
+ while yy<8 do
+  local xx=0
+  while xx<8 do
+   sset(bx+xx,by+yy,0)
+   xx+=1
+  end
+  yy+=1
+ end
+ local dy=-r
+ while dy<=r do
+  local w=flr(sqrt(r*r-dy*dy))
+  local xx=-w
+  while xx<=w do
+   sset(bx+3+xx,by+3+dy,c)
+   xx+=1
+  end
+  dy+=1
+ end
+end
+
+function bake_particle_discs()
+ -- 40 verified-empty cells of gfx.bin (kept away from 250/251, the
+ -- pickup outline cells)
+ dcell[1]=49 dcell[2]=50 dcell[3]=51 dcell[4]=52
+ dcell[5]=53 dcell[6]=54 dcell[7]=55 dcell[8]=56
+ dcell[9]=57 dcell[10]=64 dcell[11]=65 dcell[12]=66
+ dcell[13]=67 dcell[14]=68 dcell[15]=69 dcell[16]=70
+ dcell[17]=71 dcell[18]=72 dcell[19]=73 dcell[20]=199
+ dcell[21]=200 dcell[22]=201 dcell[23]=202 dcell[24]=203
+ dcell[25]=204 dcell[26]=205 dcell[27]=206 dcell[28]=207
+ dcell[29]=18 dcell[30]=19 dcell[31]=20 dcell[32]=25
+ dcell[33]=35 dcell[34]=36 dcell[35]=39 dcell[36]=40
+ dcell[37]=41 dcell[38]=146 dcell[39]=147 dcell[40]=150
+ rampc[1]=7 rampc[2]=10 rampc[3]=9 rampc[4]=8 rampc[5]=2 rampc[6]=5
+ rampc[7]=6 rampc[8]=12 rampc[9]=13 rampc[10]=1
+ local n=1
+ for ci=1,10 do
+  for r=0,3 do
+   bake_disc(dcell[n], r, rampc[ci])
+   n+=1
+  end
+ end
+end
+
 function page_red(page)
  local c=7
  if page>5 then c=10 end
@@ -1184,13 +1242,27 @@ function draw_game()
    -- sparks are always white; skip the page_* color ramp entirely
    pset(p2.x\16,p2.y\16,7)
   else
-   local pc
+   -- ramp index (1..10) instead of a color: picks the baked disc row
+   local ci=1
+   local a2=p2.age
    if p2.blue==1 then
-    pc=page_blue(p2.age)
+    if a2>5 then ci=7 end
+    if a2>7 then ci=8 end
+    if a2>10 then ci=9 end
+    if a2>12 then ci=10 end
    else
-    pc=page_red(p2.age)
+    if a2>5 then ci=2 end
+    if a2>7 then ci=3 end
+    if a2>10 then ci=4 end
+    if a2>12 then ci=5 end
+    if a2>15 then ci=6 end
    end
-   circfill(p2.x\16,p2.y\16,p2.size2\2,pc)
+   local r2=p2.size2\2
+   if r2<=3 then
+    spr(dcell[(ci-1)*4+r2+1],p2.x\16-3,p2.y\16-3)
+   else
+    circfill(p2.x\16,p2.y\16,r2,rampc[ci])
+   end
   end
   p2.x+=p2.sx
   p2.y+=p2.sy
@@ -1308,6 +1380,7 @@ end
 -- callbacks
 
 function _init()
+ bake_particle_discs()
  for i=1,11 do banim[i]=5 end
  banim[12]=6
  banim[13]=6

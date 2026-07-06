@@ -102,42 +102,36 @@ long gt_fatan2(long dx, long dy) {
 }
 #endif
 
-/* ---- rnd / srand: 32-bit xorshift ---- */
-static unsigned long gt_rng = 0x1234ABCDUL;
+/* ---- rnd / srand: 16-bit xorshift in asm (gt_blitq.s) ----
+ * An explosion spawns ~250 rnd() calls in one frame; the old 32-bit
+ * xorshift walked cc65's long-shift loops for ~700 cycles per call.
+ * gt_rng_next is ~40 cycles; full 65535-value orbit, never yields 0. */
+extern unsigned int gt_rng_state;
+unsigned int __fastcall__ gt_rng_next(void);
 
 #ifdef GT_NUM8
 int gt_p8_rnd(int x) {
-    unsigned long s = gt_rng;
-    s ^= s << 13;
-    s ^= s >> 17;
-    s ^= s << 5;
-    gt_rng = s;
+    unsigned int s = gt_rng_next();
     if (x <= 0) return 0;
     /* fraction in [0,1) from 8 random bits: rnd(x) = frac * x */
-    return gt_fmul((int)(s & 0xFFUL), x);
+    return gt_fmul((int)(s & 0xFFU), x);
 }
 
 void gt_p8_srand(int seed) {
-    gt_rng = (unsigned int)seed;
-    if (gt_rng == 0) gt_rng = 0x1234ABCDUL;
+    gt_rng_state = (unsigned int)seed;
+    if (gt_rng_state == 0) gt_rng_state = 0xABCDU;
 }
 #else
 long gt_p8_rnd(long x) {
-    unsigned long s = gt_rng;
-    long frac;
-    s ^= s << 13;
-    s ^= s >> 17;
-    s ^= s << 5;
-    gt_rng = s;
+    unsigned int s = gt_rng_next();
     if (x <= 0) return 0;
     /* fraction in [0,1) from 16 random bits, scaled: rnd(x) = frac * x */
-    frac = (long)(s & 0xFFFFUL);
-    return gt_fmul(frac, x);
+    return gt_fmul((long)s, x);
 }
 
 void gt_p8_srand(long seed) {
-    gt_rng = (unsigned long)seed;
-    if (gt_rng == 0) gt_rng = 0x1234ABCDUL;
+    gt_rng_state = (unsigned int)(seed >> 16) ^ (unsigned int)seed;
+    if (gt_rng_state == 0) gt_rng_state = 0xABCDU;
 }
 #endif
 
