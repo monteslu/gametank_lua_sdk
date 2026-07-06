@@ -380,7 +380,13 @@ int GT_PRINT_NUM(long v, int x, int y, int c) {
     unsigned char neg = 0;
     *p = 0;
     if (iv < 0) { neg = 1; uv = (unsigned int)(-iv); } else uv = (unsigned int)iv;
-    do { *--p = '0' + (uv % 10); uv /= 10; } while (uv);
+    /* one udiv per digit: cc65 computes % and / as SEPARATE division
+     * calls (~450 cycles each); divide once, multiply back for the digit */
+    do {
+        unsigned int q = uv / 10;
+        *--p = (char)('0' + (unsigned char)(uv - ((q << 3) + (q << 1))));
+        uv = q;
+    } while (uv);
     if (neg) *--p = '-';
     return GT_PRINT(p, x, y, c);
 }
