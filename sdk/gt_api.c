@@ -501,10 +501,6 @@ void gt_p8_sset_z(void) {
 }
 #endif
 
-void gt_p8_sset(int x, int y, int c) {
-    gt_a0 = x; gt_a1 = y; gt_a2 = c;
-    gt_p8_sset_z();
-}
 
 /* 16-cell-wide/tall sprites are 128px spans — past the 7-bit blit counter
  * (the hardware wraps the width to 0). The asm fast path punts here; split
@@ -799,10 +795,6 @@ void gt_p8_rectfill_slow(void) {
 }
 #endif
 
-void gt_p8_rectfill(int x0, int y0, int x1, int y1, int c) {
-    gt_a0 = x0; gt_a1 = y0; gt_a2 = x1; gt_a3 = y1; gt_a4 = c;
-    gt_p8_rectfill_z();
-}
 
 #ifdef GT_BANKED
 #ifdef GT_INPUT_B2
@@ -866,10 +858,6 @@ void gt_p8_pset_z(void) {
     gt_p8_rectfill_z();
 }
 
-void gt_p8_pset(int x, int y, int c) {
-    gt_a0 = x; gt_a1 = y; gt_a2 = c;
-    gt_p8_pset_z();
-}
 
 #ifdef GT_STARFIELD
 /* ---- parallax starfield ----------------------------------------------------
@@ -1064,10 +1052,6 @@ void gt_p8_line_z(void) {
 }
 #endif
 
-void gt_p8_line(int x0, int y0, int x1, int y1, int c) {
-    gt_a0 = x0; gt_a1 = y0; gt_a2 = x1; gt_a3 = y1; gt_a4 = c;
-    gt_p8_line_z();
-}
 
 #ifdef GT_BANKED
 #pragma code-name ("B2CODE")
@@ -1117,10 +1101,6 @@ void gt_p8_circfill_z(void) {
 }
 #endif
 
-void gt_p8_circfill(int cx, int cy, int r, int c) {
-    gt_a0 = cx; gt_a1 = cy; gt_a2 = r; gt_a3 = c;
-    gt_p8_circfill_z();
-}
 
 #ifdef GT_BANKED
 #pragma code-name ("B2CODE")
@@ -1160,10 +1140,6 @@ void gt_p8_circ_z(void) {
 }
 #endif
 
-void gt_p8_circ(int cx, int cy, int r, int c) {
-    gt_a0 = cx; gt_a1 = cy; gt_a2 = r; gt_a3 = c;
-    gt_p8_circ_z();
-}
 
 #ifdef GT_BANKED
 #ifdef GT_INPUT_B2

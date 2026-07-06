@@ -68,7 +68,6 @@ void gt_p8_cls(int c);
 void gt_p8_camera(int x, int y);
 void gt_p8_color(int c);
 void gt_p8_pal(int c0, int c1);              /* (-1,-1) = reset */
-void gt_p8_pset(int x, int y, int c);
 
 /* zp-ABI entry points: args in gt_a0..gt_a5 (see the block above).
  * The cdecl versions above remain as thin wrappers for call sites whose
@@ -95,13 +94,8 @@ void gt_gspr(int gx, int gy, int w, int h, int x, int y);  /* blit FROM canvas *
 unsigned char gt_p8pal(unsigned char idx);   /* p8 index -> hw color (pal-aware) */
 extern const unsigned char *gt_sheet_ptr;
 void gt_p8_rect(int x0, int y0, int x1, int y1, int c);
-void gt_p8_rectfill(int x0, int y0, int x1, int y1, int c);
-void gt_p8_circ(int cx, int cy, int r, int c);
-void gt_p8_circfill(int cx, int cy, int r, int c);
-void gt_p8_line(int x0, int y0, int x1, int y1, int c);
 void gt_p8_border(int c);
 void gt_autocls_set(int c);    /* frame clear during the post-flip vsync wait */
-void gt_p8_sset(int x, int y, int c);
 int gt_p8_print(const char *str, int x, int y, int c);
 #ifdef GT_NUM8
 int gt_p8_print_num(int v, int x, int y, int c);

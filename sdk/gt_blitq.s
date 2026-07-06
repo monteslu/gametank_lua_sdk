@@ -115,6 +115,45 @@ _gt_q:     .res 256             ; 32 entries x 8 bytes
 ; under the state it actually ran with. Harmless on hardware.
 ; ---------------------------------------------------------------------------
 _gt_q_push:
+        ; ---- direct fast path: blitter idle AND ring empty (the common case
+        ; for sprite streams — a 64px cell drains in 64 cycles, faster than
+        ; the CPU stages the next one). Poke the registers straight from the
+        ; staged entry: no ring copy, no head/tail bookkeeping, ~125 cycles
+        ; saved per blit. Big fills keep the buffered path below.
+        LDA _gt_draw_busy
+        BNE @full
+        LDA _gt_qhead
+        CMP _gt_qtail
+        BNE @full               ; entries queued: keep FIFO order
+        LDA VDMA_Base           ; dummy read: force emulator catch-up FIRST
+        LDA _gt_ent+0
+        ORA _frameflip          ; live page bit — never scan the draw page
+        STA DMA_Flags
+        AND #$08                ; DMA_COLORFILL_ENABLE?
+        BNE @dfill
+        LDA _gt_ent+7
+        BRA @dbank
+@dfill: LDA _gt_qbank
+@dbank: STA Bank_Reg
+        LDA _gt_ent+1
+        STA VDMA_Base
+        LDA _gt_ent+2
+        STA VDMA_Base+1
+        LDA _gt_ent+3
+        STA VDMA_Base+2
+        LDA _gt_ent+4
+        STA VDMA_Base+3
+        LDA _gt_ent+5
+        STA VDMA_W
+        LDA _gt_ent+6
+        STA VDMA_H
+        LDA _gt_ent+7
+        STA VDMA_Col
+        LDA #1
+        STA _gt_draw_busy       ; busy BEFORE start: the IRQ can fire fast
+        STA DMA_Start
+        RTS
+
 @full:  LDA _gt_qhead
         CLC
         ADC #8

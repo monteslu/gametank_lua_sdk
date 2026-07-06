@@ -75,15 +75,22 @@ extern const unsigned char gt_pitch_table[216];
 /* --- built-in instruments (ported from upstream instruments.c) --------------
  * Layout per op index: env_initial[4], env_decay[4], env_sustain[4],
  * op_transpose[4], then feedback + channel transpose. */
+/* Voicing note (measured, not theoretical): the synth's per-channel output
+ * caps at ~1/4 of the DAC swing so four channels sum without clipping, and
+ * the carrier amplitude curve peaks near 0xE0 — 0xFF WRAPS TO SILENCE.
+ * The old carriers (0x10-0x6f, upstream tracker mix levels) reached only
+ * ~40% of the usable range and decayed to nothing in ~100ms: "quiet
+ * clicks". Carriers now sit at the measured sweet spot with decays slow
+ * enough to leave a body. */
 static const Instrument gt_instr[GT_NUM_INSTR] = {
-    /* 0 PIANO */   { {0x30,0x40,0x40,0x5f},{0x04,0x02,0x10,0x02},{0x04,0x02,0x10,0x30},{0,0,0,0},   0,   0 },
-    /* 1 GUITAR */  { {0x6f,0x40,0x68,0x5f},{0x00,0xFF,0x02,0x08},{0x00,0x00,0x40,0x08},{12,36,0,24},8, -12 },
-    /* 2 BASS */    { {0x58,0x88,0x58,0x5f},{0x18,0x08,0x04,0x02},{0x18,0x08,0x04,0x02},{28,12,0,12}, 0, -24 },
-    /* 3 SNARE */   { {0x88,0x8f,0x8f,0x38},{0x18,0x02,0x04,0x04},{0x18,0x08,0x08,0x04},{36,0,0,0},   8,  -8 },
-    /* 4 SITAR */   { {0x60,0x40,0x01,0x10},{0x00,0xFF,0xF8,0xFF},{0x00,0x60,0x60,0x30},{12,36,12,24},4, -24 },
-    /* 5 HORN */    { {0x00,0x00,0x01,0x10},{0x00,0x00,0xFC,0xFC},{0x00,0x00,0x30,0x50},{12,36,12,24},0, -12 },
-    /* 6 BELL */    { {0x50,0x30,0x50,0x40},{0x02,0x03,0x01,0x02},{0x00,0x00,0x00,0x00},{0,24,0,19},  2,   0 },
-    /* 7 BLIP */    { {0x00,0x00,0x00,0x6f},{0x00,0x00,0x00,0x20},{0x00,0x00,0x00,0x00},{0,0,0,0},    0,   0 },
+    /* 0 PIANO */   { {0x30,0x40,0x40,0xc0},{0x04,0x02,0x10,0x03},{0x04,0x02,0x10,0x60},{0,0,0,0},   0,   0 },
+    /* 1 GUITAR */  { {0x6f,0x40,0x68,0xc0},{0x00,0xFF,0x02,0x08},{0x00,0x00,0x40,0x10},{12,36,0,24},8, -12 },
+    /* 2 BASS */    { {0x58,0x88,0x58,0xc0},{0x18,0x08,0x04,0x03},{0x18,0x08,0x04,0x04},{28,12,0,12}, 0, -24 },
+    /* 3 SNARE */   { {0x88,0x8f,0x8f,0xe0},{0x18,0x02,0x04,0x05},{0x18,0x08,0x08,0x00},{36,0,0,0},   8,  -8 },
+    /* 4 SITAR */   { {0x60,0x40,0x01,0x60},{0x00,0xFF,0xF8,0xFF},{0x00,0x60,0x60,0x60},{12,36,12,24},4, -24 },
+    /* 5 HORN */    { {0x00,0x00,0x40,0xe0},{0x00,0x00,0x04,0x06},{0x00,0x00,0x00,0x40},{12,36,12,24},0, -12 },
+    /* 6 BELL */    { {0x50,0x30,0x50,0xe0},{0x02,0x03,0x01,0x04},{0x00,0x00,0x00,0x00},{0,24,0,19},  2,   0 },
+    /* 7 BLIP */    { {0x00,0x00,0x00,0xe0},{0x00,0x00,0x00,0x12},{0x00,0x00,0x00,0x00},{0,0,0,0},    0,   0 },
 };
 
 /* per-op live state (mirrors upstream music.c) */
@@ -268,8 +275,22 @@ void gt_music_tick(void) {
         for (ch = 0; ch < NUM_FM_CH; ++ch) {
             if (note_held_mask & ch_mask[ch]) {
                 for (i = 0; i < 4; ++i) {
-                    if (((env_sustain[op] - amps[op]) ^ env_decay[op]) & 0x80) {
-                        amps[op] = (unsigned char)(amps[op] - env_decay[op]);
+                    /* Upstream's sign-XOR step trick computes (sustain-amps)
+                     * in 8 bits: any level more than 128 ABOVE its sustain
+                     * wraps positive and snapped to sustain on the first
+                     * tick — instant mute. Upstream never ran carriers past
+                     * 0x6f so it never tripped; our measured-loud voices
+                     * (0xC0-0xE0 over sustain 0) always did. Explicit
+                     * unsigned clamping, both directions: */
+                    if (env_decay[op] & 0x80) {          /* rising attack */
+                        unsigned char step = (unsigned char)(0 - env_decay[op]);
+                        unsigned char nv = (unsigned char)(amps[op] + step);
+                        if (nv < amps[op] || nv > env_sustain[op]) nv = env_sustain[op];
+                        amps[op] = nv;
+                    } else if (amps[op] > env_sustain[op]) {
+                        unsigned char d = (unsigned char)(amps[op] - env_sustain[op]);
+                        amps[op] = (unsigned char)(d > env_decay[op]
+                            ? amps[op] - env_decay[op] : env_sustain[op]);
                     } else {
                         amps[op] = env_sustain[op];
                     }
