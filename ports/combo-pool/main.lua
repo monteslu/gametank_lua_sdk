@@ -51,7 +51,12 @@ local phase_off = array(14, 0.0)
 local menu_march = 0.0
 
 local parts = pool(32)      -- explosion/spark particles
-local texts = pool(8)       -- floating "+score" popups
+local texts = pool(8, "slot") -- floating "+score" popups
+-- per-popup baked digit strings: value never changes after spawn, so the
+-- digits render ONCE here and each frame is two gt.print_buf calls
+-- (shadow + face) instead of four ~1k print() wrapper trips
+local tx_b = array8(64)         -- 8 slots x 8 bytes, NUL-terminated
+local tx_free = 0
 
 local gtime = 0             -- original 'time' (renamed: time() builtin)
 local menutime = 0.0
@@ -283,7 +288,22 @@ function new_part(xx, yy, tt, cc, rr)
 end
 
 function new_text(xx, yy, val, nvx, nvy)
-  add(texts, {x = xx, y = yy, vx = nvx, vy = nvy, val = val, t = 1})
+  tx_free = (tx_free % 8) + 1
+  local k = (tx_free - 1) * 8 + 1
+  local dv = 10000
+  local started = 0
+  while dv >= 1 do
+    local d = (val \ dv) % 10
+    if d > 0 or started == 1 or dv == 1 then
+      tx_b[k] = 48 + d
+      k += 1
+      started = 1
+    end
+    dv \= 10
+  end
+  tx_b[k] = 48                  -- the trailing '0' (P8 shows val*10)
+  tx_b[k + 1] = 0
+  add(texts, {x = xx, y = yy, vx = nvx, vy = nvy, val = val, t = 1, slot = tx_free})
 end
 
 function reset_game()
@@ -1174,15 +1194,14 @@ function draw_game()
       circ(p.x, p.y, 7 - p.t * 24, 7)
     end
   end
-  -- score popups (cart: 4-direction outline; a drop shadow costs 2 print
-  -- calls instead of 10 — see PORT_NOTES.md)
+  -- score popups: digits baked at spawn (new_text) — the shadow + face
+  -- are two buffered draws instead of four print() wrapper trips
   for p in all(texts) do
     local px = flr(p.x)
     local py = flr(p.y)
-    local rx = print(p.val, px + 1, py + 1, 0)
-    print("0", rx, py + 1, 0)
-    rx = print(p.val, px, py, 7)
-    print("0", rx, py, 7)
+    local off = (p.slot - 1) * 8
+    gt.print_buf(tx_b, off, px + 1, py + 1, 0)
+    gt.print_buf(tx_b, off, px, py, 7)
   end
 
   if finish == 1 then
