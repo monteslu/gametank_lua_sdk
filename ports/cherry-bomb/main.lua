@@ -267,19 +267,23 @@ end
 -- (audible clicks) and held fire chatters the hit blip nonstop. One boom
 -- per 5 ticks, one hit blip per 6, is what the ear resolves anyway.
 local boom_t = 0
+-- converted PICO-8 sfx (bin/p8sfx.mjs from carts/cherrybomb-extract):
+-- the cart's real __sfx__ pitches/timing, triggered by ORIGINAL ids
+local p8sfx = hexdata("3367007f008f00a300a500a700a900ab00ad00af00b100b300b500b700b900bb00bd00bf00c100c300c500c700c900cb00cd00cf00d100d300d50015012101310147014b0177017d01bf01c101c301c501c701c901cb01cd01cf01d101d301d501d701d901db01000b54014f01490144013c01370125012e012a01280125010307510144013b01350131012b0128010309560131012c012901280100012402000225010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001f5c02590257035502530251034f024d024b034a02470246034502420241033e023c023b033902380236033402320231032f022d022b0329022702250324050705000135012d012c012b02000737053b064005440646064d055506000a2b04300533053a043c05430546044b055709600507012b0503155301540155015b0156024f014c0149014601420138013e013a012c01290130012901280126032502240604022c01360103205f014f025f0245025b024c0255024a0250014e024b0249024602440241023f023d013b023a02380236023402310230022e012c022b022902280226022502240200000000000000000000000000000000000000000000000000000000041d3701490155025c013f025f0260023a014d025d015901560251014c02460140013a0237014102320131012e022d012c022a012901280227042502")
+
 local hitsfx_t = 0
 
 function boom_sfx()
  if tick - boom_t >= 5 then
   boom_t = tick
-  sfx(3,1)
+  sfx(2, 1)                       -- boss death-throes rumble
  end
 end
 
 function hit_sfx()
  if tick - hitsfx_t >= 6 then
   hitsfx_t = tick
-  sfx(4,3)
+  sfx(34, 3)                      -- enemy hit tick
  end
 end
 
@@ -423,7 +427,7 @@ end
 -- bullets (enemy fire: positions in 16ths, spd16 = speed*16)
 
 function fire(fx,fy,ang,spd16)
- sfx(4,3)                       -- enemy shot (orig sfx 29/34)
+ sfx(29, 3)                     -- enemy shot
  add(ebuls,{x=fx,y=fy,sx=flr(sin(ang)*spd16),sy=flr(cos(ang)*spd16),af=0})
 end
 
@@ -451,7 +455,7 @@ function cherbomb()
  muzzle=5
  invul=30
  flash=3
- sfx(3,1)                       -- cherry bomb blast (orig sfx 33)
+ sfx(33, 1)                     -- cherry bomb blast
 end
 
 -->8
@@ -463,13 +467,13 @@ function plogic(px2,py2)
  if cher>=10 then
   if lives<4 then
    lives+=1
-   sfx(5,2)                      -- extra life (orig sfx 31)
+   sfx(31, 2)                    -- extra life
    cher=0
    popfloat(0,1,px2+4,py2+4)
   else
    score+=50
    popfloat(50,0,px2+4,py2+4)
-   sfx(1,2)                      -- cherries banked for score (orig sfx 30)
+   sfx(30, 2)                    -- cherries banked for score
    cher=0
   end
  else
@@ -481,7 +485,7 @@ end
 function hitship()
  explode(shipx+4,shipy+4,1)
  lives-=1
- sfx(6,1)                       -- ship hit (orig sfx 1)
+ sfx(1, 1)                      -- ship hit
  shake=12
  invul=60
  shipx=60
@@ -536,7 +540,7 @@ function prow(ry,hi,lo)
 end
 
 function spawnwave()
- sfx(7,2)                       -- wave incoming (orig sfx 28 / music 10)
+ sfx(28, 2)                     -- wave incoming
  if wave==1 then
   --space invaders
   attacfreq=60
@@ -866,14 +870,14 @@ function update_game()
    cherbomb()
    cher=0
   else
-   sfx(4,2)                      -- empty-bomb click (orig sfx 32)
+   sfx(32, 2)                    -- empty-bomb click
   end
  end
 
  if btn(5) then
   if bultimer<=0 then
    add(buls,{x=(shipx+1)*16,y=(shipy-3)*16,sx=0,sy=-64,spr=16,dmg=1,colw=6})
-   sfx(2,0)                      -- player shot (orig sfx 0)
+   sfx(0, 0)                     -- player shot
    muzzle=5
    bultimer=4
   end
@@ -928,7 +932,7 @@ function update_game()
      e.y=e.posy*16
      e.x=e.posx*16
      if e.type==5 then
-      sfx(6,1)                   -- boss slam-in (orig sfx 50)
+      sfx(50, 1)                 -- boss slam-in
       e.shake=20
       e.wait=28
       e.mission=MI_B1
@@ -1464,6 +1468,7 @@ end
 -- callbacks
 
 function _init()
+  sfx_bank(p8sfx)
  bake_particle_discs()
  for i=1,11 do banim[i]=5 end
  banim[12]=6

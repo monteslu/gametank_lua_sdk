@@ -401,7 +401,7 @@ static unsigned char next_sfx_ch = 0;
  * builtin table for ids it covers; count 0 falls through to the builtins. */
 static const unsigned char *sfx_bank = 0;
 
-void gt_sfx_bank(unsigned char *bank) { sfx_bank = bank; }
+void gt_sfx_bank(const unsigned char *bank) { sfx_bank = bank; }
 
 void gt_sfx(int n, int ch) {
     const BuiltinSfx *b;

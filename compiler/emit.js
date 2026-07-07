@@ -1349,7 +1349,23 @@ export function emit(chunk, symbols, file, opts = {}) {
           walk(fn.node?.body);
           if (found) readers.push(fname);
         }
+        // a blob handed to sfx_bank() is consumed by the music sequencer,
+        // which always executes as B2CODE with bank 2 mapped — home it there
+        // (fixed RODATA is scarce; a 1-2KB sfx bank would blow it)
+        let sfxConsumed = false;
+        for (const [, fn] of functions) {
+          const walk2 = (node) => {
+            if (sfxConsumed || !node || typeof node !== "object") return;
+            if (Array.isArray(node)) { for (const x of node) walk2(x); return; }
+            if (node.kind === "call" &&
+                (node.callee?.name === "sfx_bank" || node.callee?.name === "gt.sfx_bank") &&
+                node.args?.some((a) => a?.kind === "name" && a.name === name)) { sfxConsumed = true; return; }
+            for (const [k, v] of Object.entries(node)) if (!WALK_SKIP.has(k)) walk2(v);
+          };
+          walk2(fn.node?.body);
+        }
         const rbanks = new Set(readers.map((r) => bankOf(r)));
+        if (sfxConsumed && banked) rbanks.add("b2");
         if (banked && rbanks.size > 1 && [...rbanks].filter((b) => b !== "fixed").length > 1) {
           throw new Error(`hexdata '${name}' is read from functions in different banks (${[...rbanks].join(", ")}) — banked blobs need a single home; wrap the reads in one function`);
         }

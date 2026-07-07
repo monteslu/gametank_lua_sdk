@@ -325,28 +325,16 @@ end
 -- Channels: 0 = movement (jump/dash/land spam keeps to itself),
 -- 1 = world (springs, crumbling floors, death), 2 = pickups/awards.
 -- ---------------------------------------------------------------------
+-- converted PICO-8 sfx (bin/p8sfx.mjs from carts/newleste-base.p8): the
+-- cart's real effects, triggered by their own ids; the channel policy
+-- keeps movement, world, and pickup sounds from cutting each other off
+local p8sfx = hexdata("172f00310033003500370039003b003d003f00410079008b008d009d00bb00bd00e100ed000f01170121014f015701000000000000000000000000000000000000001b30014002340247023d02500245025b024c015f0250026202550262025502620255016302550263025502630255026302550163025502040853014f024a02410239043d0240023b0100000407360138013a013e0144014a015602030e2d0132012a022e013102290135012b02300128022d0135012c0231010000001133014202360246023b024a023f025002450155024b025a024f025e0254026202590104052d052c022b012a01290207104701530141014e013b014b01370147013501420132013e0130013a012c012901000337013e0148010004310134013a02460103162c012d012f0146014e0160015f025d015a01560151014c01480145013e013a01350132012f012b0129012701030329012b016309070c43014f0146024d0143024f0146014d0243014f0246014d01")
+
 function sfx_play(n)
-  if n == 18 or n == 19 then
-    sfx(0, 0)                   -- jump / wall jump
-  elseif n == 20 then
-    sfx(2, 0)                   -- dash whoosh
-  elseif n == 21 or n == 22 then
-    sfx(4, 0)                   -- failed dash / dash restore tick
-  elseif n == 16 then
-    sfx(5, 1)                   -- spring bounce
-  elseif n == 13 then
-    sfx(6, 1)                   -- fall-floor crumbling
-  elseif n == 12 then
-    sfx(4, 1)                   -- fall-floor reappears
-  elseif n == 17 then
-    sfx(3, 1)                   -- death burst
-  elseif n == 15 then
-    sfx(7, 1)                   -- respawn rise
-  elseif n == 10 then
-    sfx(1, 2)                   -- berry collected / flies off
-  elseif n == 9 then
-    sfx(5, 2)                   -- 1000-point award
-  end
+  local ch = 1                       -- world sounds
+  if (n >= 18) ch = 0                -- movement (jump/dash spam)
+  if (n == 9 or n == 10) ch = 2      -- pickups/awards
+  sfx(n, ch)
 end
 
 function psfx(n)
@@ -1448,6 +1436,7 @@ function game_init()
 end
 
 function _init()
+  sfx_bank(p8sfx)
   gt.autocls(0)                 -- frame clear rides the post-flip vsync wait
   local i = 1
   while i <= 32 do

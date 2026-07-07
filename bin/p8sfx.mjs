@@ -96,14 +96,15 @@ function convertOne(e) {
   return { instr: WAVE_TO_INSTR[wave] ?? 7, steps };
 }
 
-const [, , input] = process.argv;
-if (!input) { console.error("usage: p8sfx.mjs <cart.bin|cart.p8>"); process.exit(1); }
+const [, , input, onlyArg] = process.argv;
+if (!input) { console.error("usage: p8sfx.mjs <cart.bin|cart.p8> [only,ids,csv]"); process.exit(1); }
+const only = onlyArg ? new Set(onlyArg.split(",").map(Number)) : null;
 const raw = readFileSync(input);
 const sfx = input.endsWith(".p8") || input.endsWith(".lua")
   ? parseP8Text(raw.toString("latin1"))
   : parseCartBin(raw);
 
-const converted = sfx.map(convertOne);
+const converted = sfx.map((e, i) => (only && !only.has(i) ? null : convertOne(e)));
 const lastUsed = converted.reduce((m, c, i) => (c ? i : m), -1);
 const n = lastUsed + 1;
 
