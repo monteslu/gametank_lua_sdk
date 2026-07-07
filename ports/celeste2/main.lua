@@ -116,8 +116,11 @@ local gp_y = 0
 local gp_live = 0
 
 -- map: 2 tiles per int, row-major; tail doubles as LZ staging at load
-local map = array(972)          -- BUF_INTS (sized by gen/gen.mjs to the slice)
-local fl = array(128)           -- sprite flags, tiles 0-127
+-- tiles unpacked to one byte each at load (was 2-per-int + shift/mask
+-- unpacking in bget on EVERY read — the draw scan and collision both eat
+-- that). Same RAM, direct u8 reads.
+local map = array8(1944)
+local fl = array8(128)          -- sprite flags, tiles 0-127
 local fl_pos = 1
 local ld_pos = 1
 local lz_len = 0
@@ -170,27 +173,46 @@ function fr(n, v)
 end
 
 function d16(a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p)
-  map[ld_pos] = a
-  map[ld_pos + 1] = b
-  map[ld_pos + 2] = c
-  map[ld_pos + 3] = d
-  map[ld_pos + 4] = e
-  map[ld_pos + 5] = f
-  map[ld_pos + 6] = g
-  map[ld_pos + 7] = h
-  map[ld_pos + 8] = i
-  map[ld_pos + 9] = j
-  map[ld_pos + 10] = k
-  map[ld_pos + 11] = l
-  map[ld_pos + 12] = m
-  map[ld_pos + 13] = n
-  map[ld_pos + 14] = o
-  map[ld_pos + 15] = p
+  local q = ld_pos * 2 - 1
+  map[q] = a & 255
+  map[q + 1] = a >> 8
+  map[q + 2] = b & 255
+  map[q + 3] = b >> 8
+  map[q + 4] = c & 255
+  map[q + 5] = c >> 8
+  map[q + 6] = d & 255
+  map[q + 7] = d >> 8
+  map[q + 8] = e & 255
+  map[q + 9] = e >> 8
+  map[q + 10] = f & 255
+  map[q + 11] = f >> 8
+  map[q + 12] = g & 255
+  map[q + 13] = g >> 8
+  map[q + 14] = h & 255
+  map[q + 15] = h >> 8
+  map[q + 16] = i & 255
+  map[q + 17] = i >> 8
+  map[q + 18] = j & 255
+  map[q + 19] = j >> 8
+  map[q + 20] = k & 255
+  map[q + 21] = k >> 8
+  map[q + 22] = l & 255
+  map[q + 23] = l >> 8
+  map[q + 24] = m & 255
+  map[q + 25] = m >> 8
+  map[q + 26] = n & 255
+  map[q + 27] = n >> 8
+  map[q + 28] = o & 255
+  map[q + 29] = o >> 8
+  map[q + 30] = p & 255
+  map[q + 31] = p >> 8
   ld_pos += 16
 end
 
 function d1(a)
-  map[ld_pos] = a
+  local q = ld_pos * 2 - 1
+  map[q] = a & 255
+  map[q + 1] = a >> 8
   ld_pos += 1
 end
 
@@ -272,21 +294,11 @@ end
 -- ---------------------------------------------------------------------------
 
 function bget(i)
-  local v = map[i \ 2 + 1]
-  if i % 2 == 1 then
-    return (v >> 8) & 255
-  end
-  return v & 255
+  return map[i + 1]
 end
 
 function bset(i, b)
-  local w = i \ 2 + 1
-  local v = map[w]
-  if i % 2 == 1 then
-    map[w] = (v & 255) | (b << 8)
-  else
-    map[w] = (v & -256) | b
-  end
+  map[i + 1] = b
 end
 
 function mget(tx, ty)
