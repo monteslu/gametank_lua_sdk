@@ -387,8 +387,15 @@ function do_coll(i, j)
   local y2 = bally[j]
   local dy = y1 - y2
   if (dy >= 8 or dy <= -8) return
-  local sqrdist = dx * dx + dy * dy
-  if (sqrdist >= 64) return
+  -- contact geometry in 16ths-as-int: |dxq| <= 127, so every product
+  -- below fits 16 bits and the ~550-cycle 32-bit fixed multiplies drop
+  -- to ~200-cycle int ones (this resolver was the cart's biggest single
+  -- cycle sink). The x16 / /256 conversions are power-of-two fixed
+  -- multiplies = shift chains, not helper calls.
+  local dxq = flr(dx * 16)
+  local dyq = flr(dy * 16)
+  local sq256 = dxq * dxq + dyq * dyq
+  if (sq256 >= 16384) return
   if (ballc[i] == 0 or ballc[j] == 0) return
 
   local vx1 = ballvx[i]
@@ -398,15 +405,17 @@ function do_coll(i, j)
 
   -- ~1/sqrdist without a division (table), then 1/dist = dist/sqrdist
   local inv_sq = 4.0
-  if (sqrdist >= 0.25) inv_sq = invsq[flr(sqrdist * 2) + 1]
-  local adx = abs(dx)
-  local ady = abs(dy)
-  local dist = 0.0
-  if adx > ady then
-    dist = adx * 0.9604 + ady * 0.3978
+  if (sq256 >= 64) inv_sq = invsq[sq256 \ 128 + 1]
+  local adxq = abs(dxq)
+  local adyq = abs(dyq)
+  -- alpha-max-beta-min in 16ths: 123/128 = .9609, 51/128 = .3984
+  local d16 = 0
+  if adxq > adyq then
+    d16 = (adxq * 123 + adyq * 51) \ 128
   else
-    dist = ady * 0.9604 + adx * 0.3978
+    d16 = (adyq * 123 + adxq * 51) \ 128
   end
+  local dist = d16 * 0.0625
   local invd = dist * inv_sq
 
   if ballc[i] == ballc[j] then
@@ -466,11 +475,15 @@ function do_coll(i, j)
     ballmul[i] = min(ballmul[i] * 2, 8)
     balllm[i] = 60
   else
-    if sqrdist > 0 then
+    if sq256 > 0 then
       -- swap the velocity components along the contact axis. Same math as
       -- the cart's dotpart() exchange, reformulated on the unnormalized
       -- axis d so no sqrt is needed:  v1' = v1 + ((v2-v1)·d)d/|d|²
-      local k = (vx2 - vx1) * dx + (vy2 - vy1) * dy
+      -- velocity dot in 16ths-as-int too: |dv| < 8 so |dvq| < 128 and
+      -- the dot stays inside 16 bits; /256 back to fixed is shifts
+      local dvxq = flr((vx2 - vx1) * 16)
+      local dvyq = flr((vy2 - vy1) * 16)
+      local k = (dvxq * dxq + dvyq * dyq) * 0.00390625
       k *= inv_sq
       local kx = dx * k
       local ky = dy * k
