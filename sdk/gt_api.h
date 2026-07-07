@@ -18,6 +18,7 @@ extern unsigned int gt_ticks;
  * push, and the callee reads zp instead of (sp),y. Camera and pad words
  * are zp too so camera()/btn()/btnp() emit as inline zp ops. */
 extern int gt_a0, gt_a1, gt_a2, gt_a3, gt_a4, gt_a5;
+void gt_print_z(void);          /* asm glyph run over gt_a0..a4 (print) */
 extern int gt_p0, gt_p1, gt_p2, gt_p3, gt_p4;   /* zp-fastcall USER-fn params */
 extern char frameflip;            /* DMA_PAGE_OUT bit state (gt_api.c) */
 extern int gt_cam_x, gt_cam_y;

@@ -35,7 +35,7 @@
 .export   _gt_p8_rectfill_z
 .export   _gt_rng_next
 .export   _gt_rng_state
-.export   _gt_a0, _gt_a1, _gt_a2, _gt_a3, _gt_a4, _gt_a5
+.exportzp _gt_a0, _gt_a1, _gt_a2, _gt_a3, _gt_a4, _gt_a5
 .export   _gt_cam_x, _gt_cam_y
 .export   _gt_pad0, _gt_pad1, _gt_rpt0, _gt_rpt1
 .export   _gt_qhead, _gt_qtail, _gt_qbank, _gt_push_waits

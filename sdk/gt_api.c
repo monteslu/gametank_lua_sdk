@@ -336,17 +336,23 @@ int GT_PRINT(const char *str, int x, int y, int c) {
     static const unsigned char rowoff[3] = { 0, 5, 10 };
     unsigned char rowbase = (slot >= 0) ? (unsigned char)(slot * 10) : 0;
     while (*str) {
+        /* the common stretch — blit font, fully onscreen — runs in asm at
+         * ~160 cycles/glyph (gt_print_asm.s); C handles the x<0 lead-in,
+         * the clipped tail, and the CPU-glyph fallback */
+        if (slot >= 0 && x >= 0 && x <= 125 && y >= 0 && y <= 123) {
+            gt_a0 = (int)str;
+            gt_a1 = x;
+            gt_a2 = y;
+            gt_a3 = rowbase;
+            gt_a4 = (unsigned char)(bankflip | FONT_GROUP | BANK_CLIP_X | BANK_CLIP_Y);
+            gt_print_z();
+            str = (const char *)gt_a0;
+            x = gt_a1;
+            if (!*str) break;
+        }
         gn = gt_glyph(*str);
         if (slot >= 0 && x >= 0 && x <= 125 && y >= 0 && y <= 123) {
-            gt_ent[0] = QF_SPR;
-            gt_ent[1] = (unsigned char)x;
-            gt_ent[2] = (unsigned char)y;
-            gt_ent[3] = (unsigned char)((gn & 31) << 2);
-            gt_ent[4] = (unsigned char)(rowbase + rowoff[gn >> 5]);
-            gt_ent[5] = 3;
-            gt_ent[6] = 5;
-            gt_ent[7] = (unsigned char)(bankflip | FONT_GROUP | BANK_CLIP_X | BANK_CLIP_Y);
-            Q_COMMIT();
+            /* unreachable (asm consumed it) — keep the safety net */
         } else if (x >= -2 && x <= 127 && y >= -4 && y <= 127) {
             enter_cpu_mode();
             glyph_cpu(gn, x, y, col);
