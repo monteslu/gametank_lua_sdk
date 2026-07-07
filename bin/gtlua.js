@@ -595,7 +595,7 @@ function build(entry, outPath, sheetPath, num8 = false) {
   const usesTiles = result.c.includes("gt_tiles_draw");
   if (usesTiles) as(path.join(SDK, "gt_tiles.s"), B("gt_tiles.o"));
   const usesBalls = result.c.includes("gt_balls_step");
-  if (usesBalls) as(path.join(SDK, "gt_balls.s"), B("gt_balls.o"));
+  if (usesBalls) as(path.join(SDK, "gt_balls.s"), B("gt_balls.o"), num8 ? ["-D", "GT_NUM8"] : []);
   const usesPoolmv = result.c.includes("gt_pool_move");
   if (usesPoolmv) as(path.join(SDK, "gt_poolmv.s"), B("gt_poolmv.o"));
   const usesChunks = result.c.includes("gt_chunks_draw");

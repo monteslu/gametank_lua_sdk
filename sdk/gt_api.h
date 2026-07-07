@@ -99,7 +99,13 @@ void gt_dbar_z(void);
 void gt_chain_step_draw(int x, int y, int col);
 void gt_tiles_draw(unsigned char *map, unsigned char *flags, int lvlw,
                    int i0, int i1, int j0, int j1);
-void gt_balls_step(long *x, long *y, long *vx, long *vy, int *act,
+/* the ball/particle engines' element type follows the build's fixed width */
+#ifdef GT_NUM8
+#define GTFIX int
+#else
+#define GTFIX long
+#endif
+void gt_balls_step(GTFIX *x, GTFIX *y, GTFIX *vx, GTFIX *vy, int *act,
                    unsigned char *flags, unsigned char *pairs, int n);
 void gt_pool_anim(unsigned char *frame, unsigned char *spd, unsigned char *maxf, unsigned char *used, int n);
 void gt_pool_edraw(int *x, int *y, unsigned char *ani, unsigned char *type,
@@ -108,9 +114,9 @@ void gt_pool_edraw(int *x, int *y, unsigned char *ani, unsigned char *type,
                    const unsigned char *desc, int nudge);
 void gt_pool_move(int *x, int *y, int *sx, int *sy, unsigned char *used,
                   int n, int mode);
-void gt_balls_drag(long *vx, long *vy, int *act, int n);
-void gt_balls_draw(long *x, long *y, unsigned char *cells, int n);
-void gt_parts_step(long *x, long *y, long *vx, long *vy, unsigned char *u,
+void gt_balls_drag(GTFIX *vx, GTFIX *vy, int *act, int n);
+void gt_balls_draw(GTFIX *x, GTFIX *y, unsigned char *cells, int n);
+void gt_parts_step(GTFIX *x, GTFIX *y, GTFIX *vx, GTFIX *vy, unsigned char *u,
                    int n);
 void gt_pool_sprs(int *x, int *y, unsigned char *used, unsigned char *cells,
                   int n, int ox, int oy);

@@ -941,7 +941,8 @@ function draw_mainmenu()
   local easein = 0
   if menutime < 2 then
     local ease = 1 - menutime / 2
-    easein = flr(136 * (1 - ease * ease)) - 136
+    -- 136*x overflows 8.8 (limit 127.99): halve the factor, double after
+    easein = flr(68 * (1 - ease * ease)) * 2 - 136
   end
   local i = 0
   local bid = 1

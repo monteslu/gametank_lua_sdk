@@ -1232,7 +1232,7 @@ extern unsigned char bp_n;
 #pragma zpsym ("bp_pairs")
 #pragma zpsym ("bp_n")
 void gt_balls_z(void);
-void gt_balls_step(long *x, long *y, long *vx, long *vy, int *act,
+void gt_balls_step(GTFIX *x, GTFIX *y, GTFIX *vx, GTFIX *vy, int *act,
                    unsigned char *flags, unsigned char *pairs, int n) {
     bp_x = (unsigned char *)x;
     bp_y = (unsigned char *)y;
@@ -1248,7 +1248,7 @@ void gt_balls_step(long *x, long *y, long *vx, long *vy, int *act,
  * (v>>6)+(v>>8) to within 3/65536 — the compiled long shifts cost ~500
  * per ball, this ~130. */
 void gt_balls_drag_z(void);
-void gt_balls_drag(long *vx, long *vy, int *act, int n) {
+void gt_balls_drag(GTFIX *vx, GTFIX *vy, int *act, int n) {
     bp_vx = (unsigned char *)vx;
     bp_vy = (unsigned char *)vy;
     bp_act = (unsigned char *)act;
@@ -1258,7 +1258,7 @@ void gt_balls_drag(long *vx, long *vy, int *act, int n) {
 /* one 16x16 sprite per nonzero cell byte, positions from the fixed
  * arrays' int bytes (gt_balls.s). */
 void gt_balls_draw_z(void);
-void gt_balls_draw(long *x, long *y, unsigned char *cells, int n) {
+void gt_balls_draw(GTFIX *x, GTFIX *y, unsigned char *cells, int n) {
     bp_x = (unsigned char *)x;
     bp_y = (unsigned char *)y;
     bp_fl = cells;
@@ -1277,7 +1277,7 @@ extern unsigned char pp_n;
 #pragma zpsym ("pp_u")
 #pragma zpsym ("pp_n")
 void gt_parts_step_z(void);
-void gt_parts_step(long *x, long *y, long *vx, long *vy, unsigned char *u,
+void gt_parts_step(GTFIX *x, GTFIX *y, GTFIX *vx, GTFIX *vy, unsigned char *u,
                    int n) {
     pp_x = (unsigned char *)x;
     pp_y = (unsigned char *)y;

@@ -14,6 +14,9 @@
 ; the embedded 8.8 core — and zeroes byte 0 / sign-extends byte 3 on write,
 ; so the Lua side keeps operating on the same values seamlessly (physics
 ; precision 1/256 px; the lowest fraction byte truncates each step).
+; GT_NUM8 builds (-D GT_NUM8): the arrays ARE 8.8 ints (stride 2, the
+; whole element is the core) — offsets halve and the frac/sign fixups
+; vanish; everything else is identical.
 ;
 ; zp contract (set by the C wrapper each call):
 ;   bp_x, bp_y, bp_vx, bp_vy : ptrs to the fixed arrays (element stride 4)
@@ -70,12 +73,16 @@ loop:   lda     bz_i
         cmp     _bp_n
         bne     :+
         jmp     scan
-:       ; offsets: element byte offset = i*4+1 (8.8 lo), act = i*2
+:       ; offsets: act = i*2; element = i*4+1 (the embedded 8.8) or i*2 num8
         asl     a
         sta     bz_o2
+.ifdef GT_NUM8
+        sta     bz_o
+.else
         asl     a
         inc     a
         sta     bz_o
+.endif
         ; active?
         ldy     bz_o2
         lda     (_bp_act),y
@@ -122,6 +129,15 @@ xhigh:  ; x >= 124: negate vx, x = 124
         ldx     #124
         jsr     hurt
 xstore: ; write x back (A=lo X=hi)
+.ifdef GT_NUM8
+        ldy     bz_o
+        sta     (_bp_x),y
+        iny
+        pha
+        txa
+        sta     (_bp_x),y
+        pla
+.else
         ldy     bz_o
         dey
         pha
@@ -136,6 +152,7 @@ xstore: ; write x back (A=lo X=hi)
         iny
         lda     #0              ; positions are always positive
         sta     (_bp_x),y
+.endif
         ; keep int part for the grid
         txa
         lsr     a
@@ -189,7 +206,17 @@ ywall:  jsr     negvy
         lda     #0
         ldx     #112
         jsr     hurt
-ystore: ldy     bz_o
+ystore:
+.ifdef GT_NUM8
+        ldy     bz_o
+        sta     (_bp_y),y
+        iny
+        pha
+        txa
+        sta     (_bp_y),y
+        pla
+.else
+        ldy     bz_o
         dey
         pha
         lda     #0
@@ -203,6 +230,7 @@ ystore: ldy     bz_o
         iny
         lda     #0
         sta     (_bp_y),y
+.endif
         ; grid y
         txa
         lsr     a
@@ -361,6 +389,7 @@ full:   sty     bz_pi
         lda     #0
         sbc     (_bp_vx),y
         sta     (_bp_vx),y
+.ifndef GT_NUM8
         tax
         dey
         dey
@@ -377,6 +406,7 @@ full:   sty     bz_pi
         rts
 :       lda     #$FF
         sta     (_bp_vx),y
+.endif
         pla
         rts
 .endproc
@@ -391,6 +421,7 @@ full:   sty     bz_pi
         lda     #0
         sbc     (_bp_vy),y
         sta     (_bp_vy),y
+.ifndef GT_NUM8
         tax
         dey
         dey
@@ -406,6 +437,7 @@ full:   sty     bz_pi
         rts
 :       lda     #$FF
         sta     (_bp_vy),y
+.endif
         rts
 .endproc
 
@@ -437,7 +469,45 @@ bd_o:   .res 1                  ; element byte offset (i*4)
 
 .segment "CODE"
 
-; drag one 4-byte velocity at (ptr),bd_o
+; drag one velocity at (ptr),bd_o
+.ifdef GT_NUM8
+; 8.8: d = v>>8 (the hi byte, sign-extended); v -= (d<<2) + d
+.macro DRAG1 ptr
+        ldy     bd_o
+        iny
+        lda     (ptr),y         ; hi byte = v >> 8 (signed)
+        sta     bd_d
+        bpl     :+
+        lda     #$FF
+        bra     :++
+:       lda     #0
+:       sta     bd_d+1
+        lda     bd_d
+        sta     bz_t
+        lda     bd_d+1
+        sta     bz_t+1
+        asl     bd_d
+        rol     bd_d+1
+        asl     bd_d
+        rol     bd_d+1
+        clc
+        lda     bd_d
+        adc     bz_t
+        sta     bd_d
+        lda     bd_d+1
+        adc     bz_t+1
+        sta     bd_d+1
+        ldy     bd_o
+        sec
+        lda     (ptr),y
+        sbc     bd_d
+        sta     (ptr),y
+        iny
+        lda     (ptr),y
+        sbc     bd_d+1
+        sta     (ptr),y
+.endmacro
+.else
 .macro DRAG1 ptr
         .local pos, sub
         ; d = v >> 8: bytes 1..3, sign-extend the top
@@ -505,6 +575,7 @@ sub:    ; v -= d5   (d5 = bz_t, bd_d+1, bd_d+2, bd_d+3)
         sbc     bd_d+3
         sta     (ptr),y
 .endmacro
+.endif
 
 .proc _gt_balls_drag_z
         stz     bz_i
@@ -519,7 +590,9 @@ loop:   lda     bz_i
         jmp     next
 act:    lda     bz_i
         asl     a
+.ifndef GT_NUM8
         asl     a
+.endif
         sta     bd_o
         DRAG1   _bp_vx
         DRAG1   _bp_vy
@@ -550,7 +623,20 @@ pp_o:   .res 1
 
 .segment "CODE"
 
-; 32-bit (dst),pp_o += (src),pp_o
+; element add: (dst),pp_o += (src),pp_o
+.ifdef GT_NUM8
+.macro ADD32 dst, src
+        ldy     pp_o
+        clc
+        lda     (dst),y
+        adc     (src),y
+        sta     (dst),y
+        iny
+        lda     (dst),y
+        adc     (src),y
+        sta     (dst),y
+.endmacro
+.else
 .macro ADD32 dst, src
         ldy     pp_o
         clc
@@ -570,9 +656,50 @@ pp_o:   .res 1
         adc     (src),y
         sta     (dst),y
 .endmacro
+.endif
 
-; damp the 32-bit velocity at (ptr),pp_o: v -= (v>>6)*3
+; damp the velocity at (ptr),pp_o: v -= (v>>6)*3
 ; (>>6 = byte-shift >>8 then <<2; d3 = (d<<1) + d)
+.ifdef GT_NUM8
+; 8.8: d = (v>>8)<<2 in 16 bits, v -= d + (d<<1)
+.macro DAMP32 ptr
+        ldy     pp_o
+        iny
+        lda     (ptr),y         ; v >> 8, signed
+        sta     bd_d
+        bpl     :+
+        lda     #$FF
+        bra     :++
+:       lda     #0
+:       sta     bd_d+1
+        asl     bd_d
+        rol     bd_d+1
+        asl     bd_d
+        rol     bd_d+1          ; d = v>>6
+        lda     bd_d
+        sta     bz_t
+        lda     bd_d+1
+        sta     bz_t+1
+        asl     bd_d
+        rol     bd_d+1          ; d<<1
+        clc
+        lda     bd_d
+        adc     bz_t
+        sta     bd_d
+        lda     bd_d+1
+        adc     bz_t+1
+        sta     bd_d+1          ; d3 = 3*(v>>6)
+        ldy     pp_o
+        sec
+        lda     (ptr),y
+        sbc     bd_d
+        sta     (ptr),y
+        iny
+        lda     (ptr),y
+        sbc     bd_d+1
+        sta     (ptr),y
+.endmacro
+.else
 .macro DAMP32 ptr
         ; d = v >> 8 (bytes 1..3, sign-extended) -> bd_d, s -> bd_s
         ldy     pp_o
@@ -646,6 +773,7 @@ pp_o:   .res 1
         sbc     bd_d+3
         sta     (ptr),y
 .endmacro
+.endif
 
 .proc _gt_parts_step_z
         ldx     #0
@@ -659,7 +787,9 @@ loop:   cpx     _pp_n
         jmp     next
 live:   txa
         asl     a
+.ifndef GT_NUM8
         asl     a
+.endif
         sta     pp_o
         phx
         ADD32   _pp_x, _pp_vx
@@ -698,12 +828,16 @@ loop:   lda     bz_i
         bne     live
         jmp     next
 live:   sta     bq_c
-        ; element byte offset of the INT part = i*4 + 2
+        ; element byte offset of the INT part: i*4+2, or i*2+1 in 8.8
         tya
         asl     a
+.ifdef GT_NUM8
+        inc     a
+.else
         asl     a
         inc     a
         inc     a
+.endif
         sta     bz_o
 slot:   lda     _gt_qhead
         clc
