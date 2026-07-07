@@ -105,6 +105,8 @@ export const GT_MEMBERS = {
   // engine drives the embedded 8.8 core), int active array, byte bounce
   // flags, byte pair list out (i,j 1-based, 0-terminated)
   balls_step: { kind: "fn", params: [["array", false], ["array", false], ["array", false], ["array", false], ["array", false], ["array8", false], ["array8", false], ["int", false]], ret: "void", c: "gt_balls_step" },
+  // drag pass on the same fixed arrays: v -= (v>>6)+(v>>8) per active ball
+  balls_drag: { kind: "fn", params: [["array", false], ["array", false], ["array", false], ["int", false]], ret: "void", c: "gt_balls_drag" },
   // bulk pool integration: gt.pool_move(pool, mode) — moves every used slot
   // (x += sx, y += sy; mode 1 also damps velocities by v -= v>>3 + v>>5).
   // The pool must have int fields x, y, sx, sy.

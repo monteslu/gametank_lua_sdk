@@ -778,13 +778,10 @@ function update_game()
   -- drag, life cost, combo cooldown (cart ticks lastmult once per
   -- substep = 5/frame; we tick 5 per frame to match). Drag 0.98 becomes
   -- 1 - 1/64 - 1/256 = 0.98047 — shifts instead of a 16.16 multiply.
+  gt.balls_drag(ballvx, ballvy, ballc, 28)
   lifecost10 = 0
   for i = 1, 28 do
     if ballc[i] > 0 then
-      local bvx = ballvx[i]
-      local bvy = ballvy[i]
-      ballvx[i] = bvx - bvx / 64 - bvx / 256
-      ballvy[i] = bvy - bvy / 64 - bvy / 256
       lifecost10 += ballcost10[ballc[i]]
       balllm[i] = max(0, balllm[i] - 5)
     end

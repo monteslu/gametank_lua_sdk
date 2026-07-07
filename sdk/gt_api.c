@@ -1212,6 +1212,17 @@ void gt_balls_step(long *x, long *y, long *vx, long *vy, int *act,
     bp_n = (unsigned char)n;
     gt_balls_z();
 }
+/* per-frame drag on the full 16.16 velocities: v -= (v>>8)*5, which is
+ * (v>>6)+(v>>8) to within 3/65536 — the compiled long shifts cost ~500
+ * per ball, this ~130. */
+void gt_balls_drag_z(void);
+void gt_balls_drag(long *vx, long *vy, int *act, int n) {
+    bp_vx = (unsigned char *)vx;
+    bp_vy = (unsigned char *)vy;
+    bp_act = (unsigned char *)act;
+    bp_n = (unsigned char)n;
+    gt_balls_drag_z();
+}
 #endif /* GT_BALLS */
 
 #ifdef GT_POOLMV

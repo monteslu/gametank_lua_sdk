@@ -420,3 +420,109 @@ full:   sty     bz_pi
         plx
         rts
 .endproc
+
+; ---------------------------------------------------------------------------
+; gt_balls_drag — per-frame drag on the full 16.16 velocities:
+;   v -= (v >> 6) + (v >> 8)   computed as   v -= (v >> 8) * 5
+; ((v>>8)<<2 differs from v>>6 by at most 3/65536 per frame — imperceptible;
+; the byte-shift form runs ~130 cycles/ball vs ~500 through cc65's long
+; helpers). Uses bp_vx/bp_vy/bp_act/bp_n from the step contract.
+; ---------------------------------------------------------------------------
+.export _gt_balls_drag_z
+
+.segment "ZEROPAGE" : zeropage
+bd_d:   .res 4                  ; v >> 8 (sign-extended)
+bd_s:   .res 1                  ; the sign-extension byte of d
+bd_o:   .res 1                  ; element byte offset (i*4)
+
+.segment "CODE"
+
+; drag one 4-byte velocity at (ptr),bd_o
+.macro DRAG1 ptr
+        .local pos, sub
+        ; d = v >> 8: bytes 1..3, sign-extend the top
+        ldy     bd_o
+        iny
+        lda     (ptr),y
+        sta     bd_d
+        iny
+        lda     (ptr),y
+        sta     bd_d+1
+        iny
+        lda     (ptr),y
+        sta     bd_d+2
+        bpl     pos
+        lda     #$FF
+        bra     :+
+pos:    lda     #0
+:       sta     bd_d+3
+        sta     bd_s            ; keep s for the top-byte add below
+        ; d5 = (d << 2) + d
+        lda     bd_d
+        asl     a
+        rol     bd_d+1
+        rol     bd_d+2
+        rol     bd_d+3
+        asl     a
+        rol     bd_d+1
+        rol     bd_d+2
+        rol     bd_d+3
+        sta     bz_t            ; d<<2 low byte (hi bytes shifted in place)
+        ; now add the ORIGINAL d (recompute bytes 1..3 of v):
+        ldy     bd_o
+        iny
+        clc
+        lda     bz_t
+        adc     (ptr),y
+        sta     bz_t
+        lda     bd_d+1
+        iny
+        adc     (ptr),y
+        sta     bd_d+1
+        lda     bd_d+2
+        iny
+        adc     (ptr),y
+        sta     bd_d+2
+        lda     bd_d+3
+        adc     bd_s            ; top byte: d<<2 top + s + carry
+        sta     bd_d+3
+sub:    ; v -= d5   (d5 = bz_t, bd_d+1, bd_d+2, bd_d+3)
+        ldy     bd_o
+        sec
+        lda     (ptr),y
+        sbc     bz_t
+        sta     (ptr),y
+        iny
+        lda     (ptr),y
+        sbc     bd_d+1
+        sta     (ptr),y
+        iny
+        lda     (ptr),y
+        sbc     bd_d+2
+        sta     (ptr),y
+        iny
+        lda     (ptr),y
+        sbc     bd_d+3
+        sta     (ptr),y
+.endmacro
+
+.proc _gt_balls_drag_z
+        stz     bz_i
+loop:   lda     bz_i
+        cmp     _bp_n
+        bne     :+
+        rts
+:       asl     a
+        tay
+        lda     (_bp_act),y
+        bne     act
+        jmp     next
+act:    lda     bz_i
+        asl     a
+        asl     a
+        sta     bd_o
+        DRAG1   _bp_vx
+        DRAG1   _bp_vy
+next:   inc     bz_i
+        jmp     loop
+.endproc
