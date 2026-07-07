@@ -56,7 +56,7 @@ unsigned char p8pal[16];           /* non-static: asm rectfill fast path indexes
 
 /* resolve a color argument: -1 = current; 0x100|b = raw byte; else p8 index.
  * Giving a color also SETS the current color (P8 trailing-color rule). */
-static unsigned char resolve_color(int c) {
+unsigned char resolve_color(int c) {
     if (c < 0) return draw_color;
     if (c & 0x100) draw_color = (unsigned char)c;
     else draw_color = p8pal[c & 15];
@@ -82,7 +82,7 @@ char gt_draw_mode;
 #define QF_RECT (DMA_NMI | DMA_ENABLE | DMA_IRQ | DMA_COLORFILL_ENABLE | DMA_OPAQUE)
 #define QF_SPR  (DMA_NMI | DMA_ENABLE | DMA_IRQ | DMA_GCARRY)
 
-static void await_drawing(void) {
+void await_drawing(void) {
     __asm__("CLI");
     /* drain: keep pumping until the queue is empty and the blit finished */
     while (gt_qhead != gt_qtail) gt_q_pump();
@@ -100,7 +100,7 @@ static void await_drawing(void) {
  * measured cost of queueing a blit is the stores + one JSR. */
 #define Q_COMMIT() (gt_draw_mode = MODE_NONE, gt_q_push())
 
-static void enter_cpu_mode(void) {
+void enter_cpu_mode(void) {
     if (gt_draw_mode == MODE_CPU) return;
     await_drawing();
     /* keep frameflip (PAGE_OUT): the video scans the page selected by the
@@ -289,7 +289,7 @@ static signed char font_slot(unsigned char col) {
 /* per-pixel clipped glyph (CPU mode entered by the caller). Shared by the
  * edge-glyph case and the >8-colors fallback — one body, fixed-bank space
  * is scarce. */
-static void glyph_cpu(unsigned char gn, int x, int y, unsigned char col) {
+void glyph_cpu(unsigned char gn, int x, int y, unsigned char col) {
     unsigned char rows[5];
     unsigned char row, bits;
     {
@@ -624,7 +624,7 @@ void gt_p8_spr(int n, int x, int y, int w, int h, int flip) {
 static unsigned char fc_col;
 
 /* raw fill; caller guarantees 0<=x,y<=127, 1<=w,h<=127 (after clipping) */
-static void box_raw(unsigned char x, unsigned char y,
+void box_raw(unsigned char x, unsigned char y,
                     unsigned char w, unsigned char h, unsigned char color) {
     gt_ent[0] = QF_RECT;
     gt_ent[1] = x;
@@ -644,7 +644,7 @@ static void box_raw(unsigned char x, unsigned char y,
  * per-scanline overhead that made circfill blow the blit budget. Off-screen
  * rows are rejected whole; partial rows clip to [0,127]. Coords are int so a
  * negative x0/large x1 clamps correctly before narrowing to the 7-bit blit. */
-static void hspan_raw(int x0, int x1, int y) {
+void hspan_raw(int x0, int x1, int y) {
     if (y < 0 || y > 127 || x1 < 0 || x0 > 127) return;
     if (x0 < 0) x0 = 0;
     if (x1 > 127) x1 = 127;
@@ -674,7 +674,7 @@ static void hspan_raw(int x0, int x1, int y) {
 #pragma code-name ("B0CODE")
 #endif
 #endif
-static void fill_clipped_z(void) {
+void fill_clipped_z(void) {
     int t;
     /* Hot fast path: all four corners already on-screen and ordered, and
      * neither span the full 128 (the common case for game rects — camera-
@@ -752,7 +752,7 @@ static void fill_clipped_z(void) {
 }
 
 /* cdecl shim for the cold callers (border, line's axis fast path) */
-static void fill_clipped(int x0, int y0, int x1, int y1, unsigned char color) {
+void fill_clipped(int x0, int y0, int x1, int y1, unsigned char color) {
     gt_a0 = x0; gt_a1 = y0; gt_a2 = x1; gt_a3 = y1; fc_col = color;
     fill_clipped_z();
 }
@@ -907,7 +907,7 @@ void gt_p8_rect(int x0, int y0, int x1, int y1, int c) {
     gt_p8_rect_z();
 }
 
-static void pset_raw(int x, int y, unsigned char col) {
+void pset_raw(int x, int y, unsigned char col) {
     if (x < 0 || x > 127 || y < 0 || y > 127) return;
     enter_cpu_mode();
     vram_row[(unsigned char)y][(unsigned char)x] = col;

@@ -49,6 +49,9 @@ local sec10 = 0
 local min1 = 0
 local min10 = 0
 local hrs = 0
+-- the clock as a ready-to-print ASCII buffer ("H:MM:SS"); the digit
+-- cascade updates single bytes, draw_time makes ONE print call
+local tbuf = array8(10)
 local time_ticking = 1
 local deaths = 0
 local max_djump = 1
@@ -369,12 +372,17 @@ function sign0(v)
 end
 
 -- player box (hitbox 1,3,6,5) against a world box, current position (0/1)
-function p_over(bx0, by0, bx1, by1)
+-- player (hitbox 1,3,6,5) vs the s+1-px square box at (bx, by).
+-- 3 args = the zp call path; 4+ args ride cc65's ~800-cycle stack.
+-- subtract-then-const compares take the immediate path (~40 vs ~127).
+function p_overs(bx, by, s)
   if (pmode ~= 2) return 0
-  -- subtract-then-const compares: the var-vs-var forms each cost ~127
-  -- through cc65's stacked compare; this shape takes the immediate path
-  if bx1 - px >= 1 and bx0 - px <= 6 and by1 - py >= 3 and by0 - py <= 7 then
-    return 1
+  local dx = bx - px
+  if dx + s >= 1 and dx <= 6 then
+    local dy = by - py
+    if dy + s >= 3 and dy <= 7 then
+      return 1
+    end
   end
   return 0
 end
@@ -1024,9 +1032,9 @@ function update_fall_floors()
       local fdy = -100
       if (fdx >= -7 and fdx <= 7) fdy = py - ffy[i]
       if fdy >= -8 and fdy <= 4 then
-        if (p_over(ffx[i] - 1, ffy[i], ffx[i] + 6, ffy[i] + 7) == 1) hit = 1
-        if (p_over(ffx[i], ffy[i] - 1, ffx[i] + 7, ffy[i] + 6) == 1) hit = 1
-        if (p_over(ffx[i] + 1, ffy[i], ffx[i] + 8, ffy[i] + 7) == 1) hit = 1
+        if (p_overs(ffx[i] - 1, ffy[i], 7) == 1) hit = 1
+        if (p_overs(ffx[i], ffy[i] - 1, 7) == 1) hit = 1
+        if (p_overs(ffx[i] + 1, ffy[i], 7) == 1) hit = 1
       end
       if hit == 1 then
         psfx(13)
@@ -1041,7 +1049,7 @@ function update_fall_floors()
       ffcol[i] = 0
     else
       -- invisible, waiting to reset (only when the player is clear)
-      if p_over(ffx[i], ffy[i], ffx[i] + 7, ffy[i] + 7) == 0 then
+      if p_overs(ffx[i], ffy[i], 7) == 0 then
         psfx(12)
         ffstate[i] = 0
         ffcol[i] = 1
@@ -1088,7 +1096,7 @@ function update_refills()
     else
       rfoff[i] += 0.02
       if pdjump < max_djump and
-         p_over(rfx[i] - 1, rfy[i] - 1, rfx[i] + 8, rfy[i] + 8) == 1 then
+         p_overs(rfx[i] - 1, rfy[i] - 1, 9) == 1 then
         psfx(11)
         smoke_spawn(rfx[i], rfy[i])
         pdjump = max_djump
@@ -1130,7 +1138,7 @@ function update_flyfruit()
     fly += flspdy
   end
   -- collect
-  if p_over(flx, flr(fly), flx + 7, flr(fly) + 7) == 1 then
+  if p_overs(flx, flr(fly), 7) == 1 then
     smoke_spawn(flx - 6, flr(fly))
     smoke_spawn(flx + 6, flr(fly))
     -- drop a regular fruit straight into the train
@@ -1186,7 +1194,7 @@ function update_fruits()
       frdy[i] = fry_[i] + frwob[((froff8[i] \ 256) & 31) + 1]
       local fx = flr(frx[i])
       local fy = flr(frdy[i])
-      if p_over(fx, fy, fx + 7, fy + 7) == 1 then
+      if p_overs(fx, fy, 7) == 1 then
         fruit_join_train(i)
       end
     end
@@ -1409,6 +1417,14 @@ function game_init()
   min1 = 0
   min10 = 0
   hrs = 0
+  tbuf[1] = 48
+  tbuf[2] = 58
+  tbuf[3] = 48
+  tbuf[4] = 48
+  tbuf[5] = 58
+  tbuf[6] = 48
+  tbuf[7] = 48
+  tbuf[8] = 0
   time_ticking = 1
   berry_count = 0
   full_restart = 0
@@ -1455,18 +1471,27 @@ function _update()
     frames = 0
     if time_ticking == 1 then
       sec1 += 1
+      tbuf[7] = 48 + sec1
       if sec1 >= 10 then
         sec1 = 0
+        tbuf[7] = 48
         sec10 += 1
+        tbuf[6] = 48 + sec10
         if sec10 >= 6 then
           sec10 = 0
+          tbuf[6] = 48
           min1 += 1
+          tbuf[4] = 48 + min1
           if min1 >= 10 then
             min1 = 0
+            tbuf[4] = 48
             min10 += 1
+            tbuf[3] = 48 + min10
             if min10 >= 6 then
               min10 = 0
+              tbuf[3] = 48
               hrs += 1
+              tbuf[1] = 48 + hrs
             end
           end
         end
@@ -1525,13 +1550,7 @@ end
 -- ---------------------------------------------------------------------
 function draw_time(x, y)
   rectfill(x, y, x + 32, y + 6, 0)
-  print(hrs, x + 1, y + 1, 7)
-  print(":", x + 5, y + 1, 7)
-  print(min10, x + 9, y + 1, 7)
-  print(min1, x + 13, y + 1, 7)
-  print(":", x + 17, y + 1, 7)
-  print(sec10, x + 21, y + 1, 7)
-  print(sec1, x + 25, y + 1, 7)
+  gt.print_buf(tbuf, 0, x + 1, y + 1, 7)
 end
 
 function draw_lifeup(i)
