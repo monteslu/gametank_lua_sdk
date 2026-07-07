@@ -1815,8 +1815,11 @@ static unsigned char hook_tick_last;
 
 /* monotonic game-frame counter: one tick per completed endframe. The pace
  * instruments difference THIS against gt_ticks (vsyncs) — every ad-hoc
- * per-cart counter (tick/gtime/frames) resets somewhere and lied. */
-unsigned int gt_frames;
+ * per-cart counter (tick/gtime/frames) resets somewhere and lied.
+ * Lives in zp (gt_blitq.s): the fixed bank had literally zero bytes to
+ * spare when this landed (just-one-boss went 'VECTORS over by 1'). */
+extern unsigned int gt_frames;
+#pragma zpsym ("gt_frames")
 
 void gt_endframe(void) {
     ++gt_frames;
