@@ -101,6 +101,12 @@ static const Instrument gt_instr[GT_NUM_INSTR] = {
     /* 5 HORN */    { {0x00,0x00,0x40,0xe0},{0x00,0x00,0x04,0x06},{0x00,0x00,0x00,0x40},{12,36,12,24},0, -12 },
     /* 6 BELL */    { {0x50,0x30,0x50,0xe0},{0x02,0x03,0x01,0x04},{0x00,0x00,0x00,0x00},{0,24,0,19},  2,   0 },
     /* 7 BLIP */    { {0x00,0x00,0x00,0xe0},{0x00,0x00,0x00,0x12},{0x00,0x00,0x00,0x00},{0,0,0,0},    0,   0 },
+    /* 8 CHIP — pure carrier, exact pitch, gentle body: the closest FM gets
+     * to PICO-8's plain oscillators (triangle/organ). Modulators silent. */
+    /* 8 CHIP */    { {0x00,0x00,0x00,0xc0},{0x00,0x00,0x00,0x02},{0x00,0x00,0x00,0x70},{0,0,0,0},    0,   0 },
+    /* 9 CHIP2 — carrier + one mild octave modulator: a touch of brightness
+     * for the square/saw/pulse family, still fully harmonic. */
+    /* 9 CHIP2 */   { {0x00,0x00,0x28,0xc0},{0x00,0x00,0x02,0x02},{0x00,0x00,0x10,0x70},{0,0,12,0},   0,   0 },
 };
 
 /* per-op live state (mirrors upstream music.c) */
@@ -609,6 +615,17 @@ void gt_music_run_init(void);    /* fixed-bank stub (gt_music_stubs.s) */
 #endif
 
 void gt_music_init(void) {
-    gt_frame_hook = gt_music_tick;   /* gt_endframe() now advances the tracker */
-    gt_music_run_init();             /* reset sequencer state (bank 2 in FLASH2M) */
+#ifdef GT_BANKED
+    /* vblank-driven: the NMI shim ticks the sequencer once per real vsync,
+     * evenly spaced no matter how long the game's frame runs. (The endframe
+     * hook ticked the right NUMBER of times during slowdown, but in a burst
+     * — note onsets quantized to game frames, audibly janky.) */
+    extern void gt_music_nmi_shim(void);
+    extern void (*gt_nmi_hook)(void);
+    gt_music_run_init();             /* reset sequencer state FIRST */
+    gt_nmi_hook = gt_music_nmi_shim; /* then open the wall-clock tap */
+#else
+    gt_frame_hook = gt_music_tick;   /* Tier-A: gt_endframe advances the tracker */
+    gt_music_run_init();
+#endif
 }

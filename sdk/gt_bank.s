@@ -29,6 +29,10 @@ _gt_cur_bank: .byte $FF           ; C-visible alias (extern unsigned char gt_cur
 .segment "BSS"
 .export _gt_bank_switches
 _gt_bank_switches: .res 4         ; diagnostic: real hardware switches (u32)
+.export _gt_bank_busy
+_gt_bank_busy: .res 1             ; nonzero while the latch bit-bang is in
+                                  ; flight: the vblank audio shim must NOT
+                                  ; switch banks mid-shift (NMI is unmaskable)
 
 .segment "CODE"
 
@@ -44,7 +48,8 @@ gt_bank_raw:
         cmp     gt_cur_bank
         bne     @go
         rts
-@go:    sta     gt_cur_bank
+@go:    inc     _gt_bank_busy
+        sta     gt_cur_bank
         inc     _gt_bank_switches
         bne     @cnt
         inc     _gt_bank_switches+1
@@ -126,4 +131,5 @@ gt_bank_raw:
         lda     #$04
         sta     VIA_ORA         ; CS rise: latch the new bank
         stz     VIA_ORA
+        stz     _gt_bank_busy
         rts

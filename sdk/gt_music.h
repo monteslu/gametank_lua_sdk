@@ -28,7 +28,9 @@ typedef struct {
 #define GT_INSTR_HORN   5
 #define GT_INSTR_BELL   6
 #define GT_INSTR_BLIP   7
-#define GT_NUM_INSTR    8
+#define GT_INSTR_CHIP   8
+#define GT_INSTR_CHIP2  9
+#define GT_NUM_INSTR    10
 
 typedef struct { unsigned char note; unsigned char dur; } SfxStep;
 typedef struct { unsigned char ch; unsigned char note; unsigned char delay; } SongEvent;

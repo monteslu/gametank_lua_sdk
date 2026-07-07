@@ -22,15 +22,18 @@
 //   count 0 = the effect is empty (gt_sfx falls back to the builtins).
 import { readFileSync } from "node:fs";
 
+// PICO-8's oscillators are plain and harmonic; the ornate FM voices read
+// as "wrong instrument" on short exposed effects. CHIP (pure carrier) and
+// CHIP2 (carrier + one mild octave modulator) stay pitch-exact.
 const WAVE_TO_INSTR = {
-  0: 0, // triangle  -> PIANO
-  1: 4, // tilted saw-> SITAR
-  2: 5, // saw       -> HORN
-  3: 7, // square    -> BLIP
-  4: 7, // pulse     -> BLIP
-  5: 0, // organ     -> PIANO
+  0: 8, // triangle  -> CHIP
+  1: 9, // tilted saw-> CHIP2
+  2: 9, // saw       -> CHIP2
+  3: 9, // square    -> CHIP2
+  4: 9, // pulse     -> CHIP2
+  5: 8, // organ     -> CHIP
   6: 3, // noise     -> SNARE
-  7: 4, // phaser    -> SITAR
+  7: 9, // phaser    -> CHIP2
 };
 
 function parseCartBin(buf) {
@@ -184,7 +187,7 @@ const blob = Buffer.concat([head, ...bodies]);
 console.error(`-- ${n} sfx slots, ${blob.length} bytes`);
 converted.slice(0, n).forEach((c, i) => {
   if (!c) return;
-  const inm = ["PIANO", "GUITAR", "BASS", "SNARE", "SITAR", "HORN", "BELL", "BLIP"][c.instr];
+  const inm = ["PIANO", "GUITAR", "BASS", "SNARE", "SITAR", "HORN", "BELL", "BLIP", "CHIP", "CHIP2"][c.instr];
   console.error(`--   sfx ${i}: ${c.steps.length} steps, instr ${inm}, first notes ${c.steps.slice(0, 5).map((s) => s.note + "x" + s.dur).join(" ")}`);
 });
 console.log(blob.toString("hex"));
