@@ -328,11 +328,16 @@ function box_solid(x0, y0, x1, y1)
   -- tile. Out-of-range columns are skipped (mget returned 0 = empty for
   -- them, which can never produce a hit); rows keep mget's clamp-free reads
   -- via the same j clamps as before. See docs/performance.md.
-  local i = x0 \ 8
-  local i1 = x1 \ 8
-  local j0 = mid(0, y0 \ 8, lvl_h - 1)
-  local j1 = mid(0, y1 \ 8, lvl_h - 1)
-  if (i < 0) i = 0
+  -- clamp negatives FIRST so the tile indices can use the unsigned
+  -- shift (the signed \8 went through a ~90-cycle helper, four per call)
+  if (x0 < 0) x0 = 0
+  if (y0 < 0) y0 = 0
+  if (x1 < 0) x1 = 0
+  if (y1 < 0) y1 = 0
+  local i = x0 >>> 3
+  local i1 = x1 >>> 3
+  local j0 = min(y0 >>> 3, lvl_h - 1)
+  local j1 = min(y1 >>> 3, lvl_h - 1)
   if (i1 > lvl_w - 1) i1 = lvl_w - 1
   -- the player/object box is 8x8, so almost every call lands on a 2x2 (or
   -- smaller) tile window: check those cells straight-line, no loop carry
@@ -829,11 +834,15 @@ function p_hazard(ox, oy)
   local y0 = p_y + oy - 6
   local x1 = p_x + ox + 2
   local y1 = p_y + oy - 1
-  local i = x0 \ 8
-  local i1 = x1 \ 8
+  -- positive-domain unsigned shifts (the signed \8 costs ~90 through a
+  -- helper; the player box is never negative past these clamps)
+  if (x0 < 0) x0 = 0
+  if (y0 < 0) y0 = 0
+  local i = x0 >>> 3
+  local i1 = x1 >>> 3
   while i <= i1 do
-    local j = y0 \ 8
-    local j1 = y1 \ 8
+    local j = y0 >>> 3
+    local j1 = y1 >>> 3
     while j <= j1 do
       local t = mget(i, j)
       if t == 36 then
