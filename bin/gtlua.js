@@ -720,7 +720,7 @@ function build(entry, outPath, sheetPath, num8 = false) {
       workPlacement = initialPlacement(result.callGraph);
       console.error("bank placement tight: b2 relief undone (bank 2 is the tight bank)");
     }
-    if (attempt === 26 && fnInline) {
+    if (attempt === 20 && fnInline) {
       fnInline = false;
       workPlacement = initialPlacement(result.callGraph);
       console.error("bank placement tight: retrying with function inlining off");
@@ -754,9 +754,12 @@ function build(entry, outPath, sheetPath, num8 = false) {
       workPlacement = initialPlacement(result.callGraph);
       console.error("bank placement tight: integer-rnd fast path off");
     }
-    if (attempt === 20 && !apiDefs.includes("-DGT_NO_BLITFONT")) {
-      // final size relief: drop the GRAM blit font (~1 KB across banks);
-      // print falls back to the per-pixel CPU path — correct, just slower
+    if (attempt === 32 && !apiDefs.includes("-DGT_NO_BLITFONT")) {
+      // LAST-resort size relief: drop the GRAM blit font (~1 KB across
+      // banks); print falls back to the per-pixel CPU path. This rung is
+      // CATASTROPHIC for text-heavy carts — celeste2 measured 7 vsyncs a
+      // frame (8.5 fps) with ~198k cycles of per-pixel glyphs — so every
+      // cheaper rung (including turning inlining off) goes first.
       apiDefs.push("-DGT_NO_BLITFONT");
       run(tc.cc65, [...CFLAGS, "-DGT_BANKED", ...apiDefs,
                     "-o", B("gt_api.s"), path.join(SDK, "gt_api.c")]);
@@ -764,7 +767,7 @@ function build(entry, outPath, sheetPath, num8 = false) {
       workPlacement = initialPlacement(result.callGraph);
       console.error("bank placement tight: dropping the blit font (CPU print fallback)");
     }
-    if (attempt === 32 && midInline) {
+    if (attempt === 26 && midInline) {
       midInline = false;
       workPlacement = initialPlacement(result.callGraph);
       console.error("bank placement tight: retrying with all inlining off");

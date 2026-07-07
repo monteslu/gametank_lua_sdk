@@ -1813,7 +1813,13 @@ static void queue_autocls(void) {
 
 static unsigned char hook_tick_last;
 
+/* monotonic game-frame counter: one tick per completed endframe. The pace
+ * instruments difference THIS against gt_ticks (vsyncs) — every ad-hoc
+ * per-cart counter (tick/gtime/frames) resets somewhere and lied. */
+unsigned int gt_frames;
+
 void gt_endframe(void) {
+    ++gt_frames;
     /* vsync FIRST, then the drain check: queued blits keep draining DURING
      * the vsync wait, so their pixel time vanishes from the frame budget
      * (a full-screen cls is 16k pixels of blitter time — serializing it
