@@ -417,3 +417,92 @@ sqhi:
         .byte $d2,$d3,$d4,$d4,$d5,$d6,$d7,$d8,$d9,$da,$db,$dc,$dd,$de,$df,$e0
         .byte $e1,$e1,$e2,$e3,$e4,$e5,$e6,$e7,$e8,$e9,$ea,$eb,$ec,$ed,$ee,$ef
         .byte $f0,$f1,$f2,$f3,$f4,$f5,$f6,$f7,$f8,$f9,$fa,$fb,$fc,$fd,$fe,$ff
+
+; ---------------------------------------------------------------------------
+; _gt_fsqrt — 8.8 square root, restoring (division-free).
+;
+; The C version seeds from a LUT and runs two Newton steps = two ~1k-cycle
+; divides; racing carts take a sqrt every frame for |v|. This is the classic
+; two-bits-per-iteration restoring root on the 24-bit radicand (x << 8):
+; 12 iterations, ~550 cycles, exact integer sqrt (the Newton version was
+; already within 1 lsb of it).
+;   int gt_fsqrt(int x)  — cdecl-in-A/X fastcall single arg (cc65 fastcall:
+;   arg in A/X), returns A/X. x <= 0 returns 0.
+; ---------------------------------------------------------------------------
+        .export _gt_fsqrt
+sq_v:   .res 0
+.segment "ZEROPAGE" : zeropage
+sq_v0:  .res 1          ; radicand, little-endian (x << 8: v0 = 0 initially)
+sq_v1:  .res 1
+sq_v2:  .res 1
+sq_rem: .res 2
+sq_rt:  .res 2
+sq_i:   .res 1
+
+.segment "CODE"
+.proc _gt_fsqrt
+        cpx     #$80
+        bcc     :+
+        lda     #0
+        tax
+        rts                     ; x < 0 -> 0
+:       sta     sq_v1           ; v = x << 8
+        stx     sq_v2
+        stz     sq_v0
+        stz     sq_rem
+        stz     sq_rem+1
+        stz     sq_rt
+        stz     sq_rt+1
+        lda     #12
+        sta     sq_i
+loop:   ; rem = (rem << 2) | (v >> 22); v <<= 2   (24-bit v: top bits from v2)
+        asl     sq_v0
+        rol     sq_v1
+        rol     sq_v2
+        rol     sq_rem
+        rol     sq_rem+1
+        asl     sq_v0
+        rol     sq_v1
+        rol     sq_v2
+        rol     sq_rem
+        rol     sq_rem+1
+        ; root <<= 1
+        asl     sq_rt
+        rol     sq_rt+1
+        ; if root < rem: rem -= root + 1; root += 2
+        lda     sq_rt+1
+        cmp     sq_rem+1
+        bcc     take
+        bne     skip
+        lda     sq_rt
+        cmp     sq_rem
+        bcs     skip
+take:   ; rem -= root + 1
+        sec
+        lda     sq_rem
+        sbc     sq_rt
+        sta     sq_rem
+        lda     sq_rem+1
+        sbc     sq_rt+1
+        sta     sq_rem+1
+        ; the +1: one more off rem
+        lda     sq_rem
+        bne     :+
+        dec     sq_rem+1
+:       dec     sq_rem
+        ; root += 2
+        lda     sq_rt
+        clc
+        adc     #2
+        sta     sq_rt
+        bcc     skip
+        inc     sq_rt+1
+skip:   dec     sq_i
+        bne     loop
+        ; result = root >> 1
+        lsr     sq_rt+1
+        ror     sq_rt
+        lda     sq_rt
+        ldx     sq_rt+1
+        rts
+.endproc

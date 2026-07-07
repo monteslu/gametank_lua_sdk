@@ -54,19 +54,8 @@ static const unsigned char sqrt_seed[256] = {
     248, 248, 249, 249, 250, 250, 251, 251, 252, 252, 253, 253, 254, 254, 255, 255
 };
 
-int gt_fsqrt(int x) {
-    int res, t;
-    if (x <= 0) return 0;
-    res = (x >= 256) ? ((int)sqrt_seed[(unsigned char)((unsigned int)x >> 8)] << 4)
-                     : (int)sqrt_seed[x];
-    t = gt_fdiv(x, res);
-    res = (res + t) >> 1;
-    if (res <= 0) return 1;
-    t = gt_fdiv(x, res);
-    res = (res + t) >> 1;
-    if (res <= 0) return 1;
-    return res;
-}
+/* gt_fsqrt lives in gt_fixed8_asm.s: a division-free restoring root
+ * (~550 cycles vs two ~1k divides through the Newton refine here). */
 
 int gt_ffmod(int a, int b) {
     /* floored modulo, sign of divisor: masking the fraction bits of the
