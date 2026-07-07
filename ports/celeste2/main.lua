@@ -334,6 +334,31 @@ function box_solid(x0, y0, x1, y1)
   local j1 = mid(0, y1 \ 8, lvl_h - 1)
   if (i < 0) i = 0
   if (i1 > lvl_w - 1) i1 = lvl_w - 1
+  -- the player/object box is 8x8, so almost every call lands on a 2x2 (or
+  -- smaller) tile window: check those cells straight-line, no loop carry
+  if i1 - i <= 1 and j1 - j0 <= 1 then
+    local r0 = rowoff[j0 + 1]
+    local v = map[r0 + i + 1]
+    if (v == 19) return 1
+    if v <= 127 and (fl[v + 1] & 2) ~= 0 then return 1 end
+    if i1 > i then
+      v = map[r0 + i1 + 1]
+      if (v == 19) return 1
+      if v <= 127 and (fl[v + 1] & 2) ~= 0 then return 1 end
+    end
+    if j1 > j0 then
+      local r1 = rowoff[j1 + 1]
+      v = map[r1 + i + 1]
+      if (v == 19) return 1
+      if v <= 127 and (fl[v + 1] & 2) ~= 0 then return 1 end
+      if i1 > i then
+        v = map[r1 + i1 + 1]
+        if (v == 19) return 1
+        if v <= 127 and (fl[v + 1] & 2) ~= 0 then return 1 end
+      end
+    end
+    return 0
+  end
   while i <= i1 do
     local j = j0
     while j <= j1 do
@@ -1827,10 +1852,13 @@ function p_draw()
   -- scarf (axis-clamped instead of the cart's sqrt normalize)
   local lx = p_x - p_facing + 0.0
   local ly = p_y - 3 + 0.0
+  local tnow = time()
   local i = 1
   while i <= 5 do
-    scarf_x[i] += (lx - scarf_x[i] - p_facing) / 1.5
-    scarf_y[i] += ((ly - scarf_y[i]) + sin(i * 0.25 + time()) * i * 0.25) / 2
+    -- x0.65625 (3 shift terms) stands in for /1.5 (a ~1.3k-cycle divide
+    -- per segment); the scarf drift difference is ~1.6% of a pixel
+    scarf_x[i] += (lx - scarf_x[i] - p_facing) * 0.65625
+    scarf_y[i] += ((ly - scarf_y[i]) + sin(i * 0.25 + tnow) * i * 0.25) / 2
     scarf_x[i] = lx + mid(-1.5, scarf_x[i] - lx, 1.5)
     scarf_y[i] = ly + mid(-1.5, scarf_y[i] - ly, 1.5)
     rectfill(scarf_x[i], scarf_y[i], scarf_x[i], scarf_y[i], 10)
