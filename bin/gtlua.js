@@ -490,7 +490,7 @@ function build(entry, outPath, sheetPath, num8 = false) {
     phTail += opt.stats.tailCalls;
     phReload += opt.stats.reloads;
   };
-  const as = (src, obj) => run(tc.ca65, [...AFLAGS, "-o", obj, src]);
+  const as = (src, obj, defs = []) => run(tc.ca65, [...AFLAGS, ...defs, "-o", obj, src]);
   const B = (f) => path.join(buildDir, f);
 
   // 1. lua -> C (flat 32 KB attempt first)
@@ -546,6 +546,9 @@ function build(entry, outPath, sheetPath, num8 = false) {
   const usesBalls = result.c.includes("gt_balls_step");
   if (usesBalls) as(path.join(SDK, "gt_balls.s"), B("gt_balls.o"));
   as(path.join(SDK, "gt_print_asm.s"), B("gt_print_asm.o"));
+  // banked tier gets the bank-0 segment build of the glyph run (scarce
+  // fixed bank stays clear); the flat 32K tier keeps plain CODE
+  as(path.join(SDK, "gt_print_asm.s"), B("gt_print_asm_b.o"), ["-D", "GT_BANKED"]);
   as(B("gt_api.s"), B("gt_api.o"));
   as(B("gt_fixed.s"), B("gt_fixed.o"));
   as(B("gt_math.s"), B("gt_math.o"));
@@ -760,7 +763,8 @@ function build(entry, outPath, sheetPath, num8 = false) {
         "-o", B(`${name}.banks`),
         "-m", B(`${name}.map`),
         "-Ln", B(`${name}.lbl`),
-        ...baseObjs, B("gt_bank.o"), B("gt_math_stubs.o"),
+        ...baseObjs.map((o) => o.endsWith("gt_print_asm.o") ? B("gt_print_asm_b.o") : o),
+      B("gt_bank.o"), B("gt_math_stubs.o"),
         ...(usesMusic ? [B("gt_music_stubs.o")] : []),
         B("stubs.o"),
         B(`${name}.o`),

@@ -23,7 +23,11 @@
 
 QF_SPR = $55
 
+.ifdef GT_BANKED
+.segment "B0RODATA"
+.else
 .segment "RODATA"
+.endif
 ; ASCII 0-127 -> glyph number (matches gt_glyph(): digits 0-9, letters
 ; 10-35, space 36, ! 37, - 38, : 39, . 40, / 41; everything else space)
 glyphmap:
@@ -56,7 +60,11 @@ glyphmap:
 ; rowoff[gn >> 5] = (gn / 32) * 5
 rowoff: .byte 0, 5, 10
 
+.ifdef GT_BANKED
+.segment "B0CODE"
+.else
 .segment "CODE"
+.endif
 
 .proc _gt_print_z
 loop:   lda     _gt_a1+1        ; x high: any nonzero means x < 0 or > 255
