@@ -28,8 +28,8 @@ local bally = array(28, 0.0)
 local ballvx = array(28, 0.0)
 local ballvy = array(28, 0.0)
 local ballc = array(28)     -- color/tier 1..7, 0 = free slot
-local ballmul = array(28)   -- combo multiplier 1..8
-local balllm = array(28)    -- "lastmult" cooldown, 60 -> 0
+local ballmul = array8(28)  -- combo multiplier 1..8
+local balllm = array8(28)   -- "lastmult" cooldown, 60 -> 0
 -- trail stamps in whole pixels: they only feed flr()'d draws, and int
 -- arrays skip the 32-bit compare/copy tax the fixed versions paid
 local trailx = array(28)
@@ -101,10 +101,10 @@ local lifecost10 = 0
 local inv_maxlife = 0.0     -- 1/maxallowed10, one boot-time division
 
 -- per-tier tables (filled in _init)
-local bpal = array(7)       -- ball body color
-local bpal2 = array(7)      -- highlight color
-local bpal3 = array(7)      -- rim color
-local ballvalue = array(7)  -- score value per merge
+local bpal = array8(7)      -- ball body color
+local bpal2 = array8(7)     -- highlight color
+local bpal3 = array8(7)     -- rim color
+local ballvalue = array8(7) -- score value per merge
 local ballcost10 = array(7) -- life cost x10
 local lifes10 = array(4)    -- per-difficulty life budget x10
 
@@ -131,7 +131,7 @@ end
 
 -- trail-stamp sheet cells per tier (scattered into blank cells; filled
 -- in _init, baked by bake_sprites)
-local trailspr = array(7)
+local trailspr = array8(7)
 
 -- ---------------------------------------------------------------------
 -- sprite baking: the cart draws balls procedurally (3 nested circfills +
