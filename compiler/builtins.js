@@ -96,6 +96,7 @@ export const GT_MEMBERS = {
   flakes_set: { kind: "fn", params: [["int", false], ["int", false], ["int", false], ["int", false], ["int", false], ["int", false], ["int", false]], ret: "void", c: "gt_flakes_set" },
   // follower chain (hair/tails): eases 5 segments toward (x,y), draws p8
   // round dots r=2,2,1,1,1 in the given color — all in asm (gt_flakes.s)
+  flakes_mode: { kind: "fn", params: [["int", false], ["int", false]], ret: "void", c: "gt_flakes_mode" },
   chain_step_draw: { kind: "fn", params: [["int", false], ["int", false], ["int", false]], ret: "void", c: "gt_chain_step_draw" },
   // visible-window tile scan in asm: draws every flag&1 tile of
   // map[j0..j1][i0..i1] (byte tiles, row-major, lvlw wide) as an 8x8 sprite

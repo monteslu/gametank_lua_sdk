@@ -1101,6 +1101,13 @@ void gt_flakes_set(int i, int x, int y, int w, int h, int spd8, int col) {
     gt_bank(saved_bank);
 }
 #endif
+/* per-flake mode: 0 = respawn+reroll (snow), 1 = respawn keep-row
+ * (clouds, set by flakes_set), 2 = wrap at the screen edge (ambient
+ * parallax snow that drifts both directions) */
+void gt_flakes_mode(int i, int m) {
+    if (i >= 0 && i < GT_FLAKES_MAX) fl_ry[i] = (unsigned char)m;
+}
+
 /* follower chain: ease + draw in asm (gt_flakes.s). Coordinates are
  * screen-space (the caller's camera() applies before this). */
 void gt_chain_step_draw(int x, int y, int col) {

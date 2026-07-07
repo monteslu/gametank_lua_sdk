@@ -134,11 +134,34 @@ loop:   dey
         lda     _fl_xh,y
         bpl     posx
         cmp     #$FC            ; signed: xh in $FC..$FF is -4..-1 (edging in)
-        bcs     next            ; not drawn yet, still live
-        bra     resp            ; px < -4: respawn
+        bcc     resp            ; px < -4: respawn/wrap
+        jmp     next            ; not drawn yet, still live
 posx:   cmp     #129            ; px >= 129: past the right edge
-        bcc     vis
-resp:   lda     _fl_rxl,y       ; per-flake respawn x
+        bcs     resp
+        jmp     vis
+resp:   lda     _fl_ry,y
+        cmp     #2
+        bne     norm
+        ; wrap mode: x += or -= 132<<8 back into range
+        lda     _fl_xh,y
+        bmi     wleft
+        sec
+        lda     _fl_xl,y
+        sbc     #0
+        sta     _fl_xl,y
+        lda     _fl_xh,y
+        sbc     #132
+        sta     _fl_xh,y
+        jmp     next
+wleft:  clc
+        lda     _fl_xl,y
+        adc     #0
+        sta     _fl_xl,y
+        lda     _fl_xh,y
+        adc     #132
+        sta     _fl_xh,y
+        jmp     next
+norm:   lda     _fl_rxl,y       ; per-flake respawn x
         sta     _fl_xl,y
         lda     _fl_rxh,y
         sta     _fl_xh,y

@@ -90,6 +90,7 @@ void gt_flakes_init(int n);
 void gt_flakes_draw(int camdx8, int camdy8);
 void gt_flakes_draw2(int first, int count, int camdx8, int camdy8);
 void gt_flakes_set(int i, int x, int y, int w, int h, int spd8, int col);
+void gt_flakes_mode(int i, int m);
 void gt_chain_step_draw(int x, int y, int col);
 void gt_tiles_draw(unsigned char *map, unsigned char *flags, int lvlw,
                    int i0, int i1, int j0, int j1);

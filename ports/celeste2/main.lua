@@ -116,6 +116,8 @@ local gp_y = 0
 local gp_live = 0
 
 -- map: 2 tiles per int, row-major; tail doubles as LZ staging at load
+local snow_cam_x = 0
+local snow_cam_y = 0
 -- row-offset LUT: rowoff[j+1] = j*lvl_w, rebuilt per level — mget/box_solid
 -- previously paid cc65's mul8x16 (~250 cycles) PER PROBE for j*lvl_w
 local rowoff = array(20)
@@ -1775,23 +1777,15 @@ function draw_tiles()
 end
 
 function draw_snow()
-  -- PERF: the wrap is done in INTEGER space (flr first, then int %), not
-  -- fixed-point %. A 16.16 modulo is ~19k cycles on the 65C02 (div+mul); the
-  -- integer form is ~6x cheaper, and the drawn position was floored to a pixel
-  -- anyway so nothing visual changes. This one swap takes celeste2 from ~4fps
-  -- to ~10fps. Snow dots are 0-1px, so pset (a free CPU byte-write) beats
-  -- circfill (a blit primitive). See SPEED_PLAN.md "the fixed-% footgun".
-  snow_ph += 1
-  local base = snow_ph >> 2          -- advance the wobble phase every 4 frames
-  local i = 1
-  while i <= 26 do
-    local px = (flr(snow_x[i]) - (cam_draw_x >> 1)) % 132
-    local py = (flr(snow_y[i]) - (cam_draw_y >> 1)) % 132
-    pset(cam_draw_x + px - 2, cam_draw_y + py, 7)
-    snow_x[i] += 4 - i % 4
-    snow_y[i] += snow_wob[((base + i) & 31) + 1]   -- LUT read, not sin()
-    i += 1
-  end
+  -- the asm flake engine in wrap mode (see gt_flakes.s): positions in 8.8
+  -- screen space, the parallax rides in as half the camera delta per
+  -- frame, x wraps at the edge (y wraps at 128 vs the old 132 — a 4px
+  -- ambient nuance). ~0.3k vs ~23k for the compiled loop.
+  camera()
+  gt.flakes_draw2(0, 26, (cam_draw_x - snow_cam_x) << 7, (cam_draw_y - snow_cam_y) << 7)
+  snow_cam_x = cam_draw_x
+  snow_cam_y = cam_draw_y
+  camera(cam_draw_x, cam_draw_y)
 end
 
 function draw_clouds()
@@ -1943,10 +1937,12 @@ function _init()
     snow_wob[i] = sin((i - 1) / 32)   -- one full period over the 32 entries
     i += 1
   end
+  gt.flakes_init(26)
   i = 1
   while i <= 26 do
-    snow_x[i] = flr(rnd(132))
-    snow_y[i] = rnd(132)
+    -- wrap-mode ambient snow: speeds 4 - i%4 px/frame like the original
+    gt.flakes_set(i - 1, flr(rnd(128)), flr(rnd(128)), 1, 1, (4 - i % 4) << 8, 7)
+    gt.flakes_mode(i - 1, 2)
     i += 1
   end
   i = 1
