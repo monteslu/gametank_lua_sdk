@@ -1093,6 +1093,7 @@ local spd = 0.0
 local drift = 0            -- 0/1 (gtlua stores no booleans)
 local wallpen = 0         -- wall-hit penalty frames
 local wallnear = 0        -- prop chunks near car this frame (cheap gate)
+local cpnear = 0          -- checkpoint lines near car this frame
 local gwheels = 0         -- wheels on grass this frame
 local kph = 0
 
@@ -1290,6 +1291,15 @@ function wheely(wb, j)
 end
 
 function step_events()
+  if cpnear == 0 then
+    if drift != 0 then
+      tstep = 1 - tstep
+      local wb2 = ai * 4
+      local wj = tstep * 2
+      add_trail(carx + wheelx(wb2, wj), cary + wheely(wb2, wj), 0)
+    end
+    return
+  end
   local wb = ai * 4
   for j = 0, 3 do
     local wx = carx + wheelx(wb, j)
@@ -1516,6 +1526,23 @@ function _update()
     angf = (flr(angf * 32 + 0.5) / 32) % 1
   end
   ai = flr(angf * 32 + 0.5) % 32
+
+  -- checkpoint proximity gate: the per-pixel step scan only runs when
+  -- the car's box could touch a line this frame (bounds are conservative:
+  -- car 8px + wheels 6 + max speed 5)
+  cpnear = 0
+  for c = 1, ncp do
+    if cpdx[c] == 0 then
+      if carx + 20 >= cpx[c] and carx - 20 <= cpx[c] and
+         cary + 20 >= cpy[c] and cary - 20 <= cpy[c] + cpl[c] then cpnear = 1 end
+    elseif cpdy[c] == 0 then
+      if cary + 20 >= cpy[c] and cary - 20 <= cpy[c] and
+         carx + 20 >= cpx[c] and carx - 20 <= cpx[c] + cpl[c] then cpnear = 1 end
+    else
+      if carx + 20 >= cpx[c] and carx - 20 <= cpx[c] + cpl[c] and
+         cary + 20 >= cpy[c] and cary - 20 <= cpy[c] + cpl[c] then cpnear = 1 end
+    end
+  end
 
   -- wall proximity gate: prop chunks within reach this frame?
   wallnear = 0
