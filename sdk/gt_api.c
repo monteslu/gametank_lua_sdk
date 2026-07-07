@@ -1314,6 +1314,19 @@ void gt_pool_move(int *x, int *y, int *sx, int *sy, unsigned char *used,
     gt_poolmv_z();
 }
 
+/* bulk animation pass (gt_poolmv.s): frame += spd, reset past max.
+ * BYTE fields only (the pool narrows small fields to bytes). */
+void gt_poolan_z(void);
+void gt_pool_anim(unsigned char *frame, unsigned char *spd,
+                  unsigned char *maxf, unsigned char *used, int n) {
+    pm_x = frame;
+    pm_sx = spd;
+    pm_sy = maxf;
+    pm_used = used;
+    pm_n = (unsigned char)n;
+    gt_poolan_z();
+}
+
 /* bulk 8x8 sprite pass (gt_poolmv.s): used slots with a nonzero cell byte
  * blit at (x>>4, y>>4). */
 extern unsigned char *pm_cells;

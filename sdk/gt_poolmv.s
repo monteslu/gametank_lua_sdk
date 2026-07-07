@@ -7,7 +7,7 @@
 ;   pm_used: byte array (pool used[] flags)   pm_n: slot count (hi watermark)
 ;   pm_mode: 0 plain, 1 damp velocities after the move
 ; ---------------------------------------------------------------------------
-.export _gt_poolmv_z
+.export _gt_poolmv_z, _gt_poolan_z
 .export _pm_x, _pm_y, _pm_sx, _pm_sy, _pm_used, _pm_n, _pm_mode
 .PC02
 
@@ -251,4 +251,36 @@ free:   ldx     _gt_qhead
         jsr     _gt_q_pump
 next:   inc     pm_i
         jmp     loop
+.endproc
+
+; ---------------------------------------------------------------------------
+; gt.pool_anim — bulk sprite animation: for every used slot,
+;   frame[i] += spd[i]; if frame[i] > maxf[i] then frame[i] = 16
+; (frames in 16ths, reset-to-first like cherry's animate()). The compiled
+; per-enemy version cost ~450 cycles a slot every frame; this is ~22.
+; ALL THREE FIELDS ARE BYTE ARRAYS (the pool narrows small fields to
+; bytes — an int field here indexes as garbage; frame values stay <= 96
+; by construction: maxf < 240 and spd small).
+; Reuses pm_x (frame), pm_sx (speed), pm_sy (max), pm_used, pm_n.
+; ---------------------------------------------------------------------------
+.proc _gt_poolan_z
+        ldy     _pm_n
+        beq     done
+loop:   dey
+        lda     (_pm_used),y
+        beq     next
+        ; frame += spd (bytes)
+        lda     (_pm_sx),y
+        clc
+        adc     (_pm_x),y
+        sta     (_pm_x),y
+        ; reset when frame > maxf
+        cmp     (_pm_sy),y
+        bcc     next
+        beq     next
+        lda     #16
+        sta     (_pm_x),y
+next:   cpy     #0
+        bne     loop
+done:   rts
 .endproc

@@ -96,7 +96,7 @@ local bossoff = array(4)  -- boss ani frame offsets {0,4,8,4}
 
 -- entity pools (original uses unbounded tables; capacities documented
 -- in PORT_NOTES.md — overflowing add()s drop silently)
-local enemies = pool(40, "type,wait,anispd,mission,flash,shake,subphase,cel,cw,ch")
+local enemies = pool(40, "type,wait,anispd,mission,flash,shake,subphase,cel,cw,ch,maxani")
 local buls = pool(28, "spr,dmg,colw")
 local ebuls = pool(48, "af")
 local parts = pool(56, "age,size2,maxage,blue,spark")
@@ -518,7 +518,9 @@ function spawnen(entype,enx,eny,enwait)
   px4=48
   py4=25
  end
- add(enemies,{x=ex2,y=ey2,sx=0,sy=0,posx=px4,posy=py4,type=entype,wait=enwait,anispd=6,aniframe=16,mission=MI_FLYIN,hp=hp,flash=0,shake=0,subphase=0,phbegin=0,cel=0,cw=ecw(entype),ch=ech(entype)})
+ local mxa=79                       -- 4 anim frames (reset past 4*16+15)
+ if (entype==2 or entype==4) mxa=47 -- 2 frames
+ add(enemies,{x=ex2,y=ey2,sx=0,sy=0,posx=px4,posy=py4,type=entype,wait=enwait,anispd=6,aniframe=16,maxani=mxa,mission=MI_FLYIN,hp=hp,flash=0,shake=0,subphase=0,phbegin=0,cel=0,cw=ecw(entype),ch=ech(entype)})
 end
 
 -- one layout row (original placens()): hi/lo pack 5 cells each, base 6.
@@ -1014,12 +1016,6 @@ function update_game()
    -- MI_PROTEC: staying put
   end
 
-  -- enemy animation (original animate(); frames in 16ths)
-  e.aniframe+=e.anispd
-  local alen=4
-  if e.type==2 or e.type==4 then alen=2 end
-  if e.aniframe\16>alen then e.aniframe=16 end
-
   -- enemy leaving screen
   if e.mission!=MI_FLYIN then
    if e.y>2048 or e.x<-128 or e.x>2048 then
@@ -1027,6 +1023,9 @@ function update_game()
    end
   end
  end
+
+ -- enemy animation, all slots in one asm pass (original animate())
+ gt.pool_anim(enemies, "aniframe", "anispd", "maxani")
 
  -- collision enemy x bullets: geometry in asm (gt.hit_scan), the rare
  -- hit resolution here. Pairs are (enemy_ord, bullet_ord) live ordinals in

@@ -736,6 +736,11 @@ export function emit(chunk, symbols, file, opts = {}) {
         const mode = expr(e.args[1], "int");
         return `gt_pool_move(${pl.cname}_x, ${pl.cname}_y, ${pl.cname}_sx, ${pl.cname}_sy, ${pl.cname}_used, ${pl.cname}_hi, ${mode})`;
       }
+      if (sig.special === "poolanim") {
+        const pl = e.args[0].sym;
+        const f = e.args[1].value, sp = e.args[2].value, mx = e.args[3].value;
+        return `gt_pool_anim(${pl.cname}_${f}, ${pl.cname}_${sp}, ${pl.cname}_${mx}, ${pl.cname}_used, ${pl.cname}_hi)`;
+      }
       return `${sig.c}(${sig.params.map((p, i) => argAt(e, i, p[0], defaultFor(callee.field, i))).join(", ")})`;
     }
 

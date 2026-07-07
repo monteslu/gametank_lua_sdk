@@ -127,6 +127,9 @@ export const GT_MEMBERS = {
   // (x += sx, y += sy; mode 1 also damps velocities by v -= v>>3 + v>>5).
   // The pool must have int fields x, y, sx, sy.
   pool_move: { kind: "fn", params: [["pool", false], ["int", false]], ret: "void", c: "gt_pool_move", special: "poolmove" },
+  // bulk animation: gt.pool_anim(pool, "frame", "spd", "maxf") — frame +=
+  // spd per used slot, reset to 16 when frame > maxf (16ths-frames)
+  pool_anim: { kind: "fn", params: [["pool", false], ["str", false], ["str", false], ["str", false]], ret: "void", c: "gt_pool_anim", special: "poolanim" },
   // 24px atlas-chunk grid window (racing tracks): grid ints, two decode
   // LUTs (road, decal), a props byte-list out, stride, cell window
   chunks_draw: { kind: "fn", params: [["array", false], ["array8", false], ["array8", false], ["array8", false], ["int", false], ["int", false], ["int", false], ["int", false], ["int", false]], ret: "void", c: "gt_chunks_draw" },
