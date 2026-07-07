@@ -283,6 +283,25 @@ function hotSet(callGraph) {
   }
   return hot;
 }
+// BFS depth from the per-frame roots: depth 1 = the frame dispatch layer
+// (runs every frame), deeper = increasingly conditional. Non-reachable
+// functions get Infinity (init/menu code — coldest).
+function hotDepth(callGraph) {
+  const depth = new Map();
+  let ring = ["_update", "_update60", "_draw"];
+  let d = 0;
+  while (ring.length) {
+    const next = [];
+    for (const n of ring) {
+      if (depth.has(n)) continue;
+      depth.set(n, d);
+      for (const c of callGraph.get(n) ?? []) if (!depth.has(c)) next.push(c);
+    }
+    ring = next;
+    d++;
+  }
+  return depth;
+}
 function layoutScore(placement, callGraph, hot) {
   let score = 0;
   for (const [caller, callees] of callGraph) {
@@ -295,7 +314,7 @@ function layoutScore(placement, callGraph, hot) {
   return score;
 }
 // the stubbed edges of a layout, worst (hot) first — repair candidates
-function stubbedEdges(placement, callGraph, hot) {
+function stubbedEdges(placement, callGraph, hot, depths) {
   const edges = [];
   for (const [caller, callees] of callGraph) {
     const cb = placement[caller] ?? "fixed";
@@ -303,11 +322,12 @@ function stubbedEdges(placement, callGraph, hot) {
       const eb = placement[cee] ?? "fixed";
       if (eb !== "fixed" && eb !== cb) {
         edges.push({ caller, callee: cee,
+          d: Math.min(depths?.get(caller) ?? 99, depths?.get(cee) ?? 99),
           w: (hot.has(caller) ? 10 : 1) + (hot.has(cee) ? 10 : 0) });
       }
     }
   }
-  edges.sort((a, b) => b.w - a.w);
+  edges.sort((a, b) => b.w - a.w || (a.d ?? 99) - (b.d ?? 99));
   return edges;
 }
 
@@ -434,9 +454,19 @@ function rebalance(placement, sizes, overflows, sheetBytes, callGraph, usesBg, u
     // main() reaches them through stubs — pinning them wedged carts whose
     // update loop IS most of a bank (moving smaller helpers can never cover
     // the overflow). They stay out of `fixed` (no stub back-path needed).
+    // coldest-first eviction: reachability alone calls everything "hot"
+    // (the update tree transitively reaches death/level-load code), so
+    // rank by BFS depth from the frame roots — depth 1 is the per-frame
+    // dispatch layer (celeste2's p_update), deep/unreachable is genuinely
+    // cold. Evict deepest first, biggest first within a depth.
+    const depths = hotDepth(callGraph);
     const movable = bins[bin]
       .filter((n) => (sizes.get(n) ?? 0) >= minSize)
-      .sort((a, b) => (sizes.get(b) ?? 0) - (sizes.get(a) ?? 0));
+      .sort((a, b) => {
+        const da = depths.get(a) ?? 99, db = depths.get(b) ?? 99;
+        if (da !== db) return db - da;
+        return (sizes.get(b) ?? 0) - (sizes.get(a) ?? 0);
+      });
     for (const n of movable) {
       if (need <= 0) break;
       const sz = sizes.get(n) ?? 0;
@@ -814,11 +844,12 @@ function build(entry, outPath, sheetPath, num8 = false) {
         const attempted = new Set();
         let dirty = false;
         for (let round = 0; round < 40; round++) {
-          const edges = stubbedEdges(workPlacement, result.callGraph, hot)
+          const edges = stubbedEdges(workPlacement, result.callGraph, hot, hotDepth(result.callGraph))
             .filter((e) => e.w >= 10 && !attempted.has(`${e.caller}>${e.callee}`));
           if (!edges.length) break;
           const e = edges[0];
           attempted.add(`${e.caller}>${e.callee}`);
+          if (process.env.GTLUA_DEBUG) console.error(`[repair] trying edge ${e.caller}(${workPlacement[e.caller] ?? "fixed"}) -> ${e.callee}(${workPlacement[e.callee] ?? "fixed"}) w=${e.w}`);
           // a shared callee can't chase one caller's bank without stubbing
           // its other callers — score BOTH directions, take the better
           const options = [];
@@ -865,6 +896,7 @@ function build(entry, outPath, sheetPath, num8 = false) {
             dirty = false;
             if (process.env.GTLUA_DEBUG) console.error(`[repair] ${best.fn} -> ${best.target} (score ${bestScore})`);
           } else {
+            if (process.env.GTLUA_DEBUG) console.error(`[repair]   FAILED ${best.fn} -> ${best.target}: ${relink.overflows?.map((o) => `${o.segment}+${o.bytes}`).join(",") ?? "?"}`);
             workPlacement[best.fn] = best.prev;
             dirty = true;
           }

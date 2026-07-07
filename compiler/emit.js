@@ -1322,6 +1322,40 @@ export function emit(chunk, symbols, file, opts = {}) {
     }
     if (g.kind === "array") {
       const ct = g.elemKind === "fixed" ? ctype("fixed") : (g.elemBytes ? "unsigned char" : "int");
+      if (g.hexdata) {
+        // compile-time byte blob: RODATA, not BSS. On banked builds the blob
+        // must live in THE SAME BANK as the functions that read it (a read
+        // from another bank silently sees that bank's bytes) — find the
+        // readers in the AST and follow the placement.
+        const readers = [];
+        for (const [fname, fn] of functions) {
+          let found = false;
+          const walk = (node) => {
+            if (found || !node || typeof node !== "object") return;
+            if (Array.isArray(node)) { for (const x of node) walk(x); return; }
+            if (node.kind === "index" && node.base?.kind === "name" && node.base.name === name) { found = true; return; }
+            for (const [k, v] of Object.entries(node)) if (!WALK_SKIP.has(k)) walk(v);
+          };
+          walk(fn.node?.body);
+          if (found) readers.push(fname);
+        }
+        const rbanks = new Set(readers.map((r) => bankOf(r)));
+        if (banked && rbanks.size > 1 && [...rbanks].filter((b) => b !== "fixed").length > 1) {
+          throw new Error(`hexdata '${name}' is read from functions in different banks (${[...rbanks].join(", ")}) — banked blobs need a single home; wrap the reads in one function`);
+        }
+        const home = banked ? ([...rbanks].find((b) => b !== "fixed") ?? "fixed") : "fixed";
+        const seg = { b0: "B0RODATA", b1: "B1RODATA", b2: "B2RODATA" }[home];
+        const rows = [];
+        for (let k = 0; k < g.hexdata.length; k += 16) {
+          rows.push("    " + g.hexdata.slice(k, k + 16).map((b) => "0x" + b.toString(16).padStart(2, "0")).join(", "));
+        }
+        if (seg) out.push(`#pragma rodata-name (push, "${seg}")`);
+        out.push(`const unsigned char ${mangle(name)}[${g.size}] = {`);
+        out.push(rows.join(",\n"));
+        out.push(`};`);
+        if (seg) out.push(`#pragma rodata-name (pop)`);
+        continue;
+      }
       if (g.initVal === 0) {
         out.push(`${ct} ${mangle(name)}[${g.size}];`);
       } else {

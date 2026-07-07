@@ -110,6 +110,30 @@ export function check(chunk, file) {
         // on the 65C02 (single-register load, no high-byte traffic). Values
         // read back as ordinary ints; stores must be integers (flr() first).
         if (init && init.kind === "call" && init.callee.kind === "name" &&
+            init.callee.name === "hexdata") {
+          const a = init.args[0];
+          if (init.args.length !== 1 || !a || a.kind !== "string" ||
+              a.value.length === 0 || a.value.length % 2 !== 0 ||
+              /[^0-9a-fA-F]/.test(a.value)) {
+            err(s, "hexdata(\"...\") needs one even-length hex string literal");
+            return;
+          }
+          const data = [];
+          for (let k = 0; k < a.value.length; k += 2) {
+            data.push(parseInt(a.value.slice(k, k + 2), 16));
+          }
+          globals.set(name, {
+            kind: "array",
+            elemKind: "int",
+            elemBytes: true,
+            size: data.length,
+            initVal: 0,
+            hexdata: data,
+            node: s,
+          });
+          return;
+        }
+        if (init && init.kind === "call" && init.callee.kind === "name" &&
             (init.callee.name === "array" || init.callee.name === "array8")) {
           const bytes = init.callee.name === "array8";
           const size = constEval(init.args[0]);
