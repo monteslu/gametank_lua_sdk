@@ -1236,6 +1236,27 @@ void gt_balls_drag(long *vx, long *vy, int *act, int n) {
     bp_n = (unsigned char)n;
     gt_balls_drag_z();
 }
+/* particle pool integrator (gt_balls.s): x += v and the 31/32-ish damp on
+ * every used slot of a 16.16 SoA pool. */
+extern unsigned char *pp_x, *pp_y, *pp_vx, *pp_vy, *pp_u;
+extern unsigned char pp_n;
+#pragma zpsym ("pp_x")
+#pragma zpsym ("pp_y")
+#pragma zpsym ("pp_vx")
+#pragma zpsym ("pp_vy")
+#pragma zpsym ("pp_u")
+#pragma zpsym ("pp_n")
+void gt_parts_step_z(void);
+void gt_parts_step(long *x, long *y, long *vx, long *vy, unsigned char *u,
+                   int n) {
+    pp_x = (unsigned char *)x;
+    pp_y = (unsigned char *)y;
+    pp_vx = (unsigned char *)vx;
+    pp_vy = (unsigned char *)vy;
+    pp_u = u;
+    pp_n = (unsigned char)n;
+    gt_parts_step_z();
+}
 #endif /* GT_BALLS */
 
 #ifdef GT_POOLMV

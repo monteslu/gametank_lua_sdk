@@ -707,6 +707,10 @@ export function emit(chunk, symbols, file, opts = {}) {
         const pr = expr(e.args[7], "int");
         return `gt_hit_scan(${A.cname}_x, ${A.cname}_y, ${A.cname}_${fw}, ${A.cname}_${fh}, ${A.cname}_used, ${A.cname}_hi, ${B.cname}_x, ${B.cname}_y, ${B.cname}_${fbw}, ${B.cname}_used, ${B.cname}_hi, ${bh}, ${sh}, ${pr})`;
       }
+      if (sig.special === "partsstep") {
+        const pl = e.args[0].sym;
+        return `gt_parts_step(${pl.cname}_x, ${pl.cname}_y, ${pl.cname}_vx, ${pl.cname}_vy, ${pl.cname}_used, ${pl.cname}_hi)`;
+      }
       if (sig.special === "poolsprs") {
         const pl = e.args[0].sym;
         const fld = e.args[1].value;

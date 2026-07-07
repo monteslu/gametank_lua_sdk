@@ -609,20 +609,16 @@ function update_game()
 
   if (btnp(6)) displaynumber = 1 - displaynumber
 
-  -- particles (drag 0.95 -> 1 - 1/32 - 1/64 = 0.953, shift-based)
+  -- particles: movement + drag in bulk asm (a merge burst is ~20 live
+  -- particles x ~2.5k cycles through the long helpers otherwise);
+  -- lifetimes and deletes stay here
+  gt.parts_step(parts)
   for p in all(parts) do
-    p.x += p.vx
-    p.y += p.vy
-    p.vx = p.vx - p.vx / 32 - p.vx / 64
-    p.vy = p.vy - p.vy / 32 - p.vy / 64
     p.t -= 0.0333
     if (p.t <= 0) del(parts, p)
   end
+  gt.parts_step(texts)
   for p in all(texts) do
-    p.x += p.vx
-    p.y += p.vy
-    p.vx = p.vx - p.vx / 32 - p.vx / 64
-    p.vy = p.vy - p.vy / 32 - p.vy / 64
     p.t -= 0.0333
     if (p.t <= 0) del(texts, p)
   end
@@ -1065,7 +1061,7 @@ function draw_game()
   -- aim guide (cart: 5-pass boldline over the trail layer, under the map;
   -- the strips are opaque so it draws over the lattice in the same color)
   if finish == 0 then
-    draw_boldline(launch_x, launch_y, flr(launch_x + launch_dx * 90),
+    draw_boldline(flr(launch_x), flr(launch_y), flr(launch_x + launch_dx * 90),
                   flr(launch_y + launch_dy * 90), 1)
   end
 

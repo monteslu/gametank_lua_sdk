@@ -653,7 +653,17 @@ export function check(chunk, file) {
           if (!sym || sym.kind !== "pool") {
             err(a, `${name}() argument ${i + 1} must be a pool`);
           } else {
-            const need = name === "pool_sprs" ? ["x", "y"] : ["x", "y", "sx", "sy"];
+            const bare = name.startsWith("gt.") ? name.slice(3) : name;
+            if (bare === "parts_step") {
+              for (const f of ["x", "y", "vx", "vy"]) {
+                const fl = sym.fields.get(f);
+                if (!fl) err(a, `${name}() pool needs a fixed field '${f}'`);
+                else if (fl.kind !== "fixed") err(a, `${name}() pool field '${f}' must be fixed`);
+              }
+              a.sym = sym;
+              return;
+            }
+            const need = bare === "pool_sprs" ? ["x", "y"] : ["x", "y", "sx", "sy"];
             for (const f of need) {
               const fl = sym.fields.get(f);
               if (!fl) err(a, `${name}() pool needs an int field '${f}'`);

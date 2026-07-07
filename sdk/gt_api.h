@@ -100,6 +100,8 @@ void gt_balls_step(long *x, long *y, long *vx, long *vy, int *act,
 void gt_pool_move(int *x, int *y, int *sx, int *sy, unsigned char *used,
                   int n, int mode);
 void gt_balls_drag(long *vx, long *vy, int *act, int n);
+void gt_parts_step(long *x, long *y, long *vx, long *vy, unsigned char *u,
+                   int n);
 void gt_pool_sprs(int *x, int *y, unsigned char *used, unsigned char *cells,
                   int n);
 void gt_hit_scan(int *ax, int *ay, unsigned char *aw, unsigned char *ah,

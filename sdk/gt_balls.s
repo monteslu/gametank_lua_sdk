@@ -526,3 +526,147 @@ act:    lda     bz_i
 next:   inc     bz_i
         jmp     loop
 .endproc
+
+; ---------------------------------------------------------------------------
+; gt_parts_step — particle pool integrator for 16.16 SoA pools:
+;   for every used slot: x += vx; y += vy; v *= (1 - 1/32 - 1/64)
+; The damping is v -= (v>>6)*3 == (v>>5)+(v>>6) exactly (both = floor terms
+; summed; ~2 lsb of 1/65536 units apart from the compiled form per frame).
+; A merge burst runs ~20 live particles x ~2.5k cycles through the long
+; helpers; this is ~350 per particle.
+;   pp_x/pp_y/pp_vx/pp_vy: long arrays; pp_u: used bytes; pp_n: slots
+; ---------------------------------------------------------------------------
+.export _gt_parts_step_z
+.export _pp_x, _pp_y, _pp_vx, _pp_vy, _pp_u, _pp_n
+
+.segment "ZEROPAGE" : zeropage
+_pp_x:  .res 2
+_pp_y:  .res 2
+_pp_vx: .res 2
+_pp_vy: .res 2
+_pp_u:  .res 2
+_pp_n:  .res 1
+pp_o:   .res 1
+
+.segment "CODE"
+
+; 32-bit (dst),pp_o += (src),pp_o
+.macro ADD32 dst, src
+        ldy     pp_o
+        clc
+        lda     (dst),y
+        adc     (src),y
+        sta     (dst),y
+        iny
+        lda     (dst),y
+        adc     (src),y
+        sta     (dst),y
+        iny
+        lda     (dst),y
+        adc     (src),y
+        sta     (dst),y
+        iny
+        lda     (dst),y
+        adc     (src),y
+        sta     (dst),y
+.endmacro
+
+; damp the 32-bit velocity at (ptr),pp_o: v -= (v>>6)*3
+; (>>6 = byte-shift >>8 then <<2; d3 = (d<<1) + d)
+.macro DAMP32 ptr
+        ; d = v >> 8 (bytes 1..3, sign-extended) -> bd_d, s -> bd_s
+        ldy     pp_o
+        iny
+        lda     (ptr),y
+        sta     bd_d
+        iny
+        lda     (ptr),y
+        sta     bd_d+1
+        iny
+        lda     (ptr),y
+        sta     bd_d+2
+        bpl     :+
+        lda     #$FF
+        bra     :++
+:       lda     #0
+:       sta     bd_d+3
+        sta     bd_s
+        ; d <<= 2  -> v>>6
+        asl     bd_d
+        rol     bd_d+1
+        rol     bd_d+2
+        rol     bd_d+3
+        asl     bd_d
+        rol     bd_d+1
+        rol     bd_d+2
+        rol     bd_d+3
+        ; d3 = d + (d >> 1)?? NO: v>>5 + v>>6 = (v>>6)*3 = d + d>>?? d IS v>>6;
+        ; d*3 = (d<<1) + d — shift a copy left once into bz_t/bd extras
+        lda     bd_d
+        sta     bz_t
+        lda     bd_d+1
+        sta     bz_t+1
+        lda     bd_d+2
+        sta     bd_o            ; borrow zp bytes for the copy's high half
+        lda     bd_d+3
+        sta     bz_i
+        asl     bd_d
+        rol     bd_d+1
+        rol     bd_d+2
+        rol     bd_d+3
+        clc
+        lda     bd_d
+        adc     bz_t
+        sta     bd_d
+        lda     bd_d+1
+        adc     bz_t+1
+        sta     bd_d+1
+        lda     bd_d+2
+        adc     bd_o
+        sta     bd_d+2
+        lda     bd_d+3
+        adc     bz_i
+        sta     bd_d+3
+        ; v -= d3
+        ldy     pp_o
+        sec
+        lda     (ptr),y
+        sbc     bd_d
+        sta     (ptr),y
+        iny
+        lda     (ptr),y
+        sbc     bd_d+1
+        sta     (ptr),y
+        iny
+        lda     (ptr),y
+        sbc     bd_d+2
+        sta     (ptr),y
+        iny
+        lda     (ptr),y
+        sbc     bd_d+3
+        sta     (ptr),y
+.endmacro
+
+.proc _gt_parts_step_z
+        ldx     #0
+loop:   cpx     _pp_n
+        bne     :+
+        rts
+:       txa
+        tay
+        lda     (_pp_u),y
+        bne     live
+        jmp     next
+live:   txa
+        asl     a
+        asl     a
+        sta     pp_o
+        phx
+        ADD32   _pp_x, _pp_vx
+        ADD32   _pp_y, _pp_vy
+        DAMP32  _pp_vx
+        DAMP32  _pp_vy
+        plx
+next:   inx
+        jmp     loop
+.endproc

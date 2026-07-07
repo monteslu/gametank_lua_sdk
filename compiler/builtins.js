@@ -109,6 +109,9 @@ export const GT_MEMBERS = {
   balls_step: { kind: "fn", params: [["array", false], ["array", false], ["array", false], ["array", false], ["array", false], ["array8", false], ["array8", false], ["int", false]], ret: "void", c: "gt_balls_step" },
   // drag pass on the same fixed arrays: v -= (v>>6)+(v>>8) per active ball
   balls_drag: { kind: "fn", params: [["array", false], ["array", false], ["array", false], ["int", false]], ret: "void", c: "gt_balls_drag" },
+  // particle pool step: x += vx, y += vy, v *= 0.953 (v -= v>>5 + v>>6)
+  // on every used slot; the pool needs fixed fields x, y, vx, vy
+  parts_step: { kind: "fn", params: [["pool", false]], ret: "void", c: "gt_parts_step", special: "partsstep" },
   // bulk pool integration: gt.pool_move(pool, mode) — moves every used slot
   // (x += sx, y += sy; mode 1 also damps velocities by v -= v>>3 + v>>5).
   // The pool must have int fields x, y, sx, sy.
