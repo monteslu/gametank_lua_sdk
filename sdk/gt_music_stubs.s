@@ -15,8 +15,10 @@
 ; disturbs c_sp, sreg, or the C-stack RAM, and the bank switch only remaps the
 ; $8000-$BFFF window, so stacked arguments pass through untouched.
 ;
-; Callee bank is hard-wired to 2: bin/gtlua.js always compiles gt_music into
-; B2CODE/B2RODATA. If that ever changes, update GT_MUSIC_BANK below.
+; Callee bank = the FIRMWARE's bank (gt_music.c compiles with the same
+; GT_FW_BANK as gt_audio.c — the sequencer must read gt_pitch_table, which
+; lives beside the firmware blob). bin/gtlua.js assembles this file with
+; -D GT_FW_B1 when the ladder relocates the firmware to bank 1.
 
 .PC02
 .import gt_bank_raw, gt_cur_bank
@@ -27,7 +29,11 @@
 .export _gt_sfx, _gt_music, _gt_sfx_bank, _gt_music_bank
 .export _gt_sfx_run, _gt_music_play, _gt_music_stop
 
-GT_MUSIC_BANK = 2
+.ifdef GT_FW_B1
+GT_MUSIC_BANK = 1
+.else
+GT_MUSIC_BANK = 0
+.endif
 
 .segment "BSS"
 gtmus_sav_a: .res 1

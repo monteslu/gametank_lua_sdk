@@ -1349,8 +1349,8 @@ export function emit(chunk, symbols, file, opts = {}) {
           walk(fn.node?.body);
           if (found) readers.push(fname);
         }
-        // a blob handed to sfx_bank() is consumed by the music sequencer,
-        // which always executes as B2CODE with bank 2 mapped — home it there
+        // a blob handed to sfx_bank()/music_bank() is consumed by the music
+        // sequencer, which executes in the firmware's bank — home it there
         // (fixed RODATA is scarce; a 1-2KB sfx bank would blow it)
         let sfxConsumed = false;
         for (const [, fn] of functions) {
@@ -1365,7 +1365,7 @@ export function emit(chunk, symbols, file, opts = {}) {
           walk2(fn.node?.body);
         }
         const rbanks = new Set(readers.map((r) => bankOf(r)));
-        if (sfxConsumed && banked) rbanks.add("b2");
+        if (sfxConsumed && banked) rbanks.add(opts.fwBank === 1 ? "b1" : "b0");
         if (banked && rbanks.size > 1 && [...rbanks].filter((b) => b !== "fixed").length > 1) {
           throw new Error(`hexdata '${name}' is read from functions in different banks (${[...rbanks].join(", ")}) — banked blobs need a single home; wrap the reads in one function`);
         }

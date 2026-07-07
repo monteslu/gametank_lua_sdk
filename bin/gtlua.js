@@ -717,8 +717,11 @@ function build(entry, outPath, sheetPath, num8 = false) {
   // it banked: the impls + tables ride in bank 2 (B2CODE/B2RODATA, renamed
   // _impl) and the fixed-bank stubs in gt_music_stubs.o bridge every call
   // (game code AND gt_endframe's frame hook) with a bank-2 switch.
+  // a cart that registers converted PICO-8 banks never uses the built-in
+  // sfx/song tables — compile the zero-authoring layer out (~700 bytes)
+  const noBuiltinSfx = result.c.includes("gt_sfx_bank(") ? ["-DGT_NO_BUILTIN_SFX"] : [];
   if (usesMusic) {
-    run(tc.cc65, [...CFLAGS, "-DGT_BANKED",
+    run(tc.cc65, [...CFLAGS, "-DGT_BANKED", "-DGT_FW_BANK=0", ...noBuiltinSfx,
                   "-o", B("gt_music.s"), path.join(SDK, "gt_music.c")]);
     as(B("gt_music.s"), B("gt_music.o"));
     as(path.join(SDK, "gt_music_stubs.s"), B("gt_music_stubs.o"));
@@ -764,6 +767,12 @@ function build(entry, outPath, sheetPath, num8 = false) {
       run(tc.cc65, [...CFLAGS, "-DGT_BANKED", "-DGT_FW_BANK=1",
                     "-o", B("gt_audio.s"), path.join(SDK, "gt_audio.c")]);
       as(B("gt_audio.s"), B("gt_audio.o"));
+      if (usesMusic) {
+        run(tc.cc65, [...CFLAGS, "-DGT_BANKED", "-DGT_FW_BANK=1", ...noBuiltinSfx,
+                      "-o", B("gt_music.s"), path.join(SDK, "gt_music.c")]);
+        as(B("gt_music.s"), B("gt_music.o"));
+        as(path.join(SDK, "gt_music_stubs.s"), B("gt_music_stubs.o"), ["-D", "GT_FW_B1"]);
+      }
       workPlacement = initialPlacement(result.callGraph);
       console.error("bank placement tight: audio firmware to bank 1");
     }
@@ -805,7 +814,7 @@ function build(entry, outPath, sheetPath, num8 = false) {
       console.error("bank placement tight: retrying with all inlining off");
     }
     const compileAndLink = (placementNow) => {
-      result = compileLua(entry, { banked: true, placement: placementNow, midInline, inliner: fnInline, num8, rndInt });
+      result = compileLua(entry, { banked: true, placement: placementNow, midInline, inliner: fnInline, num8, rndInt, fwBank: fwB1 ? 1 : 0 });
       writeFileSync(B(`${name}.c`), result.c);
       cc(B(`${name}.c`), B(`${name}.s`));
       as(B(`${name}.s`), B(`${name}.o`));

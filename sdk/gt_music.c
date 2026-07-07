@@ -44,18 +44,31 @@
 
 /* FLASH2M banked build (-DGT_BANKED, passed by bin/gtlua.js): this whole unit
  * — the ~2.4 KB sequencer code AND its instrument/sfx/song tables — is exiled
- * from the always-mapped FIXED bank into game bank 2 (B2CODE/B2RODATA, with the
- * firmware + sheet), exactly like gt_math/gt_audio. The public entry points are
+ * from the always-mapped FIXED bank into THE FIRMWARE'S game bank (GT_FW_BANK,
+ * same as gt_audio.c), exactly like gt_math. The public entry points are
  * renamed with an _impl suffix; fixed-bank far-call stubs (gt_music_stubs.s)
- * own the plain names and bank-switch to 2 around each call. tick_music reads
- * gt_pitch_table (in the fixed bank, always mapped) and its own tables (in bank
- * 2, mapped by the stub) — both reachable. gt_music_init() is NOT renamed: it
- * stays a fixed-bank thunk that installs the (stub) hook then calls the banked
- * real init, so the frame hook points at the fixed-bank stub, not the bank-2
- * impl (which would be unreachable when another bank is mapped). */
+ * own the plain names and bank-switch there around each call.
+ *
+ * The sequencer MUST share the firmware's bank: set_note() reads
+ * gt_pitch_table, which gt_audio.c homes next to the firmware blob. The old
+ * layout (music in bank 2, table in bank 0) had every gt_sfx()-keyed note
+ * fetch its frequency pair from whatever bank-2 bytes sat at the table's
+ * address — audibly musical garbage, caught by comparing converted-sfx
+ * recordings against the cart data. Co-locating also frees bank 2 (sheet +
+ * compose) for the converted sfx/music blobs the hexdata emitter homes here.
+ *
+ * gt_music_init() is NOT renamed: it stays a fixed-bank thunk that installs
+ * the (stub) hook then calls the banked real init, so the frame hook points
+ * at the fixed-bank stub, not the banked impl (which would be unreachable
+ * when another bank is mapped). */
 #ifdef GT_BANKED
-#pragma code-name ("B2CODE")
-#pragma rodata-name ("B2RODATA")
+#if GT_FW_BANK == 1
+#pragma code-name ("B1CODE")
+#pragma rodata-name ("B1RODATA")
+#else
+#pragma code-name ("B0CODE")
+#pragma rodata-name ("B0RODATA")
+#endif
 #define GT_MB(name) name##_impl
 #else
 #define GT_MB(name) name
@@ -368,7 +381,12 @@ void gt_music_tick(void) {
  * Built-in sound effects and songs (the zero-authoring PICO-8 path). A kid
  * calls sfx(0) for a jump, music(0) for a tune — no data to write.
  * Notes are 1-based MIDI (0 = rest); see gt_music.h for the step format.
+ * GT_NO_BUILTIN_SFX (set by bin/gtlua.js when the cart registers converted
+ * PICO-8 banks) compiles the whole zero-authoring layer out — a cart playing
+ * its own cart data never falls through to these, and the ~700 bytes of
+ * tables matter in a full bank.
  * ========================================================================= */
+#ifndef GT_NO_BUILTIN_SFX
 
 /* MIDI helpers for readability (Cn4 = middle-ish). +1 because note is 1-based. */
 #define N(m) ((unsigned char)((m) + 1))
@@ -410,6 +428,8 @@ static const BuiltinSfx builtin_sfx[GT_NUM_BUILTIN_SFX] = {
     { sfx6, 2, GT_INSTR_HORN },
     { sfx7, 3, GT_INSTR_BLIP },
 };
+
+#endif /* !GT_NO_BUILTIN_SFX */
 
 /* auto channel: round-robin over the 4 FM channels for un-specified sfx() */
 static unsigned char next_sfx_ch = 0;
@@ -491,7 +511,9 @@ static void advance_pattern(void) {
 }
 
 void gt_sfx(int n, int ch) {
+#ifndef GT_NO_BUILTIN_SFX
     const BuiltinSfx *b;
+#endif
     unsigned char c;
     if (!audio_on) return;
     if (n < 0) return;
@@ -507,11 +529,14 @@ void gt_sfx(int n, int ch) {
             return;
         }
     }
+#ifndef GT_NO_BUILTIN_SFX
     if (n >= GT_NUM_BUILTIN_SFX) return;
     b = &builtin_sfx[n];
     gt_sfx_run(b->steps, b->count, b->instr, c);
+#endif
 }
 
+#ifndef GT_NO_BUILTIN_SFX
 /* --- built-in songs ---------------------------------------------------------
  * A song is a flat list of {ch, note, delay} events. `delay` is frames until
  * the NEXT event fires; a note plays until its channel is re-keyed or the
@@ -543,8 +568,12 @@ static const BuiltinSong builtin_song[GT_NUM_BUILTIN_SONG] = {
     { song1, 4,  song1_instr },
 };
 
+#endif /* !GT_NO_BUILTIN_SFX */
+
 void gt_music(int n, int loop) {
+#ifndef GT_NO_BUILTIN_SFX
     const BuiltinSong *s;
+#endif
     if (!audio_on) return;
     if (n < 0) { gt_music_stop(); return; }
     if (mus_bank) {
@@ -553,9 +582,11 @@ void gt_music(int n, int loop) {
         start_pattern((unsigned char)n);
         return;
     }
+#ifndef GT_NO_BUILTIN_SFX
     if (n >= GT_NUM_BUILTIN_SONG) return;
     s = &builtin_song[n];
     gt_music_play(s->events, s->count, s->instr4, (unsigned char)(loop ? 1 : 0));
+#endif
 }
 
 /* ---- fixed-bank init thunk -------------------------------------------------
