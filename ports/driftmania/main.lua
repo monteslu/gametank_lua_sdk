@@ -1483,9 +1483,13 @@ function _update()
   spd = sqrt(vx * vx + vy * vy)
   local nx = 0
   local ny = 0
+  -- unit velocity: ONE reciprocal (gt_fdiv is ~48 steps / ~2K cycles), then
+  -- two multiplies, instead of two full divides. The speed-limit block below
+  -- reuses the same 1/spd idiom.
   if spd > 0 then
-    nx = vx / spd
-    ny = vy / spd
+    local invspd = 1 / spd
+    nx = vx * invspd
+    ny = vy * invspd
   end
   local vdotf = fwdx * nx + fwdy * ny
 
