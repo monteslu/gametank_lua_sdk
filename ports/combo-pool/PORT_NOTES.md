@@ -13,93 +13,61 @@ sprite sheet).
 ## How to build
 
 ```
-node ports/combo-pool/build.mjs
+node bin/gtlua.js build ports/combo-pool/main.lua \
+  --sheet carts/combo-pool-extract/gfx.bin --num8 \
+  -o ports/combo-pool/main.gtr
 ```
 
-This produces `ports/combo-pool/main.gtr` (a 2 MB FLASH2M banked image) and
-is copied to `roms/combo-pool.gtr` and `~/roms/gametank/combo-pool.gtr`.
+This produces `ports/combo-pool/main.gtr` (a 2 MB FLASH2M banked image);
+copy it to `~/roms/gametank/combo-pool.gtr` to run.
+
+`--num8` is REQUIRED — the port relies on the 8.8-fixed-in-int number model
+(see "num8" below); building without it changes the arithmetic and the game
+mis-behaves (the life-bar cubic in particular was authored for num8 range).
+
+### The old `build.mjs` is dead — do not use it
+
+`ports/combo-pool/build.mjs` is a stale relic from before the SDK's banked
+path could place the audio unit. It only assembles the *old* core SDK objects
+(no `gt_music`/`gt_blitq`/`gt_balls`/`gt_poolmv`/`gt_canvas`/… ), so it now
+fails to link (63 unresolved externals). **Ignore it.** The gaps it worked
+around are all fixed (see below); the CLI `gtlua.js` build is canonical and
+was what produced every deployed cart.
 
 ### Why a banked (2 MB) cart, not a flat 32 KB one
 
-The obvious `node bin/gtlua.js build … --sheet …` (flat 32 KB) **does not
-fit**: it overflows the 32 KB window by ~14 KB. The game is genuinely big —
-the translated logic is ~1440 lines of Lua and the sprite sheet alone is
-8 KB, so code + data + sheet ≈ 38 KB. There is no way to shave 14 KB
-without gutting the game, so the FLASH2M banked target is the correct one.
-
-`bin/gtlua.js`'s **auto-retarget** to FLASH2M then fails with
-`FLASH2M bank placement failed: RODATA over by 3744`. That is the *naive*
-placement heuristic in `bin/gtlua.js` — it packs the read-only DATA into the
-fixed bank and overflows it. **`build.mjs` uses a hand-tuned `PLACEMENT`
-map** (update/physics/audio in bank 0, all drawing in bank 1, init/bake +
-menu-draw + sheet + ACP firmware in bank 2) plus two build-time source
-transforms (below), and links cleanly with every segment inside its 16 KB
-bank. So the fix for the "RODATA over by 3744" blocker is simply: **build
-with `build.mjs`, not the CLI auto-retarget.**
-
-Post-link segment occupancy (all under 0x4000 per bank):
-
-| bank | contents | size |
-|------|----------|------|
-| BANK0 | B0CODE (update/physics/audio) | 0x3FA7 |
-| BANK1 | B1CODE + B1RODATA (all drawing + print literals) | 0x3634 |
-| BANK2 | SHEET + B2CODE (init/bake + menu draw) | 0x3A7B |
-| FIXED ($C000) | CODE + RODATA + VECTORS (runtime, shared, stubs) | ends 0xFF56 |
+The flat 32 KB cart **does not fit**: the translated logic is ~1440 lines of
+Lua and the sprite sheet alone is 8 KB, so code + data + sheet overflow the
+32 KB window by ~14 KB. `gtlua.js` auto-retargets to the FLASH2M banked cart,
+which is the correct target. Its automatic placement now handles the audio
+unit (homed in private bank 3) and links cleanly.
 
 ---
 
 ## SDK gap report (prioritized)
 
-These are the compiler/SDK limitations this port had to work around. `build.mjs`
-exists ONLY because of gaps 1–3; delete it once they are fixed.
-
-**P1 — banked builds can't place audio's ACP firmware.**
-`sdk/gt_audio.c` `#include`s a ~4 KB ACP firmware blob (`gt_acp_fw.h`) into
-RODATA. In a banked build cc65 lands that blob in the **fixed** bank, which
-overflows it. `build.mjs` works around it by text-transforming a copy of
-`gt_audio.c` to wrap the include in `#pragma rodata-name(push,"SHEET") …
-(pop)` so the blob rides in bank 2 next to the sheet, and calls
-`gt_sheet_init()` (which selects bank 2) immediately before
-`gt_audio_init()` so the firmware is mapped in when the one-time upload runs.
-*Fix:* let the banked linker script/segment plan give the firmware a home in
-a switchable bank, or expose a `#pragma` hook from the SDK so a game doesn't
-have to rewrite `gt_audio.c`.
-
-**P2 — cc65 string-literal pool ignores the active `#pragma rodata-name`.**
-cc65 defers the translation-unit's string-literal pool to the *end* of the
-unit, after `emit.js`'s `#pragma rodata-name` scopes have popped, so every
-`print("…")` literal lands in the fixed bank's RODATA and overflows it.
-`build.mjs` works around it by appending
-`#pragma rodata-name("B1RODATA")` to the generated `main.c` so the tail pool
-is parked in bank 1 (all of this game's literals belong to bank-1 draw
-functions). *Fix:* have `emit.js`/the compiler emit an explicit
-`rodata-name` at end-of-unit, or route string literals into a
-placement-aware segment. This is fragile: a game whose literals span
-multiple banks can't be fixed by a single tail pragma.
-
-**P3 — no first-class banked build for a game with a sheet + audio.**
-`bin/gtlua.js`'s banked path exists but its automatic function/data placement
-isn't good enough for a real game (see the "RODATA over by 3744" failure
-above). A game currently needs a hand-written `PLACEMENT` map. *Fix:* a
-smarter default placement (call-graph-aware, RODATA-balancing across banks)
-so `node bin/gtlua.js build … --sheet …` "just works" for banked games, and
-a stale-`PLACEMENT`-entry warning is only informational (see P4).
-
-**P4 — cosmetic: stale-placement warning.** `build.mjs` prints
-`placement: no function 'draw_ball_plain' (stale entry?)` — that name is in
-the `PLACEMENT` map but the function was renamed/inlined during translation.
-Harmless (a missing placement entry just leaves the function in the default
-bank), left in as documentation of the intended layout. Not a bug.
+**P1–P4 (banked audio placement, string-literal pool, first-class banked
+build, stale-placement warning) are all RESOLVED.** They were the reasons the
+old `build.mjs` existed. The SDK's banked path now homes the audio unit in a
+private bank (bank 3), places the string-literal pool correctly, and does
+call-graph-aware placement, so `gtlua.js build … --sheet … --num8` links a
+real audio game with no hand-written `PLACEMENT` map. `build.mjs` is dead —
+see "How to build" above. (Left the design detail here in git history rather
+than the doc; resurrect from a prior revision if a banking regression needs
+the background.)
 
 **P5 — no per-frame division budget.** `gt_fdiv` is a ~48-step software loop
 (~35K cycles, over half a vsync), so the port cannot divide per ball per
 frame. Every `/` in a hot loop was reformulated as a shift-based approximate
 (drag `x - x/64 - x/256` ≈ ×0.98) or precomputed into a boot-time table
-(`invsq[]` for contact math, `march_off[]`/`phase_off[]` for the menu, one
-`inv_maxlife = 1/maxallowed10` division at level start). This is inherent to
-the 6502 @ 3.5 MHz, not a fixable SDK gap — but a *documented* "divide is
-expensive, here are the table idioms" note in the SDK docs would save the
-next porter the same discovery.
+(`invsq[]` for contact math, `march_off[]`/`phase_off[]` for the menu). The
+life bar is the one remaining per-frame divide (`lifecost10/maxallowed10`),
+kept because a precomputed `1/maxallowed10` UNDERFLOWS the 8.8 num8 model
+(both `400` and its reciprocal wrap) — that wrap once framed the GRAM canvas
+for corrupting the game; it was the life-bar math all along. This is inherent
+to the 6502 @ 3.5 MHz, not a fixable SDK gap — but a *documented* "divide is
+expensive, here are the table idioms (and the num8 range traps)" note in the
+SDK docs would save the next porter the same discovery.
 
 ---
 
