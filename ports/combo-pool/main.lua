@@ -109,7 +109,6 @@ local lstam = 100.0
 local plife = 1.0
 local llife = 1.0
 local lifecost10 = 0
-local inv_maxlife = 0.0     -- 1/maxallowed10, one boot-time division
 
 -- per-tier tables (filled in _init)
 local bpal = array8(7)      -- ball body color
@@ -602,8 +601,6 @@ function update_intromenu()
   if (btnp(4) or btnp(5)) pressed = 1
   if pressed == 1 and avoid_nextlaunch == 0 then
     maxallowed10 = lifes10[menuselect + 1]
-    inv_maxlife = 0
-    if (maxallowed10 > 0) inv_maxlife = 1 / maxallowed10
     playfx(14)
     srand(gtime + 1)
     reset_game()
@@ -772,7 +769,13 @@ function update_game()
 
   -- life bar / sudden death
   if maxallowed10 > 0 and death == 0 and victory == 0 then
-    local ratio = lifecost10 * inv_maxlife
+    -- 8.8 range audit: 1/400 underflows (and 400 itself wraps 8.8), so the
+    -- old inv_maxlife precompute produced a NEGATIVE inverse and the cubic
+    -- rode an overflow cliff (sudden death fired on wrap, not on the rule).
+    -- Divide directly (0..~2.8 fits) and clamp so ratio^3*100 stays in range
+    -- past the death threshold.
+    local ratio = lifecost10 / maxallowed10
+    if (ratio > 1.05) ratio = 1.05
     local r2 = ratio * ratio
     plife = 100 - (r2 * ratio) * 100
     if plife < 0 then
