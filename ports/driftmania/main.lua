@@ -1483,13 +1483,19 @@ function _update()
   spd = sqrt(vx * vx + vy * vy)
   local nx = 0
   local ny = 0
-  -- unit velocity: ONE reciprocal (gt_fdiv is ~48 steps / ~2K cycles), then
-  -- two multiplies, instead of two full divides. The speed-limit block below
-  -- reuses the same 1/spd idiom.
-  if spd > 0 then
+  -- unit velocity. Fast path (spd >= 0.5): ONE reciprocal + two multiplies
+  -- instead of two full divides — but ONLY here, because 1/spd for small spd
+  -- exceeds the 8.8 num8 range (1/0.5 = 2 is safe; 1/0.01 = 100 wraps) and
+  -- would corrupt nx/ny. Near standstill, fall back to the direct divides
+  -- (their result is always <= 1 so they never overflow); it's cold and the
+  -- normalization barely matters at crawling speed.
+  if spd >= 0.5 then
     local invspd = 1 / spd
     nx = vx * invspd
     ny = vy * invspd
+  elseif spd > 0 then
+    nx = vx / spd
+    ny = vy / spd
   end
   local vdotf = fwdx * nx + fwdy * ny
 

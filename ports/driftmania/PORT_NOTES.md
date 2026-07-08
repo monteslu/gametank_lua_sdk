@@ -19,27 +19,33 @@ track geometry, the real car with 32 pre-rotated headings, checkpoints and
 ## How to build
 
 ```
-node ports/driftmania/tools/gen.js     # (re)generate gfx.bin + GENDATA in main.lua
-node ports/driftmania/build.mjs        # -> ports/driftmania/main.gtr (2 MB FLASH2M)
+node ports/driftmania/tools/gen.js     # (re)generate gfx.bin + GENDATA in main.lua (only if track/car art changes)
+node bin/gtlua.js build ports/driftmania/main.lua \
+  --sheet ports/driftmania/gfx.bin --num8 \
+  -o ports/driftmania/main.gtr         # -> 2 MB FLASH2M cart
 ```
 
-`main.gtr` is copied to `roms/driftmania.gtr` and
-`~/roms/gametank/driftmania.gtr`.
+Copy `main.gtr` to `~/roms/gametank/driftmania.gtr` to run.
 
-### Why a banked (2 MB) cart, not a flat 32 KB one
+`--num8` is the shipped build: the port is math-bound (5-8 vsyncs/frame in
+16.16), and driftmania was authored num8-ready — carx/cary/camxw/checkpoint/
+trail coords are all `int` world-pixels, and only the SMALL physics fixeds
+(velocities ±4.4, angles 0..1, spd, sub-pixel remainders) are fixed-point, so
+every fixed value fits the 8.8 range. num8 moved the driving histogram from
+mean ~5.86 to ~4.47 vsyncs (a full ~1.4-vsync / ~3fps win). ONE num8 trap was
+found and guarded: `1/spd` overflows 8.8 at low speed (1/0.5=2 ok, 1/0.01=100
+wraps), so the unit-velocity reciprocal is gated `spd >= 0.5` with a direct-
+divide fallback below that (see `_car_move`). Build WITHOUT `--num8` for an
+A/B on the drift feel if the reduced precision ever looks wrong.
 
-The flat `node bin/gtlua.js build … --sheet …` **does not fit**: it
-overflows the 32 KB window by ~12.6 KB. The port is genuinely big — ~1800
-lines of Lua (of which ~1050 are generated track/car data init and ~750 are
-the hand-written game) plus the 8 KB sprite sheet, so code + data + sheet
-≈ 45 KB. The FLASH2M banked target is the only correct one.
+### The old `build.mjs` is dead — do not use it
 
-`bin/gtlua.js`'s **auto-retarget** to FLASH2M then fails with
-`FLASH2M bank placement failed: RODATA over by 3192` (the same audio-firmware
-problem combo-pool hit). `build.mjs` uses a hand-tuned `PLACEMENT` map plus
-two build-time source transforms (P1/P2 below) and links cleanly. **So the
-fix for the "RODATA over by 3192" blocker is: build with `build.mjs`, not
-the CLI auto-retarget.**
+`ports/driftmania/build.mjs` is a stale relic (same story as combo-pool's):
+it only assembles the old core SDK objects and now fails to link (missing
+gt_music/gt_blitq/gt_balls/gt_poolmv/... externals). The SDK's `gtlua.js`
+banked path now homes the audio unit in a private bank and does call-graph-
+aware placement, so the CLI command above "just works". `tools/gen.js` is
+still live (it packs the track/car art into gfx.bin + GENDATA).
 
 Post-link segment occupancy (all under 0x4000 per bank):
 
