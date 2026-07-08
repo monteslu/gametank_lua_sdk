@@ -311,7 +311,31 @@ function new_text(xx, yy, val, nvx, nvy)
   add(texts, {x = xx, y = yy, vx = nvx, vy = nvy, val = val, t = 1, slot = tx_free})
 end
 
+-- the static field composes into the GRAM canvas once per game start;
+-- draw_game then restores it with ONE opaque wrapped blit instead of
+-- eighteen 64px strip blits every frame
+local fieldcol = array8(16)
+
+function compose_field()
+ local i = 0
+ while i < 16 do
+  fieldcol[1] = 208 + i          -- top border
+  local r = 2
+  while r <= 13 do               -- 12 woven lattice rows (224/240 pairs)
+   fieldcol[r] = 224 + i
+   fieldcol[r + 1] = 240 + i
+   r += 2
+  end
+  fieldcol[14] = 224 + i         -- the half-pair row at y=104
+  fieldcol[15] = 192 + i         -- bottom border
+  fieldcol[16] = 208 + i         -- y>=120 sits under the opaque HUD band
+  gt.bg_coln(fieldcol, i * 8, 0, 16)
+  i += 1
+ end
+end
+
 function reset_game()
+  compose_field()
   for i = 1, 28 do
     ballc[i] = 0
   end
@@ -1060,26 +1084,8 @@ function draw_game()
   -- static field: composed sheet strips (top border, 13 woven lattice
   -- rows, bottom border) — 9 wide blits instead of ~90 primitives.
   -- Fully opaque, so no cls() is needed in game mode.
-  -- pre-split at 8 cells: 64px spans ride the asm fast path directly,
-  -- skipping the C wide-sprite splitter (~440 cycles per 16-wide call)
-  spr(208, 0, 0, 8, 1)
-  spr(216, 64, 0, 8, 1)
-  spr(224, 0, 8, 8, 2)
-  spr(232, 64, 8, 8, 2)
-  spr(224, 0, 24, 8, 2)
-  spr(232, 64, 24, 8, 2)
-  spr(224, 0, 40, 8, 2)
-  spr(232, 64, 40, 8, 2)
-  spr(224, 0, 56, 8, 2)
-  spr(232, 64, 56, 8, 2)
-  spr(224, 0, 72, 8, 2)
-  spr(232, 64, 72, 8, 2)
-  spr(224, 0, 88, 8, 2)
-  spr(232, 64, 88, 8, 2)
-  spr(224, 0, 104, 8, 1)
-  spr(232, 64, 104, 8, 1)
-  spr(192, 0, 112, 8, 1)
-  spr(200, 64, 112, 8, 1)
+  -- static field: one opaque canvas blit (composed once in reset_game)
+  gt.canvas_view(0, 0, 1)
 
   -- sudden-death flicker (cart tints its persistent trail noise red)
   if suddendeath == 1 then
