@@ -1610,16 +1610,18 @@ function _update()
   end
 
   -- speed limit, direct vector scaling (the angle round-trip — atan2 +
-  -- two cos/sin reconstructions — becomes one conditional divide)
-  spd = sqrt(vx * vx + vy * vy)
+  -- two cos/sin reconstructions — becomes one conditional divide). Gate on
+  -- the SQUARED magnitude: the always-on path needs NO sqrt (this spd is
+  -- never read before the recompute below), so only the capping frames pay
+  -- a sqrt + divide.
   local lim = 4.4 * modmax
   if (vdotf < -0.8) lim = 1.0 * modmax
-  if spd > lim then
+  if vx * vx + vy * vy > lim * lim then
+    spd = sqrt(vx * vx + vy * vy)
     local ns = max(spd * 0.88, lim)
     local k = ns / spd
     vx *= k
     vy *= k
-    spd = ns
   end
 
   -- velocity rotates toward the facing (the drift feel): rotate the
