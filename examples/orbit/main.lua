@@ -5,7 +5,11 @@
 local angle = 0
 local speed = 0.016
 local radius = 40
-local ship_col = 8   -- p8 red
+-- a small palette of GameTank color bytes to cycle the planet through. Runtime-
+-- computed colors are raw GT bytes (not PICO-8 indices), so we cycle over actual
+-- bytes here - the native way to do "change colors" on the GameTank.
+local ship_pal = array8(6)
+local ship_i = 0
 local trail = 0.0
 local shake = 0
 local ringx = array(16)
@@ -14,6 +18,14 @@ local lastr = 0
 
 function _init()
   srand(7)
+  -- six GameTank color bytes to cycle the planet through (red, orange, yellow,
+  -- green, blue, pink) - gt.rgb resolves each to a byte at compile time.
+  ship_pal[1] = gt.rgb(255, 0, 77)
+  ship_pal[2] = gt.rgb(255, 163, 0)
+  ship_pal[3] = gt.rgb(255, 236, 39)
+  ship_pal[4] = gt.rgb(0, 228, 54)
+  ship_pal[5] = gt.rgb(41, 173, 255)
+  ship_pal[6] = gt.rgb(255, 119, 168)
 end
 
 function _update()
@@ -21,7 +33,7 @@ function _update()
   if (btn(0)) radius -= 2
   if (btn(1)) radius += 2
   if (btnp(4)) speed = -speed
-  if (btnp(5)) ship_col += 1
+  if (btnp(5)) ship_i = (ship_i + 1) % 6
   radius = mid(8, radius, 58)
   if (btnp(2)) shake = 6
   if (shake > 0) shake -= 1
@@ -56,7 +68,7 @@ function _draw()
   -- planet on the orbit
   local px = cx + flr(cos(angle) * radius)
   local py = cy + flr(sin(angle) * radius)
-  circfill(px, py, 5, ship_col % 16)
+  circfill(px, py, 5, ship_pal[ship_i + 1])
   pset(px, py - 6, 7)
 
   -- moon, twice the angular speed, quarter turn ahead
