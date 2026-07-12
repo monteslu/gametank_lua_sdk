@@ -42,7 +42,8 @@ function fail(msg) {
 
 // The toolchain object gives each tool as an argv PREFIX (array) so run()/
 // runLink() can splat it: native cc65 is ["/path/cc65"], the WASM backend is
-// ["node", "bin/wasm-tool.mjs", "cc65"]. Everything downstream stays sync.
+// for wasm, run()/runLink() route the tool through the persistent worker via
+// execTool -> runToolSync (no per-tool process spawn). Everything stays sync.
 function nativeToolchain(home) {
   return {
     kind: "native",
@@ -54,17 +55,19 @@ function nativeToolchain(home) {
   };
 }
 
-// The bundled-WASM backend (romdev-toolchain-cc65). Zero native install: each
-// tool runs as `node bin/wasm-tool.mjs <tool>`. lib/asminc resolve out of the
-// installed package's share tree.
+// The bundled-WASM backend (romdev-toolchain-cc65). Zero native install. Tools
+// run in ONE persistent worker thread that holds the WASM for the whole build
+// (compiler/wasm_worker.js), driven synchronously via Atomics so the build
+// orchestrator stays sync. `kind:"wasm"` makes run()/runLink() dispatch to
+// runToolSync instead of spawning a process per tool (12x faster - the old
+// per-tool `node` spawn + full share-tree re-mount was ~85 ms of pure overhead
+// each). lib/asminc still resolve out of the installed package's share tree for
+// callers that read tc.lib / tc.asminc directly.
 function wasmToolchain() {
   const share = path.join(REPO, "node_modules", "romdev-toolchain-cc65", "share", "cc65");
-  const runner = path.join(REPO, "bin", "wasm-tool.mjs");
   return {
     kind: "wasm",
-    cc65: [process.execPath, runner, "cc65"],
-    ca65: [process.execPath, runner, "ca65"],
-    ld65: [process.execPath, runner, "ld65"],
+    cc65: ["cc65"], ca65: ["ca65"], ld65: ["ld65"],   // tool name; run() routes by kind
     lib: path.join(share, "lib", "none.lib"),
     asminc: path.join(share, "asminc"),
   };
@@ -127,11 +130,43 @@ function findToolchain() {
   );
 }
 
-// `tool` is an argv-prefix array (see findToolchain). run() splats it so the
-// same call works for a native binary or the `node wasm-tool.mjs <tool>` shim.
-function run(tool, args) {
+// The active toolchain kind ("native" | "wasm"), set by build() from
+// findToolchain().kind. Decides whether execTool spawns a native binary or
+// drives the persistent WASM worker synchronously.
+let toolchainKind = "native";
+let _runToolSync = null;   // lazily imported so native builds never load the worker
+
+// Execute one tool. For native, `tool` is [binaryPath]; for wasm, tool[0] is the
+// tool NAME ("cc65"/"ca65"/"ld65") and we route to the persistent worker. Both
+// return spawnSync's shape: { status, stdout, stderr }.
+function execTool(tool, args) {
+  if (toolchainKind === "wasm") {
+    // _runToolSync is preloaded by prepareToolchain() before the build starts
+    // (the module is ESM, so it's imported at the async top level, not here).
+    return _runToolSync(tool[0], args);
+  }
   const [cmd, ...pre] = tool;
-  const r = spawnSync(cmd, [...pre, ...args], { encoding: "utf8" });
+  return spawnSync(cmd, [...pre, ...args], { encoding: "utf8" });
+}
+
+// Called once (async) before a build. If the selected toolchain is WASM, load
+// the sync client + set the kind so execTool routes to the persistent worker.
+async function prepareToolchain() {
+  const tc = findToolchain();
+  toolchainKind = tc.kind;
+  if (tc.kind === "wasm" && !_runToolSync) {
+    const mod = await import("../compiler/wasm_sync_client.js");
+    _runToolSync = mod.runToolSync;
+    _closeWorker = mod.closeWorker;
+  }
+  return tc;
+}
+let _closeWorker = null;
+
+// `tool` is a toolchain entry (see findToolchain). run() dispatches via execTool.
+function run(tool, args) {
+  const cmd = tool[0];
+  const r = execTool(tool, args);
   if (r.error) fail(`${cmd}: ${r.error.message}`);
   if (r.status !== 0) {
     if (r.stdout) process.stderr.write(r.stdout);
@@ -144,8 +179,8 @@ function run(tool, args) {
 
 // like run() but overflow-tolerant: returns {ok, overflows:[{segment,bytes}]}
 function runLink(tool, args) {
-  const [cmd, ...pre] = tool;
-  const r = spawnSync(cmd, [...pre, ...args], { encoding: "utf8" });
+  const cmd = tool[0];
+  const r = execTool(tool, args);
   if (r.error) fail(`${cmd}: ${r.error.message}`);
   const text = `${r.stdout ?? ""}${r.stderr ?? ""}`;
   if (r.status === 0) return { ok: true, overflows: [], text };
@@ -673,9 +708,12 @@ function rebalance(placement, sizes, overflows, sheetBytes, callGraph, usesBg, u
 
 // ---- build ------------------------------------------------------------------
 
-function build(entry, outPath, sheetPath, num8 = false, framesPath = undefined) {
+async function build(entry, outPath, sheetPath, num8 = false, framesPath = undefined) {
   if (!existsSync(entry)) fail(`no such file: ${entry}`);
-  const tc = findToolchain();
+  // resolve + (for wasm) spin up the persistent tool worker before compiling.
+  // Only this top line awaits; the rest of the build stays synchronous, driving
+  // the worker through the blocking sync client (execTool).
+  const tc = await prepareToolchain();
   const projDir = path.dirname(path.resolve(entry));
   const buildDir = path.join(projDir, "build");
   mkdirSync(buildDir, { recursive: true });
@@ -1186,7 +1224,8 @@ if (cmd === "build") {
     i !== fIdx && i !== valueOf(fIdx) &&
     i !== nIdx)[0];
   if (!entry) fail("usage: gtlua build <main.lua> [--sheet foo.gtg] [--frames foo.gsi] [--num8] [-o game.gtr]");
-  build(entry, outPath, sheetPath, nIdx !== -1, framesPath);
+  await build(entry, outPath, sheetPath, nIdx !== -1, framesPath);
+  if (_closeWorker) _closeWorker();
 } else if (cmd === "run") {
   // build then play in a window (bundled core), no external emulator needed.
   const oIdx = rest.indexOf("-o");
@@ -1206,7 +1245,8 @@ if (cmd === "build") {
     gtr = entry;
   } else {
     gtr = path.join(path.dirname(path.resolve(entry)), path.basename(entry, path.extname(entry)) + ".gtr");
-    build(entry, gtr, sIdx !== -1 ? rest[sIdx + 1] : undefined, nIdx !== -1, fIdx !== -1 ? rest[fIdx + 1] : undefined);
+    await build(entry, gtr, sIdx !== -1 ? rest[sIdx + 1] : undefined, nIdx !== -1, fIdx !== -1 ? rest[fIdx + 1] : undefined);
+    if (_closeWorker) _closeWorker();
   }
   try {
     const { runRom } = await import("./gtlua-run.mjs");
