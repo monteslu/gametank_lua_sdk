@@ -69,4 +69,9 @@ void gt_music_play(const SongEvent *events, unsigned char count,
                    const unsigned char *instr4, unsigned char loop);
 void gt_music_stop(void);
 
+/* .gtm2 — Clyde's official linear FM song format (the one midiconvert.js makes
+ * and src/gt/audio/music.c plays). Plays alongside the PICO-8 sfx/pattern path. */
+void gt_gtm2_play(const unsigned char *song, unsigned char loop);
+void gt_gtm2_stop(void);
+
 #endif

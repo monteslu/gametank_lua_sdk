@@ -958,6 +958,7 @@ export function emit(chunk, symbols, file, opts = {}) {
     if (name === "note") return "127";        // default volume
     if (name === "sfx") return "-1";          // sfx(n) -> auto channel
     if (name === "music") return "1";         // music(n) -> loop by default
+    if (name === "song") return "1";          // song(data) -> loop by default
     if (name === "spr") return i >= 5 ? "0" : "1";  // w,h default 1 cell; flips default off
     if (name === "sprf") return "0";          // flipx/flipy default off
     return "-1";                              // optional color -> current
@@ -1398,7 +1399,9 @@ export function emit(chunk, symbols, file, opts = {}) {
             if (sfxConsumed || !node || typeof node !== "object") return;
             if (Array.isArray(node)) { for (const x of node) walk2(x); return; }
             if (node.kind === "call" &&
-                (node.callee?.name === "sfx_bank" || node.callee?.name === "gt.sfx_bank" || node.callee?.name === "music_bank" || node.callee?.name === "gt.music_bank") &&
+                (node.callee?.name === "sfx_bank" || node.callee?.name === "gt.sfx_bank" ||
+                 node.callee?.name === "music_bank" || node.callee?.name === "gt.music_bank" ||
+                 node.callee?.name === "song" || node.callee?.name === "gt.song") &&
                 node.args?.some((a) => a?.kind === "name" && a.name === name)) { sfxConsumed = true; return; }
             for (const [k, v] of Object.entries(node)) if (!WALK_SKIP.has(k)) walk2(v);
           };

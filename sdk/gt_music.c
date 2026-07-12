@@ -77,6 +77,8 @@
 #define gt_sfx_run    GT_MB(gt_sfx_run)
 #define gt_music_play GT_MB(gt_music_play)
 #define gt_music_stop GT_MB(gt_music_stop)
+#define gt_gtm2_play  GT_MB(gt_gtm2_play)
+#define gt_gtm2_stop  GT_MB(gt_gtm2_stop)
 #define gt_music_run_init GT_MB(gt_music_run_init)
 
 /* the MIDI pitch table lives in gt_audio.c (108 notes, 2 bytes each). */
@@ -135,6 +137,18 @@ static const SongEvent *song_end;
 static unsigned char song_delay;               /* frames until next event */
 static unsigned char song_loop;                /* 1 = loop at end */
 static unsigned char song_playing;
+
+/* --- .gtm2 layer (Clyde's official linear FM song format; see gt_gtm2.h) ---
+ * A .gtm2 is a raw byte stream: cfg, 4 instrument bytes, then {delay, mask,
+ * notes...} events. This plays it by walking the bytes and reusing the same
+ * FM primitives (apply_instrument / key_on / key_off / the decay loop). It runs
+ * ALONGSIDE the PICO-8 sfx/pattern/song layers, not instead of them. */
+static const unsigned char *gtm2_cursor;       /* next byte to read */
+static const unsigned char *gtm2_start;        /* first event byte (after header) */
+static unsigned char gtm2_cfg;                 /* bit0 = velocity */
+static unsigned char gtm2_delay;               /* frames until next event */
+static unsigned char gtm2_loop;
+static unsigned char gtm2_playing;
 
 static unsigned char audio_on;                 /* gt_audio_init() ran? */
 
@@ -210,6 +224,8 @@ void gt_music_run_init(void) {
     music_ch_mask = 15;
     song_playing = 0;
     song_cursor = 0;
+    gtm2_playing = 0;
+    gtm2_cursor = 0;
     audio_on = 1;
 }
 
@@ -247,11 +263,46 @@ void gt_music_play(const SongEvent *events, unsigned char count,
     *audio_nmi = 1;
 }
 
+/* Play a .gtm2 song (Clyde's official format). Reads the header (cfg + 4
+ * instrument bytes + first delay), loads the instruments, and arms the stepper.
+ * The event stream is walked by gtm2_step() once per frame in gt_music_tick.
+ * NOTE: the song bytes must be mapped (the build maps its bank before calling
+ * gt_gtm2_play from gt_music_init-time or a fixed-bank shim). */
+void gt_gtm2_play(const unsigned char *song, unsigned char loop) {
+    unsigned char i;
+    if (!audio_on || !song) return;
+    for (i = 0; i < NUM_FM_OPS; ++i) { amps[i] = 0; aram[AMPLITUDE + i] = 128; }
+    note_held_mask = 0;
+    music_ch_mask = 15;
+    gtm2_cfg = *song++;                       /* config flags (bit0 = velocity) */
+    for (i = 0; i < NUM_FM_CH; ++i) {
+        unsigned char idx = *song++;
+        apply_instrument(i, idx >= GT_NUM_INSTR ? 0 : idx);
+    }
+    gtm2_start   = song;                      /* first event byte (after header) */
+    gtm2_cursor  = song;
+    gtm2_delay   = *gtm2_cursor++;            /* the leading delay */
+    gtm2_loop    = loop;
+    gtm2_playing = 1;
+    *audio_nmi = 1;
+}
+
+void gt_gtm2_stop(void) {
+    unsigned char i;
+    if (!audio_on) return;
+    gtm2_playing = 0;
+    gtm2_cursor = 0;
+    for (i = 0; i < NUM_FM_OPS; ++i) { amps[i] = 0; aram[AMPLITUDE + i] = 128; }
+    note_held_mask = 0;
+}
+
 void gt_music_stop(void) {
     unsigned char i;
     if (!audio_on) return;
     song_playing = 0;
     song_cursor = 0;
+    gtm2_playing = 0;
+    gtm2_cursor = 0;
     if (mus_active) {
         mus_active = 0;
         for (i = 0; i < NUM_FM_CH; ++i) sfx_step[i] = 0;
@@ -371,6 +422,49 @@ void gt_music_tick(void) {
                     for (i = 0; i < NUM_FM_OPS; ++i) { amps[i] = 0; aram[AMPLITUDE + i] = 128; }
                     note_held_mask = 0;
                 }
+            }
+        }
+    }
+
+    /* 4. .gtm2 sequencer (Clyde's linear FM song stream). Same shape as the
+     * upstream tick_music event loop: count down the delay, then read one event
+     * {mask, note[,vel] per set channel}, key the voices, then read the delay
+     * to the next event. A 0 delay after an event terminates -> loop or stop. */
+    if (gtm2_playing) {
+        if (gtm2_delay > 0) {
+            --gtm2_delay;
+        } else {
+            unsigned char mask = *gtm2_cursor++;
+            for (ch = 0; ch < NUM_FM_CH; ++ch) {
+                if (mask & ch_mask[ch]) {
+                    unsigned char note = *gtm2_cursor++;
+                    unsigned char vel = (gtm2_cfg & 1) ? *gtm2_cursor++ : 0;
+                    if (music_ch_mask & ch_mask[ch]) {
+                        if (note == 0) {
+                            key_off(ch);
+                        } else {
+                            key_on(ch, (unsigned char)(note - 1));
+                            if (gtm2_cfg & 1) {   /* velocity -> carrier level */
+                                unsigned char op = (unsigned char)((ch << 2) + 3);
+                                amps[op] = vel;
+                                aram[AMPLITUDE + op] = (unsigned char)((vel >> 1) + 128);
+                            }
+                        }
+                    }
+                }
+            }
+            gtm2_delay = *gtm2_cursor++;          /* delay to the next event */
+            if (gtm2_delay == 0) {                /* terminator reached */
+                if (gtm2_loop) {
+                    gtm2_cursor = gtm2_start;
+                    gtm2_delay = *gtm2_cursor++;
+                } else {
+                    gtm2_playing = 0;
+                    for (i = 0; i < NUM_FM_OPS; ++i) { amps[i] = 0; aram[AMPLITUDE + i] = 128; }
+                    note_held_mask = 0;
+                }
+            } else {
+                --gtm2_delay;
             }
         }
     }

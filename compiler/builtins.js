@@ -40,6 +40,10 @@ export const BUILTINS = {
   music_bank: { params: [["array8", false]], ret: "void", c: "gt_music_bank", audio: true },
   // `loop` is a truthy flag (default on): music(0) loops, music(0,false) plays once.
   music: { params: [["int", false], ["flip", true]], ret: "void", c: "gt_music", audio: true },
+  // song(data, [loop]) — play a native .gtm2 FM song (Clyde's format); data is a
+  // hexdata() blob. loop defaults on. gt.song_stop() halts it. See docs/MUSIC.md.
+  song: { params: [["array8", false], ["flip", true]], ret: "void", c: "gt_gtm2_play", audio: true },
+  song_stop: { params: [], ret: "void", c: "gt_gtm2_stop", audio: true },
 
   // ---- math ------------------------------------------------------------------
   flr:   { params: [["num", false]], ret: "int", c: null, special: "flr" },

@@ -199,6 +199,9 @@ void gt_sfx(int n, int ch);
 void gt_sfx_bank(const unsigned char *bank);
 void gt_music_bank(const unsigned char *bank);
 void gt_music(int n, int loop);
+/* .gtm2 native FM song (Clyde's format); song(n) in Lua. See gt_music.h. */
+void gt_gtm2_play(const unsigned char *song, unsigned char loop);
+void gt_gtm2_stop(void);
 void gt_p8_spr(int n, int x, int y, int w, int h, int flip);
 
 /* PCM audio path (gt_pcm.c) — bit-exact sample playback via the ACP PCM

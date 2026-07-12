@@ -104,8 +104,9 @@ Two paths:
 
 Because it's a different synth, expect to tune: the imported version is a starting
 point, and hand-picking instruments per effect usually sounds better than the
-automatic mapping. (For music-forward games, authoring natively for the FM synth
-is the better long-term path — that native sound format is on the roadmap.)
+automatic mapping. For music-forward games, **authoring natively** for the FM synth
+is the better fit — write songs in the console's own `.gtm2` format (from MIDI, or
+by hand) and play them with `song()`. See [`MUSIC.md`](MUSIC.md).
 
 ## 4. Build and run
 
