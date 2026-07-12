@@ -16,6 +16,7 @@
 // Build cc65 into tools/ with: scripts/install_tools.sh
 
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -993,6 +994,12 @@ async function build(entry, outPath, sheetPath, num8 = false, framesPath = undef
 
   let linked = null;
   let lastOverflows = [];
+  // In-RAM memos for the placement ladder: the game unit + stubs are recompiled
+  // on every attempt, but many attempts regenerate byte-identical C (a placement
+  // move that doesn't change any cross-bank call boundary). Key the .o on the
+  // generated source bytes so a repeat is a Map lookup, not a ~230ms recompile.
+  const gameObjMemo = new Map();
+  const stubObjMemo = new Map();
   // The min/max/mid ternary inlining is a speed-for-size trade. A game at the
   // bank-capacity cliff can fail to place WITH it but link fine WITHOUT it -
   // so if placement is still failing halfway through the attempts, fall back
@@ -1069,10 +1076,27 @@ async function build(entry, outPath, sheetPath, num8 = false, framesPath = undef
     const compileAndLink = (placementNow) => {
       result = compileLua(entry, { banked: true, placement: placementNow, midInline, inliner: fnInline, num8, rndInt });
       writeFileSync(B(`${name}.c`), result.c);
-      cc(B(`${name}.c`), B(`${name}.s`));
-      as(B(`${name}.s`), B(`${name}.o`));
-      writeFileSync(B("stubs.s"), (result.stubs ?? "; no cross-bank calls\n") + "\n");
-      as(B("stubs.s"), B("stubs.o"));
+      // Memoize the game-unit .o by the GENERATED C bytes. The placement ladder
+      // recompiles main.c on every attempt, but many placement changes produce
+      // IDENTICAL C (they only move a function whose calls already stayed within
+      // a bank), so the ~230ms cc65 recompile is pure waste. Identical C -> the
+      // same .o, so key the in-RAM memo on a hash of result.c. (RAM only; the
+      // game .o is a few KB.) Same for the tiny stubs.s -> stubs.o.
+      const cKey = createHash("sha1").update(result.c).digest("hex");
+      const cHit = gameObjMemo.get(cKey);
+      if (cHit) {
+        writeFileSync(B(`${name}.o`), cHit);
+      } else {
+        cc(B(`${name}.c`), B(`${name}.s`));
+        as(B(`${name}.s`), B(`${name}.o`));
+        gameObjMemo.set(cKey, readFileSync(B(`${name}.o`)));
+      }
+      const stubsSrc = (result.stubs ?? "; no cross-bank calls\n") + "\n";
+      writeFileSync(B("stubs.s"), stubsSrc);
+      const sKey = createHash("sha1").update(stubsSrc).digest("hex");
+      const sHit = stubObjMemo.get(sKey);
+      if (sHit) writeFileSync(B("stubs.o"), sHit);
+      else { as(B("stubs.s"), B("stubs.o")); stubObjMemo.set(sKey, readFileSync(B("stubs.o"))); }
       return runLink(tc.ld65, [
         "-C", path.join(SDK, "gametank_flash2m.cfg"),
         "-o", B(`${name}.banks`),
