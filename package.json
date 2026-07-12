@@ -3,6 +3,13 @@
   "private": true,
   "type": "module",
   "bin": { "gtlua": "bin/gtlua.js" },
+  "dependencies": {
+    "romdev-toolchain-cc65": "0.1.2",
+    "romdev-core-gametank": "0.2.0"
+  },
+  "optionalDependencies": {
+    "@kmamal/sdl": "^0.11.13"
+  },
   "scripts": {
     "test": "node --test 'test/**/*.test.js'",
     "bench": "node bench/run.mjs"

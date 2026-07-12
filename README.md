@@ -40,25 +40,44 @@ end
 ## Requirements
 
 - [Node.js](https://nodejs.org/) 18+ (runs the compiler)
-- the cc65 toolchain - either on your `PATH`, or built into the repo with
-  `scripts/install_tools.sh`
+- **nothing else** - the C toolchain (cc65) and the emulator both come bundled
+  as WebAssembly via `npm install`. No native tools to build or install.
 
-## Quickstart
+  (Optional: if you'd rather use a native cc65 - because you already have one, or
+  want the source-clone path - the SDK uses it automatically when present. See
+  "Build backends" below.)
 
-This is a **clone-and-build SDK** (like the official GameTank C SDK) - not an
-npm package. Clone it, write your game as a `.lua` file, and build:
+## Quickstart (zero install)
+
+Clone it, install once, and you can **build and run** GameTank games with no
+native toolchain and no separate emulator:
 
 ```sh
 git clone https://github.com/monteslu/gametank_lua_sdk && cd gametank_lua_sdk
-scripts/install_tools.sh                 # builds cc65 into tools/ (once)
+npm install                              # pulls the bundled cc65 WASM + emulator
 
-# build one of the examples to confirm your setup:
+# build one of the examples to a .gtr cartridge:
 node bin/gtlua.js build examples/orbit/main.lua
-# -> examples/orbit/main.gtr, in under 100 ms
+# -> examples/orbit/main.gtr, in ~2 s (first) / instant after
+
+# ...or build AND play it in a window, no emulator install needed:
+node bin/gtlua.js run examples/orbit/main.lua
 ```
 
-Run the `.gtr` in the [emulator](https://github.com/clydeshaffer/GameTankEmulator),
-on [gametank.zone](https://gametank.zone/), or flash it to a cartridge.
+`gtlua run` opens a window (arrows move, Z/X/C are the buttons, Enter is start).
+The `.gtr` it builds also runs in the
+[GameTankEmulator](https://github.com/clydeshaffer/GameTankEmulator), on
+[gametank.zone](https://gametank.zone/), or flashed to a real cartridge via
+[GTFO](https://github.com/clydeshaffer/gtfo).
+
+### Build backends
+
+By default the build uses **native cc65 if it's on your `PATH` or built into
+`tools/` (via `scripts/install_tools.sh`), otherwise the bundled WASM cc65** from
+`npm install`. Both produce byte-for-byte identical carts. Force one with
+`GTLUA_TOOLCHAIN=wasm` or `GTLUA_TOOLCHAIN=native`. So this works as a pure
+clone-and-build SDK (like the official GameTank C SDK) too - install a native
+cc65 and skip `npm install` if you prefer.
 
 ### Start your own game
 

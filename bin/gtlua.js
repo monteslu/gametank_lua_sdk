@@ -40,41 +40,98 @@ function fail(msg) {
   process.exit(1);
 }
 
+// The toolchain object gives each tool as an argv PREFIX (array) so run()/
+// runLink() can splat it: native cc65 is ["/path/cc65"], the WASM backend is
+// ["node", "bin/wasm-tool.mjs", "cc65"]. Everything downstream stays sync.
+function nativeToolchain(home) {
+  return {
+    kind: "native",
+    cc65: [path.join(home, "bin", "cc65")],
+    ca65: [path.join(home, "bin", "ca65")],
+    ld65: [path.join(home, "bin", "ld65")],
+    lib: path.join(home, "lib", "none.lib"),
+    asminc: path.join(home, "asminc"),
+  };
+}
+
+// The bundled-WASM backend (romdev-toolchain-cc65). Zero native install: each
+// tool runs as `node bin/wasm-tool.mjs <tool>`. lib/asminc resolve out of the
+// installed package's share tree.
+function wasmToolchain() {
+  const share = path.join(REPO, "node_modules", "romdev-toolchain-cc65", "share", "cc65");
+  const runner = path.join(REPO, "bin", "wasm-tool.mjs");
+  return {
+    kind: "wasm",
+    cc65: [process.execPath, runner, "cc65"],
+    ca65: [process.execPath, runner, "ca65"],
+    ld65: [process.execPath, runner, "ld65"],
+    lib: path.join(share, "lib", "none.lib"),
+    asminc: path.join(share, "asminc"),
+  };
+}
+
+function wasmToolchainInstalled() {
+  return existsSync(path.join(REPO, "node_modules", "romdev-toolchain-cc65", "wasm", "cc65.js"));
+}
+
+// Selection order (first hit wins), with explicit override via GTLUA_TOOLCHAIN:
+//   GTLUA_TOOLCHAIN=native|wasm  -> force that backend
+//   otherwise: native if GTLUA_CC65_HOME / tools/cc65 / PATH cc65 is present,
+//   else the bundled WASM if installed. So a `npm install` clone "just builds"
+//   with zero native tools, and a source clone with cc65 on PATH uses native.
 function findToolchain() {
-  const candidates = [];
-  if (process.env.GTLUA_CC65_HOME) candidates.push(process.env.GTLUA_CC65_HOME);
-  candidates.push(path.join(REPO, "tools", "cc65"));
-  for (const home of candidates) {
-    if (existsSync(path.join(home, "bin", "cc65"))) {
+  const forced = process.env.GTLUA_TOOLCHAIN;
+  if (forced === "wasm") {
+    if (!wasmToolchainInstalled()) fail("GTLUA_TOOLCHAIN=wasm but romdev-toolchain-cc65 is not installed (run: npm install).");
+    return wasmToolchain();
+  }
+
+  const findNative = () => {
+    const candidates = [];
+    if (process.env.GTLUA_CC65_HOME) candidates.push(process.env.GTLUA_CC65_HOME);
+    candidates.push(path.join(REPO, "tools", "cc65"));
+    for (const home of candidates) {
+      if (existsSync(path.join(home, "bin", "cc65"))) return nativeToolchain(home);
+    }
+    // fall back to PATH (cc65 --print-target-path locates lib/asminc)
+    const probe = spawnSync("cc65", ["--version"], { encoding: "utf8" });
+    if (probe.status === 0 || probe.status === 1) {
+      const tp = spawnSync("cc65", ["--print-target-path"], { encoding: "utf8" });
+      const targetPath = (tp.stdout || "").trim();
+      const share = targetPath ? path.dirname(targetPath) : null;
       return {
-        cc65: path.join(home, "bin", "cc65"),
-        ca65: path.join(home, "bin", "ca65"),
-        ld65: path.join(home, "bin", "ld65"),
-        lib: path.join(home, "lib", "none.lib"),
-        asminc: path.join(home, "asminc"),
+        kind: "native",
+        cc65: ["cc65"], ca65: ["ca65"], ld65: ["ld65"],
+        lib: share ? path.join(share, "lib", "none.lib") : "none.lib",
+        asminc: share ? path.join(share, "asminc") : null,
       };
     }
+    return null;
+  };
+
+  if (forced === "native") {
+    const n = findNative();
+    if (n) return n;
+    fail("GTLUA_TOOLCHAIN=native but no cc65 found (scripts/install_tools.sh, or put cc65 on PATH).");
   }
-  // fall back to PATH (cc65 --print-target-path locates lib/asminc)
-  const probe = spawnSync("cc65", ["--version"], { encoding: "utf8" });
-  if (probe.status === 0 || probe.status === 1) {
-    const tp = spawnSync("cc65", ["--print-target-path"], { encoding: "utf8" });
-    const targetPath = (tp.stdout || "").trim();
-    const share = targetPath ? path.dirname(targetPath) : null;
-    return {
-      cc65: "cc65", ca65: "ca65", ld65: "ld65",
-      lib: share ? path.join(share, "lib", "none.lib") : "none.lib",
-      asminc: share ? path.join(share, "asminc") : null,
-    };
-  }
+
+  const native = findNative();
+  if (native) return native;
+  if (wasmToolchainInstalled()) return wasmToolchain();
+
   fail(
-    "cc65 not found. Install it with scripts/install_tools.sh (builds into tools/cc65)\n" +
-    "or put cc65/ca65/ld65 on your PATH."
+    "No cc65 toolchain found. Either:\n" +
+    "  - run `npm install` (uses the bundled cc65 WASM, no native tools needed), or\n" +
+    "  - run scripts/install_tools.sh (builds native cc65 into tools/cc65), or\n" +
+    "  - put cc65/ca65/ld65 on your PATH."
   );
 }
 
-function run(cmd, args) {
-  const r = spawnSync(cmd, args, { encoding: "utf8" });
+// `tool` is an argv-prefix array (see findToolchain). run() splats it so the
+// same call works for a native binary or the `node wasm-tool.mjs <tool>` shim.
+function run(tool, args) {
+  const [cmd, ...pre] = tool;
+  const r = spawnSync(cmd, [...pre, ...args], { encoding: "utf8" });
   if (r.error) fail(`${cmd}: ${r.error.message}`);
   if (r.status !== 0) {
     if (r.stdout) process.stderr.write(r.stdout);
@@ -86,8 +143,9 @@ function run(cmd, args) {
 }
 
 // like run() but overflow-tolerant: returns {ok, overflows:[{segment,bytes}]}
-function runLink(cmd, args) {
-  const r = spawnSync(cmd, args, { encoding: "utf8" });
+function runLink(tool, args) {
+  const [cmd, ...pre] = tool;
+  const r = spawnSync(cmd, [...pre, ...args], { encoding: "utf8" });
   if (r.error) fail(`${cmd}: ${r.error.message}`);
   const text = `${r.stdout ?? ""}${r.stderr ?? ""}`;
   if (r.status === 0) return { ok: true, overflows: [], text };
@@ -1129,6 +1187,47 @@ if (cmd === "build") {
     i !== nIdx)[0];
   if (!entry) fail("usage: gtlua build <main.lua> [--sheet foo.gtg] [--frames foo.gsi] [--num8] [-o game.gtr]");
   build(entry, outPath, sheetPath, nIdx !== -1, framesPath);
+} else if (cmd === "run") {
+  // build then play in a window (bundled core), no external emulator needed.
+  const oIdx = rest.indexOf("-o");
+  const sIdx = rest.indexOf("--sheet");
+  const fIdx = rest.indexOf("--frames");
+  const nIdx = rest.indexOf("--num8");
+  const valueOf = (i) => (i === -1 ? -2 : i + 1);
+  const entry = rest.filter((a, i) =>
+    i !== oIdx && i !== valueOf(oIdx) &&
+    i !== sIdx && i !== valueOf(sIdx) &&
+    i !== fIdx && i !== valueOf(fIdx) &&
+    i !== nIdx)[0];
+  if (!entry) fail("usage: gtlua run <main.lua> [--sheet foo.gtg] [--frames foo.gsi] [--num8]");
+  // if given a prebuilt .gtr, run it directly; else build to a temp .gtr first.
+  let gtr;
+  if (entry.endsWith(".gtr")) {
+    gtr = entry;
+  } else {
+    gtr = path.join(path.dirname(path.resolve(entry)), path.basename(entry, path.extname(entry)) + ".gtr");
+    build(entry, gtr, sIdx !== -1 ? rest[sIdx + 1] : undefined, nIdx !== -1, fIdx !== -1 ? rest[fIdx + 1] : undefined);
+  }
+  try {
+    const { runRom } = await import("./gtlua-run.mjs");
+    await runRom(gtr);
+  } catch (e) {
+    if (e && e.code === "SDL_UNAVAILABLE") {
+      // graceful fallback: hand the built .gtr to an external emulator.
+      const runner = path.join(REPO, "scripts", process.platform === "win32" ? "run_emulator.cmd" : "run_emulator.sh");
+      const r = spawnSync(runner, [gtr], { stdio: "inherit" });
+      if (r.status !== 0) {
+        fail(
+          "Could not open a window (the optional @kmamal/sdl dependency isn't\n" +
+          "installed on this platform), and no external GameTank emulator was found.\n" +
+          `Your cart built fine: ${gtr}\n` +
+          "Run it with an emulator, or set GAMETANK_EMULATOR / put one on PATH."
+        );
+      }
+    } else {
+      fail(`gtlua run: ${e?.message ?? e}`);
+    }
+  }
 } else if (cmd === "c") {
   if (!rest[0]) fail("usage: gtlua c <main.lua>");
   process.stdout.write(compileLua(rest[0]).c);
@@ -1136,7 +1235,8 @@ if (cmd === "build") {
   const { gfxCli } = await import("./gtlua-gfx.mjs");
   gfxCli(rest);
 } else {
-  fail("usage: gtlua build <main.lua> [--sheet foo.gtg] [-o game.gtr]\n" +
+  fail("usage: gtlua build <main.lua> [--sheet foo.gtg] [--frames foo.gsi] [--num8] [-o game.gtr]\n" +
+    "       gtlua run   <main.lua|game.gtr> [--sheet ...] [--num8]   build + play in a window\n" +
     "       gtlua gfx import <in.png|in.p8|in.gtg> [-o out.gtg]\n" +
     "       gtlua gfx export <in.gtg> [-o out.png]\n" +
     "       gtlua c <main.lua>");
