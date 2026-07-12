@@ -5,7 +5,7 @@ interpreter, no VM — your Lua becomes machine code. The GameTank's 128×128
 screen is the same size as PICO-8's, so coordinates and sprite sheets transfer
 1:1. Measured against PICO-8 v0.2.7.
 
-Build: `gtlua build main.lua --sheet gfx.bin -o game.gtr`
+Build: `gtlua build main.lua --sheet gfx.gtg -o game.gtr`
 
 > **New to PICO-8?** This page maps gt-lua *against* PICO-8. If you don't already
 > know PICO-8, read the standalone [`CHEATSHEET.md`](CHEATSHEET.md) instead — it's
@@ -288,7 +288,7 @@ function _draw()
 end
 ```
 
-`gtlua build main.lua --sheet gfx.bin -o game.gtr` → runs in the emulator, on
+`gtlua build main.lua --sheet gfx.gtg -o game.gtr` → runs in the emulator, on
 gametank.zone, and on real hardware via GTFO.
 
 ---

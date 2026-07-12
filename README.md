@@ -65,6 +65,12 @@ one-line `if (cond) stmt` / `while (cond) stmt`, `!=`, `\` floor division,
 `//` comments, hex/binary literals with fractions (`0x11.4`, `0b101.1`),
 button glyphs (`⬅️➡️⬆️⬇️🅾️❎`), and multiple assignment (`x, y = 64, 32`).
 
+**Have a PICO-8 cart to bring over?** [docs/PORTING.md](docs/PORTING.md) is the
+step-by-step walkthrough (import the art with `gtlua gfx import`, the sound with
+`p8sfx`, and what changes because the GameTank is different hardware); the
+per-function compatibility map is
+[docs/CHEATSHEET_FOR_PICO8_USERS.md](docs/CHEATSHEET_FOR_PICO8_USERS.md).
+
 ## API (v0.2)
 
 | | |
