@@ -18,24 +18,43 @@ screen is the same 128×128 as PICO-8's, and the API is PICO-8-shaped
 feel at home - but gt-lua is its own thing targeting real GameTank hardware, not
 a PICO-8 clone. If you don't know PICO-8, you don't need to.
 
+## Your first game
+
+This is a complete GameTank game. No assets, no boilerplate - one `main.lua`:
+
 ```lua
-local angle = 0
-local radius = 40
-
-function _update60()
-  angle += 0.008
-  if (btn(0)) radius -= 1
-  if (btn(1)) radius += 1
-  radius = mid(8, radius, 58)
-end
-
 function _draw()
-  cls(1)
-  circfill(64, 64, 10, 9)
-  circfill(64 + flr(cos(angle) * radius),
-           64 + flr(sin(angle) * radius), 5, 8)
+  cls(1)                          -- dark blue background
+
+  print("hello gametank", 38, 14, 14)   -- title text, pink, near the top
+
+  -- a smiley face, drawn entirely with shapes (no sprite sheet needed)
+  circfill(64, 72, 26, 10)        -- head: a big yellow circle
+  rectfill(53, 62, 58, 68, 0)     -- left eye: a black square
+  rectfill(70, 62, 75, 68, 0)     -- right eye
+  circfill(64, 82, 9, 0)          -- mouth: a black circle
 end
 ```
+
+Build it and play it in a window:
+
+```sh
+node bin/gtlua.js run examples/hello/main.lua
+```
+
+<p align="center">
+  <img src="docs/img/hello.png" width="384" alt="hello gametank: a yellow smiley face on a dark blue screen">
+</p>
+
+Or compile it to a `.gtr` cartridge (to run in an emulator or flash to hardware):
+
+```sh
+node bin/gtlua.js build examples/hello/main.lua -o hello.gtr
+```
+
+That's the whole loop: write `main.lua`, `run` it, ship the `.gtr`. Colors are
+PICO-8-style indices `0-15` (`0` black, `1` dark-blue, `10` yellow, `14` pink);
+`gt.rgb()` reaches the full 256-color GameTank palette when you want more.
 
 ## Requirements
 
