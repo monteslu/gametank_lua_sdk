@@ -6,9 +6,9 @@ one-channel player. Ports play their game's ACTUAL sfx instead of
 hand-approximated `gt.note` calls.
 
 ```
-node scripts/p8sfx.mjs carts/newleste-base.p8 --list          # what's in the cart
-node scripts/p8sfx.mjs carts/newleste-base.p8 --sfx 18,20,22  # jump, dash, land
-node scripts/p8sfx.mjs carts/cherrybomb-extract/cart.bin --sfx 7 --prefix jingle
+node bin/p8sfx.mjs your-cart.p8 --list            # what's in the cart
+node bin/p8sfx.mjs your-cart.p8 --sfx 18,20,22    # pick specific effects
+node bin/p8sfx.mjs your-cart.bin --sfx 7 --prefix jingle   # from a 32 KB .bin
 ```
 
 Zero-dep node ESM. `--help` prints the full option list.
@@ -53,10 +53,9 @@ event count and RAM bytes.
   sit at the END of the record: editor mode, speed, loop start, loop end.
 
 Verification: `--roundtrip` re-encodes a text cart through the binary
-layout and re-parses it - bit-identical for all three text carts in
-`carts/` (newleste 63 sfx, minima 64, driftmania 63). The binary path was
-additionally sanity-checked against real `.p8.png` extracts (celeste2,
-cherry bomb, just-one-boss): waveforms are coherent per sfx, speeds/loops
+layout and re-parses it - bit-identical on the text carts it was developed
+against. The binary path was additionally sanity-checked against real
+`.p8.png` extracts: waveforms are coherent per sfx, speeds/loops
 sane, and a converted cherrybomb jingle plays the right melody (see
 Validation).
 

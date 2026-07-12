@@ -205,6 +205,11 @@ cc65 startup/linker files) · `bin/gtlua.js` CLI · `tools/` cc65 (built by
 | [docs/SPEC.md](docs/SPEC.md) · [docs/PICO8.md](docs/PICO8.md) | language spec · design doc + roadmap |
 | [PROVENANCE.md](PROVENANCE.md) | attribution (Clyde Shaffer's GameTank SDK) |
 
+The `examples/` in this repo are small, self-contained gt-lua programs (orbit,
+mathcheck, pad-square, audio) - the quickest way to see the API in use. Full
+games built with gt-lua live in their own repos (each a derivative work under
+its own license): Combo Pool, newleste, Cherry Bomb, and more.
+
 ## Making it fast
 
 The GameTank is ~1000× slower than the machine PICO-8 runs on, so a naive port

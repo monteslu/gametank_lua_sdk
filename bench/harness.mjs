@@ -31,7 +31,7 @@ const SDK = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 // GT_BENCH_CORE for a different build path.
 const CORE = process.env.GT_BENCH_CORE ||
   path.join(SDK, "..", "gametank-libretro", "gametank_libretro.js");
-const SHEET = path.join(SDK, "ports/driftmania/gfx.bin");
+const SHEET = path.join(SDK, "bench/bench-sheet.bin");
 const MARK_ADDR = 0x1000;
 
 function cartSrc({ setup = "", call = "", reps = 1, globals = "" }) {
