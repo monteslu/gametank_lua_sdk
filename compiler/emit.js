@@ -876,7 +876,10 @@ export function emit(chunk, symbols, file, opts = {}) {
     if (b.special === "print") {
       const x = expr(e.args[1], "int");
       const y = expr(e.args[2], "int");
-      const c = e.args[3] ? expr(e.args[3], "int") : "-1";
+      // color must be baked p8-index -> GT byte, same as every draw builtin
+      // (the runtime's resolve_color treats its arg as an ALREADY-baked byte).
+      // Passing the raw 0-15 index here rendered every print color wrong.
+      const c = e.args[3] ? argAt(e, 3, "color") : "-1";
       if (e.printKind === "str") {
         const esc = String(e.args[0].value).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
         return `gt_p8_print("${esc}", ${x}, ${y}, ${c})`;

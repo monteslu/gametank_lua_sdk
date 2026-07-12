@@ -71,6 +71,16 @@ test("spr with flip_x/flip_y packs into gt_a5", () => {
   assert.match(c, /gt_a5 = \(\(1\) \? 1 : 0\) \| \(\(\(0\) \? 1 : 0\) << 1\)/);
 });
 
+test("print bakes its color index to the GameTank byte (like every draw call)", () => {
+  // regression: print used to pass the raw 0-15 index, so resolve_color (which
+  // expects an already-baked byte) rendered every non-white print color wrong.
+  const c = cOf('function _draw()\n  print("hi", 20, 20, 14)\nend\n');
+  assert.match(c, /gt_p8_print\("hi", 20, 20, 94\)/);   // 14 (pink) -> 0x5E = 94
+  // no color arg -> -1 (use draw_color), unchanged
+  const c2 = cOf('function _draw()\n  print("x", 1, 1)\nend\n');
+  assert.match(c2, /gt_p8_print\("x", 1, 1, -1\)/);
+});
+
 test("button glyphs lex as indices", () => {
   const c = cOf("local x = 0\nfunction _update60()\n  if (btnp(🅾️)) x += 1\n  if (btnp(❎)) x -= 1\nend\nfunction _draw()\nend\n");
   // 🅾️=index 4 (mask 16), ❎=index 5 (mask 4096) on the newpress word
