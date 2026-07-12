@@ -1021,6 +1021,54 @@ async function build(entry, outPath, sheetPath, num8 = false, framesPath = undef
   fixedHeadroom = 768;
   let workPlacement = placement;
   let rndInt = true;
+
+  // Placement replay: the winning bank layout is STABLE across ordinary code
+  // edits (a 1-line change moves 0 functions between banks - measured), but the
+  // ladder re-searches it from scratch every build (~6-9 game-unit recompiles).
+  // So persist the last winning layout and, on the NEXT build, TRY IT FIRST: the
+  // game unit still recompiles (the code changed - that's correct), but against
+  // the known-good placement, so it links in ONE pass. Only when the layout no
+  // longer fits (a big structural change) do we fall back to the full search.
+  // NOT keyed on source - it's "the last placement that worked here", not a
+  // memo of a specific build; validated by actually linking, so never a
+  // correctness risk. Lives in build/.placement.json (per project).
+  const replayPath = path.join(buildDir, ".placement.json");
+  let replay = null;
+  if (existsSync(replayPath)) {
+    try {
+      const r = JSON.parse(readFileSync(replayPath, "utf8"));
+      // Replay only if the saved layout still describes THIS game: every placed
+      // function must still exist, and every currently-placeable function must be
+      // covered (a new/removed function means the layout is stale -> full search).
+      // callGraph includes fixed callbacks that aren't in the placement map, so
+      // compare against the set of functions initialPlacement actually assigns.
+      const placeable = new Set(Object.keys(initialPlacement(result.callGraph)));
+      const saved = new Set(Object.keys(r.placement ?? {}));
+      if (r.placement && saved.size === placeable.size &&
+          [...placeable].every((k) => saved.has(k))) {
+        replay = r;
+      }
+    } catch { /* corrupt - ignore */ }
+  }
+  const saveReplay = () => {
+    try {
+      writeFileSync(replayPath, JSON.stringify({
+        placement: workPlacement, midInline, fnInline, rndInt, fixedHeadroom, apiDefs,
+      }));
+    } catch { /* best effort */ }
+  };
+
+  // Fast path: replay the saved layout in ONE pass. If it links, we're done -
+  // skip the entire search AND the hot-edge repair (the saved layout is already
+  // repaired). If it doesn't link, discard it and fall into the normal ladder.
+  if (replay) {
+    midInline = replay.midInline; fnInline = replay.fnInline; rndInt = replay.rndInt;
+    fixedHeadroom = replay.fixedHeadroom;
+    apiDefs.length = 0; apiDefs.push(...replay.apiDefs);
+    ccAsMemo(path.join(SDK, "gt_api.c"), B("gt_api.s"), B("gt_api.o"), ["-DGT_BANKED", ...apiDefs]);
+    workPlacement = { ...replay.placement };
+  }
+
   for (let attempt = 0; attempt < 48; attempt++) {
     // size-relief ladder: 0-7 everything on -> 8-15 function inlining off
     // (mid ternaries STAY: they're smaller than the cdecl mid() call) ->
@@ -1133,6 +1181,10 @@ async function build(entry, outPath, sheetPath, num8 = false, framesPath = undef
 
     if (link.ok) {
       linked = B(`${name}.banks`);
+      // Replay fast path: the saved layout linked on the first pass. It's ALREADY
+      // hot-edge-repaired (we saved the post-repair layout), so re-running repair
+      // would just re-derive it (or diverge). Accept it as-is and finish.
+      if (replay && attempt === 0) { break; }
       // ---- hot-edge repair: the packer found A layout; now heal the worst
       // per-frame cross-bank edges (each costs a ~100-cycle stub every call,
       // every frame). Move the callee into the caller's bank; keep every
@@ -1215,7 +1267,19 @@ async function build(entry, outPath, sheetPath, num8 = false, framesPath = undef
         // artifacts on disk must match the accepted placement
         if (dirty) compileAndLink(workPlacement);
       }
+      saveReplay();   // remember this winning (post-repair) layout for next build
       break;
+    }
+    // Replay miss: the saved layout no longer links (a big enough code change).
+    // Discard it and restart the search from a fresh placement, exactly as a
+    // no-replay build would - so a stale layout only ever costs one extra pass.
+    if (replay && attempt === 0) {
+      replay = null;
+      midInline = true; fnInline = true; rndInt = true; fixedHeadroom = 768;
+      workPlacement = initialPlacement(result.callGraph);
+      ccAsMemo(path.join(SDK, "gt_api.c"), B("gt_api.s"), B("gt_api.o"), ["-DGT_BANKED", ...apiDefs]);
+      attempt = -1;   // loop ++ -> restart at attempt 0 with the fresh layout
+      continue;
     }
     lastOverflows = link.overflows;
     // Cycle-skip: this placement's C was already tried and still failed. The
