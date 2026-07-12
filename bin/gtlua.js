@@ -759,6 +759,13 @@ async function build(entry, outPath, sheetPath, num8 = false, framesPath = undef
     objMemo.set(key, readFileSync(obj));
   };
 
+  // If a winning FLASH2M layout is already cached for this project, we KNOW the
+  // cart overflows 32 KB - so skip the flat-32K attempt (compile every unit +
+  // link, all of which the banked path redoes) and go straight to banked. This
+  // is the single biggest rebuild cost: without it every unit compiles TWICE.
+  // The flat main.c compile is kept (section 4 reads its .s for function sizes).
+  const flash2mHint = existsSync(path.join(buildDir, ".placement.json"));
+
   // 1. lua -> C (flat 32 KB attempt first)
   let result = compileLua(entry, { num8 });
   const usesAudio = result.c.includes("gt_audio_init(");
@@ -814,19 +821,26 @@ async function build(entry, outPath, sheetPath, num8 = false, framesPath = undef
   writeFileSync(B(`${name}.c`), result.c);
   writeFileSync(B("sheet.c"), makeSheetC(sheetPath, false, framesPath, gsheetCompose));
 
-  // 2. compile + assemble everything
+  // 2. compile + assemble everything.
+  // main.c is always needed (its .s feeds the FLASH2M function-size model).
   cc(B(`${name}.c`), B(`${name}.s`));
-  cc(path.join(SDK, "gt_api.c"), B("gt_api.s"), apiDefs);
-  cc(path.join(SDK, "gt_fixed.c"), B("gt_fixed.s"));
-  cc(path.join(SDK, "gt_math.c"), B("gt_math.s"));
-  if (usesBg) cc(path.join(SDK, "gt_bg.c"), B("gt_bg.s"), [
-    ...(usesAtlas ? ["-DGT_BG_ATLAS"] : []),
-    ...((result.c.includes("gt_bg_compose(") || usesTrack) ? ["-DGT_BG_COMPOSE_ON"] : []),
-    ...(usesTrack ? ["-DGT_TRACK_CACHE"] : []),
-    ...(gsheetCompose ? ["-DGT_GSHEET_COMPOSE"] : []),
-  ]);
-  if (usesAudio) cc(path.join(SDK, "gt_audio.c"), B("gt_audio.s"));
-  if (usesMusic) cc(path.join(SDK, "gt_music.c"), B("gt_music.s"));
+  // The SDK .c units here are the NON-banked (flat-32K) builds. When we already
+  // know the cart is FLASH2M (a layout is cached), the banked path recompiles
+  // all of them with -DGT_BANKED, so these flat compiles are pure waste - skip
+  // them. main.c + sheet stay (sheet.o is reused by the banked link).
+  if (!flash2mHint) {
+    cc(path.join(SDK, "gt_api.c"), B("gt_api.s"), apiDefs);
+    cc(path.join(SDK, "gt_fixed.c"), B("gt_fixed.s"));
+    cc(path.join(SDK, "gt_math.c"), B("gt_math.s"));
+    if (usesBg) cc(path.join(SDK, "gt_bg.c"), B("gt_bg.s"), [
+      ...(usesAtlas ? ["-DGT_BG_ATLAS"] : []),
+      ...((result.c.includes("gt_bg_compose(") || usesTrack) ? ["-DGT_BG_COMPOSE_ON"] : []),
+      ...(usesTrack ? ["-DGT_TRACK_CACHE"] : []),
+      ...(gsheetCompose ? ["-DGT_GSHEET_COMPOSE"] : []),
+    ]);
+    if (usesAudio) cc(path.join(SDK, "gt_audio.c"), B("gt_audio.s"));
+    if (usesMusic) cc(path.join(SDK, "gt_music.c"), B("gt_music.s"));
+  }
   cc(B("sheet.c"), B("sheet.s"));
 
   as(path.join(SDK, "crt0.s"), B("crt0.o"));
@@ -858,12 +872,16 @@ async function build(entry, outPath, sheetPath, num8 = false, framesPath = undef
   // banked tier gets the bank-0 segment build of the glyph run (scarce
   // fixed bank stays clear); the flat 32K tier keeps plain CODE
   as(path.join(SDK, "gt_print_asm.s"), B("gt_print_asm_b.o"), ["-D", "GT_BANKED"]);
-  as(B("gt_api.s"), B("gt_api.o"));
-  as(B("gt_fixed.s"), B("gt_fixed.o"));
-  as(B("gt_math.s"), B("gt_math.o"));
-  if (usesBg) as(B("gt_bg.s"), B("gt_bg.o"));
-  if (usesAudio) as(B("gt_audio.s"), B("gt_audio.o"));
-  if (usesMusic) as(B("gt_music.s"), B("gt_music.o"));
+  // Flat SDK .o (from the non-banked .s above) - skipped when FLASH2M-hinted,
+  // same as their compiles; the banked path builds its own.
+  if (!flash2mHint) {
+    as(B("gt_api.s"), B("gt_api.o"));
+    as(B("gt_fixed.s"), B("gt_fixed.o"));
+    as(B("gt_math.s"), B("gt_math.o"));
+    if (usesBg) as(B("gt_bg.s"), B("gt_bg.o"));
+    if (usesAudio) as(B("gt_audio.s"), B("gt_audio.o"));
+    if (usesMusic) as(B("gt_music.s"), B("gt_music.o"));
+  }
   as(B("sheet.s"), B("sheet.o"));
   as(B(`${name}.s`), B(`${name}.o`));
 
@@ -887,15 +905,18 @@ async function build(entry, outPath, sheetPath, num8 = false, framesPath = undef
     B("sheet.o"),
   ];
 
-  // 3. link: flat 32 KB
-  const link32 = runLink(tc.ld65, [
-    "-C", path.join(SDK, "gametank.cfg"),
-    "-o", gtr,
-    "-m", B(`${name}.map`),
-    "-Ln", B(`${name}.lbl`), "--dbgfile", B(`${name}.dbg`),
-    ...baseObjs, B(`${name}.o`),
-    tc.lib,
-  ]);
+  // 3. link: flat 32 KB. Skipped when FLASH2M-hinted (we know it overflows and
+  // the flat SDK .o don't even exist) - jump straight to the banked build.
+  const link32 = flash2mHint
+    ? { ok: false, overflows: [], text: "" }
+    : runLink(tc.ld65, [
+      "-C", path.join(SDK, "gametank.cfg"),
+      "-o", gtr,
+      "-m", B(`${name}.map`),
+      "-Ln", B(`${name}.lbl`), "--dbgfile", B(`${name}.dbg`),
+      ...baseObjs, B(`${name}.o`),
+      tc.lib,
+    ]);
   if (link32.ok) {
     console.log(`${gtr} (${statSync(gtr).size} bytes, EEPROM32K)`);
     return;
