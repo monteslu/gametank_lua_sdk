@@ -1,5 +1,5 @@
 ; ---------------------------------------------------------------------------
-; gt_print_z — the blit-font glyph loop in 65C02.
+; gt_print_z - the blit-font glyph loop in 65C02.
 ;
 ; The C loop cost ~550 cycles per glyph (staging + push + cc65 body); this
 ; is ~160: glyph lookup via a 128-byte table, ring entries staged in place,

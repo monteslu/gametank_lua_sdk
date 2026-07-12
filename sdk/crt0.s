@@ -38,7 +38,7 @@ viaWakeup:
 
           ; The NMI hook must be dead BEFORE the $1FFF guard opens: zerobss
           ; hasn't run yet, and on real power-on RAM the hook bytes are
-          ; garbage — one vblank in that window jumps through a trash
+          ; garbage - one vblank in that window jumps through a trash
           ; pointer. (A zero-filling emulator masks this; hardware and
           ; random-fill cores do not.)
           STZ     _gt_nmi_hook

@@ -1,4 +1,4 @@
-// bin/gtlua-gfx.mjs — the `gtlua gfx` sprite-sheet importer/exporter CLI.
+// bin/gtlua-gfx.mjs - the `gtlua gfx` sprite-sheet importer/exporter CLI.
 //
 //   gtlua gfx import <in.png|in.p8|in.gtg> [-o out.gtg]
 //        Convert an image (or a PICO-8 cart's __gfx__) into GameTank .gtg

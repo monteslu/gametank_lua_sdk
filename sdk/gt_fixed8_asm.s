@@ -1,9 +1,9 @@
-; gt_fixed8_asm.s — hand-tuned 65C02 8.8 fixed multiply for --num8 builds.
+; gt_fixed8_asm.s - hand-tuned 65C02 8.8 fixed multiply for --num8 builds.
 ; Linked INSTEAD of gt_fixed_asm.s (the 16.16 unit) when GT_NUM8 is set; the
 ; C gt_fmul in gt_fixed.c is compiled out (GT_NUM8_ASM), everything else
-; (fdiv/fsqrt/ffmod) stays C — division is rare, multiplies are everywhere.
+; (fdiv/fsqrt/ffmod) stays C - division is rare, multiplies are everywhere.
 ;
-; SEMANTICS: bit-identical to the C v1 `(int)(((long)a * b) >> 8)` — i.e.
+; SEMANTICS: bit-identical to the C v1 `(int)(((long)a * b) >> 8)` - i.e.
 ; FLOOR (arithmetic shift), not truncate-toward-zero. Computed sign-magnitude:
 ;   mag = |a| * |b|            (32-bit; only bits 0..23 matter for the result)
 ;   res = mag >> 8, wrapped to 16 bits
@@ -16,7 +16,7 @@
 ;   zp     int gt_fmul_zp(void):       operands pre-stored in _fa/_fb (ints)
 ;
 ; Each 8x8 partial is a quarter-square lookup (identical mul8 + tables as the
-; 16.16 core — proven code, copied verbatim). Tier T (both |v| < 1.0, the
+; 16.16 core - proven code, copied verbatim). Tier T (both |v| < 1.0, the
 ; velocity/decay case): ONE partial. General: four partials, the a1*b1 one
 ; low-byte-only (bits 24+ fall outside the wrapped 16-bit result).
 
@@ -32,15 +32,15 @@
         .import   incsp2
 
 ; ---------------------------------------------------------------------------
-; zero page — the 16.16 unit's slice is not linked under --num8, so this is
+; zero page - the 16.16 unit's slice is not linked under --num8, so this is
 ; a net shrink (16 bytes vs its ~30).
 ; ---------------------------------------------------------------------------
         .segment "ZEROPAGE" : zeropage
-_fa:    .res 2          ; operand a (raw, signed) — fastcall slot / cdecl target
+_fa:    .res 2          ; operand a (raw, signed) - fastcall slot / cdecl target
 _fb:    .res 2          ; operand b (raw, signed)
 aa:     .res 2          ; |a|
 bb:     .res 2          ; |b|
-pr0:    .res 1          ; product byte 0 (discarded fraction — floor stickiness)
+pr0:    .res 1          ; product byte 0 (discarded fraction - floor stickiness)
 pr1:    .res 1          ; product byte 1 = result lo
 pr2:    .res 1          ; product byte 2 = result hi (byte 3 wraps away)
 mneg:   .res 1          ; result sign (1 = negate+floor)
@@ -57,7 +57,7 @@ r8_q:   .res 1          ; gt_ratio8 quotient
 ; ===========================================================================
 ; 8.8 fixed divide: q = (a << 8) / b, truncated toward zero (C semantics of
 ; the reference ((long)a << 8) / b, which routed through cc65's 32-bit
-; division runtime at ~1.5k cycles per call — and the num8 sqrt runs EIGHT
+; division runtime at ~1.5k cycles per call - and the num8 sqrt runs EIGHT
 ; of them per Newton pass). This is a classic restoring divide: 24 dividend
 ; bits (|a| << 8) streamed MSB-first through a 16-bit remainder, 24
 ; iterations, ~500 cycles worst case. Quotient bits beyond 16 saturate to
@@ -117,7 +117,7 @@ bzchk:  lda     bb+0
         ; with pr0 the LOW byte (zeroed = the << 8). Dividend bits exit
         ; aa+1's top straight into the remainder (my lo / pr2 hi); quotient
         ; bits fill the vacated bottom of pr0. After 24 rounds the register
-        ; holds Q23..Q0 as aa+1:aa+0:pr0 — aa+1 nonzero means the quotient
+        ; holds Q23..Q0 as aa+1:aa+0:pr0 - aa+1 nonzero means the quotient
         ; needs >16 bits: saturate.
         stz     pr0
         stz     my
@@ -175,11 +175,11 @@ satn:   lda     #$01
 ; ---------------------------------------------------------------------------
 ; gt_ratio8: fast 8-bit unsigned ratio for atan2. Returns (min << 8) / max
 ; clamped to 0..255, where min = _fa (0..127), max = _fb (max >= min > 0). Only
-; 8 quotient bits (vs gt_fdiv's 24-round divide) — atan2 feeds this straight into
+; 8 quotient bits (vs gt_fdiv's 24-round divide) - atan2 feeds this straight into
 ; the 256-entry angle table, so 8 bits is exact for the table index (measured
 ; max angular error vs the full divide: 1/256 turn = 1.4 deg). ~3x cheaper than
 ; gt_fdiv. Returns the quotient in A/X (X=0; it's a 0..255 int for cc65).
-;   C contract: int gt_ratio8(int min, int max)  — cdecl (min on C stack, max A/X)
+;   C contract: int gt_ratio8(int min, int max)  - cdecl (min on C stack, max A/X)
 ; ---------------------------------------------------------------------------
 .proc _gt_ratio8
         ; cdecl: max is in A/X (last arg), min on the C stack.
@@ -345,7 +345,7 @@ r8no:   dex
 .endproc
 
 ; ---------------------------------------------------------------------------
-; mul8: 16-bit unsigned product of mx * my via quarter squares — copied
+; mul8: 16-bit unsigned product of mx * my via quarter squares - copied
 ; VERBATIM from the proven 16.16 unit (gt_fixed_asm.s). Clobbers A,Y.
 ; ---------------------------------------------------------------------------
 .export mul8, mx, my, m16 ; exported: engines borrow the 8x8 multiply
@@ -389,7 +389,7 @@ r8no:   dex
 .endproc
 
 ; ===========================================================================
-; quarter-square tables — identical to the 16.16 unit's (that unit is not
+; quarter-square tables - identical to the 16.16 unit's (that unit is not
 ; linked under --num8, so no duplication in any build).
 ; ===========================================================================
         .segment "RODATA"
@@ -461,14 +461,14 @@ sqhi:
         .byte $f0,$f1,$f2,$f3,$f4,$f5,$f6,$f7,$f8,$f9,$fa,$fb,$fc,$fd,$fe,$ff
 
 ; ---------------------------------------------------------------------------
-; _gt_fsqrt — 8.8 square root, restoring (division-free).
+; _gt_fsqrt - 8.8 square root, restoring (division-free).
 ;
 ; The C version seeds from a LUT and runs two Newton steps = two ~1k-cycle
 ; divides; racing carts take a sqrt every frame for |v|. This is the classic
 ; two-bits-per-iteration restoring root on the 24-bit radicand (x << 8):
 ; 12 iterations, ~550 cycles, exact integer sqrt (the Newton version was
 ; already within 1 lsb of it).
-;   int gt_fsqrt(int x)  — cdecl-in-A/X fastcall single arg (cc65 fastcall:
+;   int gt_fsqrt(int x)  - cdecl-in-A/X fastcall single arg (cc65 fastcall:
 ;   arg in A/X), returns A/X. x <= 0 returns 0.
 ; ---------------------------------------------------------------------------
         .export _gt_fsqrt

@@ -1,5 +1,5 @@
 ; ---------------------------------------------------------------------------
-; gt_circ — circle fill/outline staging in 65C02.
+; gt_circ - circle fill/outline staging in 65C02.
 ;
 ; cherry-bomb's explosion discs and shockwave rings spent ~26k/frame going
 ; through the C midpoint loop + per-span/per-point staging calls (circfill_z
@@ -10,7 +10,7 @@
 ; zp contract (set by the C wrappers in gt_api.c):
 ;   cc_x (s16) = screen cx (camera applied)   cc_y (s16) = screen cy
 ;   cc_r (u8)  = radius 1..127                cc_c (u8) = ~color (staged form)
-; Fill overdraws the 45-degree crossover rows like the C version did —
+; Fill overdraws the 45-degree crossover rows like the C version did -
 ; harmless (same pixels, still one blit each).
 ; ---------------------------------------------------------------------------
 .export _gt_circf_z, _gt_circo_z
@@ -23,7 +23,7 @@ QF_RECT = $CD                  ; NMI|ENABLE|IRQ|COLORFILL|OPAQUE
 
 ; ---------------------------------------------------------------------------
 ; Shared draw-op scratch (zero page). circ/circfill and line are all SYNCHRONOUS
-; blocking draws — only one is ever mid-flight — so gt_line.s overlays its 13-byte
+; blocking draws - only one is ever mid-flight - so gt_line.s overlays its 13-byte
 ; Bresenham state onto this same region (see gt_line.s) instead of reserving its
 ; own resident bytes. That keeps line's inner loop in fast zp addressing while
 ; costing zero net zp/BSS: the tie-breaker that lets big text-heavy carts

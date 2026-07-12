@@ -1,8 +1,8 @@
 ; ---------------------------------------------------------------------------
-; gt_blitq.s — the async blit queue + the zero-page fastcall ABI.
+; gt_blitq.s - the async blit queue + the zero-page fastcall ABI.
 ;
 ; WHY (measured, SPEED_PLAN.md): the old runtime spin-waited on the blitter
-; and re-programmed modes inside EVERY primitive call — spr() cost 932
+; and re-programmed modes inside EVERY primitive call - spr() cost 932
 ; cycles, rectfill() 1,864, before drawing a pixel. Here a primitive just
 ; appends an 8-byte descriptor and returns; the blit-complete IRQ programs
 ; the next descriptor the moment the previous blit finishes. Drawing
@@ -16,7 +16,7 @@
 ;
 ; EMULATOR RULE (the flicker fix, now load-bearing): the emulator
 ; materializes a finished blit's pixels lazily using the LIVE registers, so
-; gt_q_kick touches $4000 with a dummy read BEFORE writing new flags/regs —
+; gt_q_kick touches $4000 with a dummy read BEFORE writing new flags/regs -
 ; that forces the catch-up under the state the blit actually ran with.
 ; Harmless on hardware.
 ;
@@ -104,13 +104,13 @@ _gt_q:     .res 256             ; 32 entries x 8 bytes
 ;
 ; MEASURED HISTORY: the pre-queue runtime cost 932/spr (mode churn); the
 ; IRQ-chained ring cost ~600/spr of bureaucracy; a pure depth-1 direct path
-; cost ~185/spr but SERIALIZED big fills — a 16k-pixel cls stalls the very
+; cost ~185/spr but SERIALIZED big fills - a 16k-pixel cls stalls the very
 ; next push for 16k cycles, which is exactly the overlap the ring existed to
-; buy (celeste-like: floor 2.0, yet 3.0 vsyncs either way — ring lost on
+; buy (celeste-like: floor 2.0, yet 3.0 vsyncs either way - ring lost on
 ; setup, direct lost on stalls). This hybrid takes both wins:
 ;   push: copy the staged entry into the 32-deep ring (~70 cyc), then pump.
 ;   pump: if the blitter is idle, kick the ring head straight into the
-;         registers (~70 cyc) — no IRQ-chained consumer, no mode churn.
+;         registers (~70 cyc) - no IRQ-chained consumer, no mode churn.
 ;   IRQ:  ack + clear busy only (chaining from the IRQ crashed the emulator's
 ;         lazy materializer; every VDMA access stays on the main thread).
 ; Big fills drain while the CPU stages the following blits; the ring only
@@ -122,7 +122,7 @@ _gt_q:     .res 256             ; 32 entries x 8 bytes
 ; ---------------------------------------------------------------------------
 _gt_q_push:
         ; ---- direct fast path: blitter idle AND ring empty (the common case
-        ; for sprite streams — a 64px cell drains in 64 cycles, faster than
+        ; for sprite streams - a 64px cell drains in 64 cycles, faster than
         ; the CPU stages the next one). Poke the registers straight from the
         ; staged entry: no ring copy, no head/tail bookkeeping, ~125 cycles
         ; saved per blit. Big fills keep the buffered path below.
@@ -133,7 +133,7 @@ _gt_q_push:
         BNE @full               ; entries queued: keep FIFO order
         LDA VDMA_Base           ; dummy read: force emulator catch-up FIRST
         LDA _gt_ent+0
-        ORA _frameflip          ; live page bit — never scan the draw page
+        ORA _frameflip          ; live page bit - never scan the draw page
         STA DMA_Flags
         AND #$08                ; DMA_COLORFILL_ENABLE?
         BNE @dfill
@@ -197,14 +197,14 @@ _gt_q_push:
 ; Safe from any main-thread context; the IRQ only clears _gt_draw_busy.
 _gt_q_pump:
         LDA _gt_draw_busy
-        BNE @out                ; still draining — the next push re-pumps
+        BNE @out                ; still draining - the next push re-pumps
         LDX _gt_qtail
         CPX _gt_qhead
         BEQ @out                ; nothing queued
         LDA VDMA_Base           ; dummy read: force emulator catch-up FIRST
         LDA _gt_q+0,x           ; per-blit dma flags...
         ORA _frameflip          ; ...plus the LIVE page bit: the video scans
-        STA DMA_Flags           ; from $2007 — never point it at the draw page
+        STA DMA_Flags           ; from $2007 - never point it at the draw page
         ; bank: colorfill blits use the frame's write bank; COPY blits carry
         ; their own bank byte in the (otherwise unused) color slot
         AND #$08                ; DMA_COLORFILL_ENABLE?
@@ -240,7 +240,7 @@ _gt_q_pump:
 _gt_q_kick = _gt_q_pump
 
 ; ---------------------------------------------------------------------------
-; gt_rng_next: 16-bit xorshift (7,9,8) — returns the next state in A/X
+; gt_rng_next: 16-bit xorshift (7,9,8) - returns the next state in A/X
 ; (lo/hi, cc65 int return). An explosion spawns ~250 rnd() calls in one
 ; frame; the old 32-bit xorshift walked cc65's long-shift loops for ~700
 ; cycles per call. This is ~40. Never yields 0 (nonzero seed cycles the
@@ -283,7 +283,7 @@ _gt_rng_next:
 ;   gt_a0=x0 gt_a1=y0 gt_a2=x1 gt_a3=y1 gt_a4=color
 ; Resolve the color (p8pal lookup / raw 0x1xx byte / negative = keep current),
 ; camera-adjust all four coordinates, and when everything is on-screen,
-; ordered, and under the 7-bit span limit — the overwhelmingly common case —
+; ordered, and under the 7-bit span limit - the overwhelmingly common case -
 ; stage the entry and fall into the push (~90 cycles vs ~300 through the C
 ; chain). Anything else jumps to the C fallback, which redoes the resolve
 ; (idempotent) and handles swap/clip/128-splits. Clobbers A,X.
@@ -311,7 +311,7 @@ _gt_p8_rectfill_z:
 
 @cam:   ; ---- x0 - cam_x, edge-clipped in place. Partially-offscreen fills
         ; used to punt to the C slow path (bank round-trip + full clip,
-        ; ~1.7k a call — the celeste2 scarf paid it ~5x a frame); now each
+        ; ~1.7k a call - the celeste2 scarf paid it ~5x a frame); now each
         ; edge clamps here and only swapped coords or 128+ spans punt. ----
         SEC
         LDA _gt_a0
@@ -459,7 +459,7 @@ _gt_p8_spr_z:
         BIT _gt_q+1,X
         BMI @rejn               ; 128..255: off right
         ; right overhang: the blitter's counters are 7-bit and a run past
-        ; x=127 wraps onto the next row (the edge-garbage bug) — trim W
+        ; x=127 wraps onto the next row (the edge-garbage bug) - trim W
         STZ q_xov
         SEC
         LDA #128
@@ -599,7 +599,7 @@ _gt_p8_spr_z:
         JMP _gt_q_pump
 
 ; ---------------------------------------------------------------------------
-; IRQ = blit complete: acknowledge and mark the blitter idle. Nothing else —
+; IRQ = blit complete: acknowledge and mark the blitter idle. Nothing else -
 ; the main-thread pump advances the queue. STZ touches no registers, so
 ; nothing needs saving (the proven pre-queue handler shape).
 ; ---------------------------------------------------------------------------
@@ -610,7 +610,7 @@ _irq_int:
 
 .ifdef GT_DBAR
 ; ---------------------------------------------------------------------------
-; gt_dbar_z — the HUD stamina/life bar: up to four small fills staged raw.
+; gt_dbar_z - the HUD stamina/life bar: up to four small fills staged raw.
 ;   pe = px + (v*77 >> 8), pe2 = px + (m*77 >> 8)   (v,m are 0..100 ints)
 ;   entries: bg strip (px..px+28, 3 rows; skipped when db_bg >= 16), value
 ;   fill (px..pe, 3 rows), highlight (px..pe-1, 2 rows), deficit

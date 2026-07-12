@@ -172,7 +172,7 @@ function draw_hud()
 end
 
 -- ======================================================================
--- block-letter title (spr/rectfill — no font). "JUST ONE BOSS" in fat
+-- block-letter title (spr/rectfill - no font). "JUST ONE BOSS" in fat
 -- 3x5-cell glyphs stamped as rectfills, centred on scr_x[1].
 -- ======================================================================
 
@@ -273,7 +273,7 @@ function draw_background()
 end
 
 -- ======================================================================
--- curtain state machine (open/close) — driven by cur_anim + cur_dc
+-- curtain state machine (open/close) - driven by cur_anim + cur_dc
 -- ======================================================================
 function update_curtains()
   if cur_dc > 0 then
@@ -299,7 +299,7 @@ end
 -- main callbacks
 -- ======================================================================
 function _init()
-  -- baked-in bests (no cartdata persistence yet — see PORT_NOTES.md)
+  -- baked-in bests (no cartdata persistence yet - see PORT_NOTES.md)
   best_score = 0
   best_time = 0
   cur_anim = 0
@@ -413,7 +413,7 @@ end
 
 function _draw()
   -- screen shake via camera offset (deterministic jitter from scene_frame so
-  -- the only rnd_int caller stays the update path — keeps it out of the
+  -- the only rnd_int caller stays the update path - keeps it out of the
   -- shared/fixed bank; see PORT_NOTES.md "bank budget").
   if shake_frames > 0 then
     camera(scene_frame % 5 - 2, (scene_frame \ 2) % 5 - 2)

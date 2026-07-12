@@ -1,15 +1,15 @@
-// compiler/gfx.mjs — GameTank sprite-sheet (.gtg) conversion core.
+// compiler/gfx.mjs - GameTank sprite-sheet (.gtg) conversion core.
 //
 // gtlua uses the OFFICIAL GameTank SDK sprite format byte-for-byte (see
 // ~/code/cliemu/gametank_sdk/scripts/converters/sprite_convert.js). A .gtg is:
 //
-//   * 8bpp — ONE BYTE PER PIXEL, each byte a hardware CAPTURE-palette color
+//   * 8bpp - ONE BYTE PER PIXEL, each byte a hardware CAPTURE-palette color
 //     index (the same 256-color space gt.rgb() resolves into).
 //   * 128x128 pixels per QUADRANT = 16384 bytes, top-down row-major.
 //   * color 0 = transparent (the blitter's color key).
 //
 // A source image up to 256x256 is split into up to four 128-wide/128-tall
-// quadrants, emitted as name.gtg, name_1.gtg, name_2.gtg, name_3.gtg — exactly
+// quadrants, emitted as name.gtg, name_1.gtg, name_2.gtg, name_3.gtg - exactly
 // like the official sprite_convert.js. (In the official ROM each .gtg is
 // zopfli-deflated; gtlua handles ROM compression at build time, so this module
 // deals only in the raw 16384-byte quadrant bytes.)
@@ -289,7 +289,7 @@ export function p8GfxToGtg(p8text) {
 // gtlua's older sheet was an 8192-byte 4bpp PICO-8 gfx.bin: 128x128, two pixels
 // per byte, low nibble = even-x pixel, high nibble = odd-x, each a 0-15 index
 // through P8_PALETTE. Upconvert it to a native .gtg by expanding exactly the way
-// the 4bpp runtime loader did (P8_PALETTE[nibble]) — so a migrated .gtg renders
+// the 4bpp runtime loader did (P8_PALETTE[nibble]) - so a migrated .gtg renders
 // byte-identical to the game's current 4bpp sheet. Color 0 stays transparent.
 export function gfxBinToGtg(bin) {
   if (bin.length !== 8192) throw new Error(`4bpp gfx.bin must be 8192 bytes (got ${bin.length})`);

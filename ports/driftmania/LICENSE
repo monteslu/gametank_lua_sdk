@@ -1,4 +1,4 @@
-Driftmania — GameTank port
+Driftmania - GameTank port
 ===========================
 
 Original game "Driftmania" by maxbize (Max Bize / Frenchie14), PICO-8.
@@ -19,15 +19,15 @@ Credit: original game, art, track design, and physics by maxbize
 (Frenchie14). GameTank port for the gtlua SDK.
 
 You are free to:
-  * Share — copy and redistribute the material in any medium or format.
-  * Adapt — remix, transform, and build upon the material.
+  * Share - copy and redistribute the material in any medium or format.
+  * Adapt - remix, transform, and build upon the material.
 
 Under the following terms:
-  * Attribution — You must give appropriate credit to maxbize / Frenchie14
+  * Attribution - You must give appropriate credit to maxbize / Frenchie14
     (original) and note this GameTank port, provide a link to the license,
     and indicate if changes were made.
-  * NonCommercial — You may not use the material for commercial purposes.
-  * ShareAlike — If you remix, transform, or build upon the material, you
+  * NonCommercial - You may not use the material for commercial purposes.
+  * ShareAlike - If you remix, transform, or build upon the material, you
     must distribute your contributions under the same license as the
     original.
 

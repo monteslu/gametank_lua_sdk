@@ -1,4 +1,4 @@
-// gtlua peephole optimizer — pattern rewrites over cc65-generated .s output.
+// gtlua peephole optimizer - pattern rewrites over cc65-generated .s output.
 //
 // cc65's own optimizer (-Osr) leaves classic slack on the table; this pass
 // runs between cc65 and ca65 on EVERY compiled C unit (game code and the SDK
@@ -6,12 +6,12 @@
 // deliberately conservative: each one preserves machine state exactly, or
 // only discards flag effects it can prove nothing consumes.
 //
-// Rule 1 — tail-call fusion:      jsr FOO / rts        ->  jmp FOO
+// Rule 1 - tail-call fusion:      jsr FOO / rts        ->  jmp FOO
 //   Saves 9 cycles + 3 stack bytes per dynamic hit. Safe when no label sits
-//   between the jsr and the rts (nothing else can enter at the rts) — the
+//   between the jsr and the rts (nothing else can enter at the rts) - the
 //   rts becomes unreachable and is dropped.
 //
-// Rule 2 — redundant reload:      sta X / ... / lda X  ->  sta X / ...
+// Rule 2 - redundant reload:      sta X / ... / lda X  ->  sta X / ...
 //   After `sta X`, A already holds X's value, so a later `lda X` (with only
 //   flag-neutral stores between, and no label/branch in between) is purely a
 //   flags operation. It is dropped only when the flags it would set are
@@ -43,7 +43,7 @@ function isLabelOrDirective(line) {
   return /^[^\s;]/.test(line) || /^\s*\./.test(line);
 }
 
-// operand safe for the sta/lda rule: plain symbol or symbol+offset — no
+// operand safe for the sta/lda rule: plain symbol or symbol+offset - no
 // immediate (#), no indirect "(", no ",x"/",y" indexing (the index register
 // could differ between the two references).
 function plainOperand(operand) {

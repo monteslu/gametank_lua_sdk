@@ -1,4 +1,4 @@
-/* gt_fixed.c — 16.16 fixed-point core, PICO-8 semantics.
+/* gt_fixed.c - 16.16 fixed-point core, PICO-8 semantics.
  * Written as plain C first (cc65 compiles it correctly); the hot routines
  * (fmul, fdiv) are the designated targets for hand-written 65C02 replacements
  * once profiling says so. */
@@ -21,7 +21,7 @@ int gt_fmul(int a, int b) {
 
 /* gt_fdiv lives in gt_fixed8_asm.s: a restoring 24-bit divide (~500
  * cycles) replacing this C reference, whose ((long)a << 8) / b routed
- * through cc65's 32-bit division runtime at ~1.5k a call — and the Newton
+ * through cc65's 32-bit division runtime at ~1.5k a call - and the Newton
  * sqrt below runs eight of them. Kept for provenance:
  * int gt_fdiv(int a, int b) {
  *     long q;
@@ -116,7 +116,7 @@ long gt_fdiv(long a, long b) {
 #endif /* !GT_FIXED_ASM */
 
 /* FLASH2M: sqrt/ffmod are cold, loop-heavy bodies (spawn-time math, and
- * ffmod is the documented 19k-cycle footgun ports avoid) — they ride in
+ * ffmod is the documented 19k-cycle footgun ports avoid) - they ride in
  * bank 0; fixed stubs bank-switch. gt_cur_bank lives in gt_bank.s. */
 #ifdef GT_BANKED
 extern unsigned char gt_cur_bank;

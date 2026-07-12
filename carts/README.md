@@ -1,4 +1,4 @@
-# carts/ — the 8-game port roster (source material)
+# carts/ - the 8-game port roster (source material)
 
 Licensed carts + extractions for the real ports.
 Each port ships under the original's license with attribution.
@@ -15,6 +15,6 @@ Each port ships under the original's license with attribution.
 | driftmania.p8 | maxbize (Frenchie14) | CC-BY-NC-SA 4.0 | github.com/maxbize/PICO-8 |
 
 *-extract/ dirs: cart.bin (raw cart image), gfx.bin (the real 128x128
-sprite sheet, 4bpp), gfx.pgm (viewable), code.bin (pxa-compressed Lua —
+sprite sheet, 4bpp), gfx.pgm (viewable), code.bin (pxa-compressed Lua -
 decompressor is the next pipeline task; the three .p8 files above are
 already plain-text source).

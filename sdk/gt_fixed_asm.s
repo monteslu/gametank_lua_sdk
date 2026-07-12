@@ -1,14 +1,14 @@
-; gt_fixed_asm.s — hand-tuned 65C02 implementations of the 16.16 hot ops.
+; gt_fixed_asm.s - hand-tuned 65C02 implementations of the 16.16 hot ops.
 ;
 ; TWO calling conventions, one shared body each:
 ;
 ;  * cdecl (long gt_fmul(long a,long b)):  b in EAX, a on the C stack. Kept for
 ;    call sites the emitter can't fast-path (an argument that itself contains a
-;    fixed multiply/divide — the zp slots would collide mid-sequence).
+;    fixed multiply/divide - the zp slots would collide mid-sequence).
 ;
 ;  * zp-fastcall (long gt_fmul_zp(void)):  both operands pre-stored by the
 ;    emitter into the exported zero-page longs _fa (=a) and _fb (=b); result in
-;    EAX. This drops cc65's per-call marshalling — the `jsr pusheax` that spills
+;    EAX. This drops cc65's per-call marshalling - the `jsr pusheax` that spills
 ;    `a` to the C stack, plus the ldeaxysp/incsp juggling around it (~1K cycles
 ;    on the fmul microbench). The emitter stores globals straight to _fa/_fb
 ;    (memory->zp copies) and calls the argless entry; see compiler/emit.js.
@@ -56,10 +56,10 @@
 ; runtime zp).
 ; ---------------------------------------------------------------------------
         .segment "ZEROPAGE" : zeropage
-_fa:    .res 4          ; operand a (raw, signed) — fastcall slot / cdecl target
-_fb:    .res 4          ; operand b (raw, signed) — fastcall slot / cdecl target
-aa:     .res 4          ; |a| magnitude  — fmul multiplicand / div dividend
-bb:     .res 4          ; |b| magnitude  — fmul multiplier   / div divisor
+_fa:    .res 4          ; operand a (raw, signed) - fastcall slot / cdecl target
+_fb:    .res 4          ; operand b (raw, signed) - fastcall slot / cdecl target
+aa:     .res 4          ; |a| magnitude  - fmul multiplicand / div dividend
+bb:     .res 4          ; |b| magnitude  - fmul multiplier   / div divisor
 pr:     .res 8          ; 64-bit product accumulator (fmul): pr[0..7], byte0 = bit0
 mneg:   .res 1          ; result sign (1 = negate result)
 rem:    .res 4          ; division remainder

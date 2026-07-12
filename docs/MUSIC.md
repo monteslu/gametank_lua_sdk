@@ -1,8 +1,8 @@
 # Native FM music: `.gtm2` songs
 
-The GameTank has a dedicated audio coprocessor — a **4-operator FM synth** on a
+The GameTank has a dedicated audio coprocessor - a **4-operator FM synth** on a
 second 65C02. gt-lua plays music on it with the console's own song format,
-**`.gtm2`** — the same format Clyde Shaffer's official SDK uses (the one
+**`.gtm2`** - the same format Clyde Shaffer's official SDK uses (the one
 `midiconvert.js` produces and `music.c` plays). Songs you make for gt-lua are
 real GameTank songs.
 
@@ -38,7 +38,7 @@ unchanged.
 
 ### Hand-authored (small cues, jingles)
 
-`compiler/gtm2.mjs` builds a `.gtm2` from a simple event list — no MIDI needed:
+`compiler/gtm2.mjs` builds a `.gtm2` from a simple event list - no MIDI needed:
 
 ```js
 import { encodeGtm2, noteNum } from "gametank-lua-sdk/compiler/gtm2.mjs";
@@ -90,7 +90,7 @@ instruments. Pick per channel in the song header.
 ## Coming from PICO-8
 
 PICO-8 music is a different synth (per-note waveforms), so it's a
-re-interpretation, not a copy — `bin/p8sfx.mjs` converts a cart's `__sfx__`/
+re-interpretation, not a copy - `bin/p8sfx.mjs` converts a cart's `__sfx__`/
 `__music__` into the FM `sfx`/`music` path (see [sfx.md](sfx.md) and
 [PORTING.md](PORTING.md)). `.gtm2` is the other direction: **authoring natively**
 for the FM synth (from MIDI or by hand), which is the better fit for music-forward

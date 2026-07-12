@@ -1,4 +1,4 @@
-// api_units.test.js — one unit test per callable API name.
+// api_units.test.js - one unit test per callable API name.
 //
 // Drives each catalog entry's `call` through the real libretro core and asserts
 // its `verify(state)` (pixel/RAM output). This is the CORRECTNESS half of the
@@ -31,7 +31,7 @@ for (const e of CATALOG) {
     });
     assert.equal(r.buildError, undefined, `build failed: ${r.buildError}`);
     // it ran if we collected marker samples (the CPU reached _draw's markers)
-    assert.ok(r.samples > 0, `no marker samples — cart never reached _draw (nmarks=${r.nmarks})`);
+    assert.ok(r.samples > 0, `no marker samples - cart never reached _draw (nmarks=${r.nmarks})`);
     if (e.verify) {
       const v = e.verify({ ram: r.ram, vram: r.vram }, r);
       assert.equal(v, true, typeof v === "string" ? v : `${e.name} verify failed`);

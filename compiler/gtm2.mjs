@@ -1,4 +1,4 @@
-// compiler/gtm2.mjs — GameTank .gtm2 song format (FM music).
+// compiler/gtm2.mjs - GameTank .gtm2 song format (FM music).
 //
 // gt-lua uses the OFFICIAL GameTank .gtm2 song format byte-for-byte (the one
 // ~/code/cliemu/gametank_sdk/scripts/converters/midiconvert.js writes and

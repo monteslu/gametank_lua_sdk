@@ -1,19 +1,19 @@
-; gt_math_stubs.s — FLASH2M fixed-bank far-call stubs for the cold gt_math unit.
+; gt_math_stubs.s - FLASH2M fixed-bank far-call stubs for the cold gt_math unit.
 ;
 ; The banked build exiles gt_math.c (gt_fsin/gt_fcos/gt_fatan2/gt_p8_rnd/
 ; gt_p8_srand/gt_p8_time/gt_time_tick + the 1 KB sine table) out of the
 ; always-mapped FIXED bank into game bank 1 ($8000-$BFFF), reclaiming ~2.2 KB
 ; the quarter-square multiply tables need. These stubs live in the FIXED bank
-; and own the plain public symbol names, so every caller — game code in any
+; and own the plain public symbol names, so every caller - game code in any
 ; bank AND fixed-bank SDK code (gt_api's gt_endframe -> gt_time_tick,
-; gt_starfield_init -> gt_p8_rnd) — links to the stub transparently. Each stub
+; gt_starfield_init -> gt_p8_rnd) - links to the stub transparently. Each stub
 ; switches to bank 1, jsr's the real _impl function, restores the caller's
 ; bank, and returns.
 ;
 ; ABI: these are cc65 __fastcall__ / __near__ functions. The last argument (and
 ; the return value) ride in A/X, its high word in sreg; any earlier arguments
 ; sit on the cc65 C-stack (c_sp) in RAM. The stub touches only A/X and one BSS
-; byte (via gt_bank_raw) — it never disturbs c_sp, sreg, or the C-stack RAM,
+; byte (via gt_bank_raw) - it never disturbs c_sp, sreg, or the C-stack RAM,
 ; and the bank switch only remaps the $8000-$BFFF window, so a stacked argument
 ; (gt_fatan2's first `long`) is preserved untouched across the switch. This is
 ; the same stub shape gtlua generates for cross-bank user-function calls.

@@ -1,4 +1,4 @@
-/* gt_api.c — GameTank runtime with the PICO-8-shaped drawing/input surface.
+/* gt_api.c - GameTank runtime with the PICO-8-shaped drawing/input surface.
  *
  * Register protocols follow clydeshaffer/gametank_sdk (MIT). Hardware rules
  * encoded here, never exposed:
@@ -46,14 +46,14 @@ static char fps30;          /* _update() mode: two vsyncs per logical frame */
 
 /* Deadline pacing: the vsync (gt_ticks) count this frame must reach before it
  * ends. Advances by the frame's vsync quota each endframe (2 for fps30, 1 for
- * 60fps). gt_endframe waits until gt_ticks HITS this — not "N edges from now" —
+ * 60fps). gt_endframe waits until gt_ticks HITS this - not "N edges from now" -
  * so work that already crossed edges counts toward the quota instead of being
  * paid on top of it. Anchored to gt_ticks on the first endframe (frame_dl_init).
  * This is the fix for carts spilling to 20fps at ~1.1 vsyncs of real work. */
 static unsigned int frame_deadline;
 static char frame_dl_init;
 
-/* draw state (PICO-8 sticky globals; camera lives in zp — gt_blitq.s) */
+/* draw state (PICO-8 sticky globals; camera lives in zp - gt_blitq.s) */
 unsigned char draw_color;          /* resolved GameTank byte (asm fast paths read/write) */
 
 /* PICO-8 color 0-15 -> GameTank byte; pal() remaps this live table */
@@ -80,7 +80,7 @@ unsigned char gt_p8pal(unsigned char idx) {
 
 /* ---- mode tracking: CPU->VRAM / GRAM writes vs queued blits ----
  * Blits carry their own dma_flags byte in their queue entry (gt_blitq.s),
- * so there is no blit "mode" any more — only the CPU-write modes need the
+ * so there is no blit "mode" any more - only the CPU-write modes need the
  * flags register held stable, and any enqueue invalidates them. */
 #define MODE_NONE 0
 #define MODE_CPU  2
@@ -105,7 +105,7 @@ void await_drawing(void) {
 }
 
 /* Producers stage an entry with 8 zero-page stores and call gt_q_push()
- * (asm: commit + pump). No C-stack arguments anywhere on this path — the
+ * (asm: commit + pump). No C-stack arguments anywhere on this path - the
  * measured cost of queueing a blit is the stores + one JSR. */
 #define Q_COMMIT() (gt_draw_mode = MODE_NONE, gt_q_push())
 
@@ -113,7 +113,7 @@ void enter_cpu_mode(void) {
     if (gt_draw_mode == MODE_CPU) return;
     await_drawing();
     /* keep frameflip (PAGE_OUT): the video scans the page selected by the
-     * LIVE $2007 — dropping the bit mid-frame points the display at the page
+     * LIVE $2007 - dropping the bit mid-frame points the display at the page
      * being DRAWN (flicker + half-drawn content on real hardware and any
      * scan-faithful emulator). Same rule for every $2007 write below. */
     flags_mirror = DMA_NMI | DMA_CPU_TO_VRAM | frameflip;
@@ -128,7 +128,7 @@ void enter_cpu_mode(void) {
  * 128x128 quadrant of a 256x256 GRAM sheet via the dummy blit's GX/GY bit7
  * (0=NW 1=NE 2=SW 3=SE), matching the official SDK's load_spritesheet xbit/ybit.
  * The 4bpp PICO-8 sheet only uses quadrant 0; native .gtg sheets fill 1-4. */
-/* FLASH2M: the GRAM-mode dance is cold (sset/sheet-load setup) — the body
+/* FLASH2M: the GRAM-mode dance is cold (sset/sheet-load setup) - the body
  * rides bank 0; the fixed stub keeps it callable from any bank. */
 #ifdef GT_BANKED
 #pragma code-name ("B0CODE")
@@ -141,7 +141,7 @@ static void enter_gram_mode_q_impl(unsigned char quad);
 static
 #endif
 void GT_ENTER_GRAM(unsigned char quad) {
-    /* NOTE: no MODE_GRAM fast-path here — the caller may want a DIFFERENT
+    /* NOTE: no MODE_GRAM fast-path here - the caller may want a DIFFERENT
      * quadrant than the one already latched, so we always re-latch. The plain
      * quadrant-0 enter_gram_mode() below keeps the fast path for sset. */
     await_drawing();
@@ -188,11 +188,11 @@ static unsigned char *const vram_row[128] = {
 
 /* ---- blitter font ----------------------------------------------------------
  * Mid-draw print used to enter CPU mode, which drains every queued blit's
- * pixels first (~13k cycles with a chunk map in flight) — a three-group HUD
+ * pixels first (~13k cycles with a chunk map in flight) - a three-group HUD
  * was the single biggest draw-side cost in the racing/shmup ports. Instead,
  * the 42-glyph font is rendered ONCE PER TEXT COLOR into GRAM group 2
  * quadrant 0 (42 glyphs x 3x5 at 4px pitch = 128x10 per color slot; 8 slots
- * = 80 of 128 rows), and print stages one colorkeyed copy blit per glyph —
+ * = 80 of 128 rows), and print stages one colorkeyed copy blit per glyph -
  * no mode transition, hardware edge clipping for free. Color slots cache by
  * RESOLVED byte; a 9th color falls back to the CPU path.
  * The upload runs the same latch dance as the bg canvas (dummy blit selects
@@ -213,7 +213,7 @@ static void bg_pipeline_restore(void) {
     gt_draw_mode = MODE_NONE;
 }
 
-/* FLASH2M: the upload body is cold (once per text color) — it rides in
+/* FLASH2M: the upload body is cold (once per text color) - it rides in
  * bank 0 WITH the glyph table it reads; a fixed-bank stub banks + restores. */
 #ifdef GT_BANKED
 #pragma code-name ("B0CODE")
@@ -304,7 +304,7 @@ static signed char font_slot(unsigned char col) {
  * (the PICO-8 width-measuring idiom). Fully-visible glyphs take a fast
  * row-pointer walk; edge glyphs fall back to per-pixel clipping. */
 /* per-pixel clipped glyph (CPU mode entered by the caller). Shared by the
- * edge-glyph case and the >8-colors fallback — one body, fixed-bank space
+ * edge-glyph case and the >8-colors fallback - one body, fixed-bank space
  * is scarce. */
 void glyph_cpu(unsigned char gn, int x, int y, unsigned char col) {
     unsigned char rows[5];
@@ -345,7 +345,7 @@ int GT_PRINT(const char *str, int x, int y, int c) {
     x -= gt_cam_x;
     y -= gt_cam_y;
     /* Blitter path: glyphs blit from the GRAM font (built per color on first
-     * use) — no CPU-mode transition, so nothing drains. Edge-clipped glyphs
+     * use) - no CPU-mode transition, so nothing drains. Edge-clipped glyphs
      * and a 9th text color take the per-pixel CPU path. */
     slot = font_slot(col);
     {
@@ -353,7 +353,7 @@ int GT_PRINT(const char *str, int x, int y, int c) {
     static const unsigned char rowoff[3] = { 0, 5, 10 };
     unsigned char rowbase = (slot >= 0) ? (unsigned char)(slot * 10) : 0;
     while (*str) {
-        /* the common stretch — blit font, fully onscreen — runs in asm at
+        /* the common stretch - blit font, fully onscreen - runs in asm at
          * ~160 cycles/glyph (gt_print_asm.s); C handles the x<0 lead-in,
          * the clipped tail, and the CPU-glyph fallback */
         if (slot >= 0 && x >= 0 && x <= 125 && y >= 0 && y <= 123) {
@@ -369,7 +369,7 @@ int GT_PRINT(const char *str, int x, int y, int c) {
         }
         gn = gt_glyph(*str);
         if (slot >= 0 && x >= 0 && x <= 125 && y >= 0 && y <= 123) {
-            /* unreachable (asm consumed it) — keep the safety net */
+            /* unreachable (asm consumed it) - keep the safety net */
         } else if (x >= -2 && x <= 127 && y >= -4 && y <= 127) {
             enter_cpu_mode();
             glyph_cpu(gn, x, y, col);
@@ -382,7 +382,7 @@ int GT_PRINT(const char *str, int x, int y, int c) {
 }
 
 /* print an INT without the fixed marshalling: print(v) with an int-typed
- * argument used to widen to long, shift 16, and run the long digit path —
+ * argument used to widen to long, shift 16, and run the long digit path -
  * ~600 cycles of pure conversion per call, every HUD frame. */
 #ifdef GT_BANKED
 #define GT_PRINT_INT gt_p8_print_int_impl
@@ -401,9 +401,9 @@ int GT_PRINT_INT(int v, int x, int y, int c) {
     *p = 0;
     if (v < 0) { neg = 1; uv = (unsigned int)(-v); } else uv = (unsigned int)v;
     /* Digit extraction. `uv / 10` on a 16-bit int calls cc65's udiv16by8a
-     * (~measured hot in the HUD profile). Once the value fits a byte — which is
+     * (~measured hot in the HUD profile). Once the value fits a byte - which is
      * EVERY digit of a number <256 (KPH, lap, most HUD values) and the low
-     * digits of any number — use the exact byte reciprocal (b*205)>>11 instead,
+     * digits of any number - use the exact byte reciprocal (b*205)>>11 instead,
      * an 8x8 mul8 + shift, no 16-bit divide. */
     while (uv >= 256u) {
         unsigned int q = uv / 10;
@@ -465,7 +465,7 @@ int GT_PRINT_NUM(long v, int x, int y, int c) {
 #pragma code-name ("CODE")
 int gt_p8_print(const char *str, int x, int y, int c) {
     /* the string usually lives in the CALLER'S bank (a B1 draw function's
-     * literal pool) — copy it to RAM while that bank is still mapped, THEN
+     * literal pool) - copy it to RAM while that bank is still mapped, THEN
      * switch to the print body's bank. Garbled glyphs otherwise. */
     char buf[33];               /* 32 glyphs = a full 128px line */
     unsigned char saved_bank = gt_cur_bank;
@@ -479,7 +479,7 @@ int gt_p8_print(const char *str, int x, int y, int c) {
     return r;
 }
 
-/* print a runtime byte buffer (NUL-terminated ASCII) — the whole string
+/* print a runtime byte buffer (NUL-terminated ASCII) - the whole string
  * costs ONE call's worth of wrapper (bank round-trip, clip, font setup)
  * instead of one per print(); ports cache composed numbers this way. */
 int gt_p8_print_buf(unsigned char *buf, int off, int x, int y, int c) {
@@ -541,7 +541,7 @@ void gt_sheet_load(const unsigned char *packed) {
 /* packbits variant: [n,b0..bn-1] literal (n 1..127), [n|0x80,v] repeat
  * (n 3..127). Emitted by the builder when the game never re-reads the raw
  * sheet; typically halves the sheet's ROM cost. NOTE: gt_sheet_ptr stays
- * NULL — bg_compose needs the raw form and the builder keeps them apart. */
+ * NULL - bg_compose needs the raw form and the builder keeps them apart. */
 #ifdef GT_SHEET_PACKED
 void gt_sheet_load_packed(const unsigned char *p, unsigned int plen) {
     const unsigned char *end = p + plen;
@@ -571,7 +571,7 @@ void gt_sheet_load_packed(const unsigned char *p, unsigned int plen) {
 #ifdef GT_GSHEET
 /* Load a NATIVE .gtg quadrant into GRAM. A .gtg is the official GameTank sprite
  * format: 128x128, ONE BYTE PER PIXEL, each byte already a CAPTURE-palette color
- * index (no nibble unpack, no p8pal lookup — that is the whole point of going
+ * index (no nibble unpack, no p8pal lookup - that is the whole point of going
  * native). `quad` (0=NW 1=NE 2=SW 3=SE) selects which 128x128 quadrant of the
  * 256x256 GRAM sheet this fills, so a game can pin up to four .gtg quadrants
  * (foo.gtg / foo_1 / foo_2 / foo_3) into one full sheet. The bytes are stored
@@ -602,10 +602,10 @@ void gt_gsheet_load_packed(const unsigned char *p, unsigned int plen, unsigned c
  * A frame table is a flat ROM array of 6-byte records {vxo, vyo, w, h, gx, gy}
  * (the build bakes the quadrant bit7 into gx/gy so gx/gy are final GRAM source
  * coords). The game registers one with gt_frames_register(); sprf(frame,x,y,fx)
- * looks it up and queue-blits it — arbitrary sprite size, per-frame draw offset,
+ * looks it up and queue-blits it - arbitrary sprite size, per-frame draw offset,
  * hardware flip, and any of the four 256x256 quadrants. Under FLASH2M the table
  * rides bank 2 (with the sheet); the draw shim maps it in to read a frame, then
- * restores the caller's bank — so it stays in the FIXED bank. */
+ * restores the caller's bank - so it stays in the FIXED bank. */
 const unsigned char *gt_frametab;   /* base of the 6-byte-record table (may be banked) */
 unsigned char gt_frametab_bank;     /* FLASH2M bank holding the table */
 void gt_frames_register(const unsigned char *tab, unsigned int nframes) {
@@ -673,7 +673,7 @@ void gt_gspr_frame(int frame, int x, int y, int flip) {
 #endif
 
 /* PICO-8 sset: plot into the 128x128 sprite sheet (GRAM quadrant 0).
- * Cold (boot-time cell drawing) — the body rides in bank 2 under FLASH2M. */
+ * Cold (boot-time cell drawing) - the body rides in bank 2 under FLASH2M. */
 #ifdef GT_BANKED
 #pragma code-name ("B0CODE")
 #define GT_SSET_Z gt_p8_sset_z_impl
@@ -702,7 +702,7 @@ void gt_p8_sset_z(void) {
 #endif
 
 
-/* 16-cell-wide/tall sprites are 128px spans — past the 7-bit blit counter
+/* 16-cell-wide/tall sprites are 128px spans - past the 7-bit blit counter
  * (the hardware wraps the width to 0). The asm fast path punts here; split
  * in halves, each half re-entering the fast path. Mirrored halves swap
  * sides so hardware flips stay correct. */
@@ -772,7 +772,7 @@ void box_raw(unsigned char x, unsigned char y,
 /* Lean single-scanline horizontal span at height 1, x0..x1 inclusive, in
  * fc_col. This is the hot inner primitive for circfill/circ/line: those
  * callers guarantee x0<=x1 and a span never 128 wide (r<=63), so it skips
- * fill_clipped_z's int-swap, both-axes-full, and 128-split logic — the exact
+ * fill_clipped_z's int-swap, both-axes-full, and 128-split logic - the exact
  * per-scanline overhead that made circfill blow the blit budget. Off-screen
  * rows are rejected whole; partial rows clip to [0,127]. Coords are int so a
  * negative x0/large x1 clamps correctly before narrowing to the 7-bit blit. */
@@ -792,9 +792,9 @@ void hspan_raw(int x0, int x1, int y) {
 }
 
 /* clipped fill in screen coords: corners in gt_a0..gt_a3 (inclusive, camera
- * already applied), color in fc_col. Argless — the draw core's hot path has
+ * already applied), color in fc_col. Argless - the draw core's hot path has
  * no cc65 arg-push anywhere: zp in, staging out. Clobbers gt_a0..a3. */
-/* FLASH2M: the clip/swap/split fill path is cold — the asm rectfill fast
+/* FLASH2M: the clip/swap/split fill path is cold - the asm rectfill fast
  * path covers the common case. Rides the same relief bank as the input
  * block (B0 normally, B2 under GT_INPUT_B2) so b0-critical carts get both
  * out of the way with one ladder rung. Callers cross banks only via the
@@ -809,7 +809,7 @@ void hspan_raw(int x0, int x1, int y) {
 void fill_clipped_z(void) {
     int t;
     /* Hot fast path: all four corners already on-screen and ordered, and
-     * neither span the full 128 (the common case for game rects — camera-
+     * neither span the full 128 (the common case for game rects - camera-
      * adjusted sprites/HUD boxes that aren't clipping a screen edge or filling
      * the whole axis). Skips the four int range-clamps and both 128-span
      * splits below, staging in one shot. `(unsigned)v <= 127` folds the >=0
@@ -950,7 +950,7 @@ static
 #endif
 void GT_PAL(int c0, int c1) {
     unsigned char i;
-    if (c0 < 0) {                     /* pal() — reset */
+    if (c0 < 0) {                     /* pal() - reset */
         for (i = 0; i < 16; ++i) p8pal[i] = p8pal_rom[i];
         return;
     }
@@ -1055,7 +1055,7 @@ void pset_raw(int x, int y, unsigned char col) {
 void gt_p8_pset_z(void) {
     /* a pset is a 1x1 FILL through the blit pipeline: switching to CPU mode
      * here would first drain every queued blit's pixels (~16k cycles with a
-     * frame clear in flight) — two decorative psets after the fills used to
+     * frame clear in flight) - two decorative psets after the fills used to
      * cost more than the entire rest of the frame. Same pixel, queue path.
      * (print/sset still batch in CPU mode where it amortizes; pset_raw stays
      * the internal primitive for line's Bresenham inner loop.) */
@@ -1071,7 +1071,7 @@ void gt_p8_pset_z(void) {
  * A stock scrolling-starfield primitive. Ports that draw a full-screen field
  * of drifting stars (shmups, space games) would otherwise pay ~1000 cycles of
  * cc65 call overhead PER star per frame calling pset() from the game loop; the
- * whole field here lives in one tight C loop each for move and draw — the
+ * whole field here lives in one tight C loop each for move and draw - the
  * measured difference is well over a vsync on a 100-star field, the gap
  * between "3 fps" and "30 fps" for a bullet-hell port.
  *
@@ -1174,7 +1174,7 @@ void gt_starfield_draw(void) {
 #ifdef GT_FLAKES
 /* ---- ambient flake field --------------------------------------------------
  * The draw loop lives in gt_flakes.s (~175 cycles/flake vs ~2,500 for the
- * same loop through cc65 — measured, see the asm header). This C side only
+ * same loop through cc65 - measured, see the asm header). This C side only
  * fills the asm unit's byte-split state at init time.
  * Reference semantics (newleste snow): x/y 8.8 screen space, 64-entry sine
  * wobble, y wraps at $7FFF, x respawns right at 32767 when px < -4. */
@@ -1281,11 +1281,11 @@ void gt_flakes_mode(int i, int m) {
 }
 
 /* the 4-piece 128x128 canvas window (gt_flakes.s asm): newleste's map */
-/* (gt_canvas_view moved below — outside the GT_FLAKES region) */
+/* (gt_canvas_view moved below - outside the GT_FLAKES region) */
 
 
 /* the HUD stamina/life bar in one asm call (gt_flakes.s): args ride zp
- * bytes, the emitter writes them directly — no stack marshalling. */
+ * bytes, the emitter writes them directly - no stack marshalling. */
 extern unsigned char db_px, db_py, db_v, db_m, db_c, db_c2, db_bg;
 #pragma zpsym ("db_px")
 #pragma zpsym ("db_py")
@@ -1296,7 +1296,7 @@ extern unsigned char db_px, db_py, db_v, db_m, db_c, db_c2, db_bg;
 #pragma zpsym ("db_bg")
 void gt_dbar_z(void);
 
-/* flakes, CPU-poke draw: for 1x1 fields drawn at the frame TAIL — one
+/* flakes, CPU-poke draw: for 1x1 fields drawn at the frame TAIL - one
  * mode drain (cheap there: the blitter has had the whole frame), then
  * ~35 cycles a flake instead of ~130 through the ring + per-blit IRQ. */
 void gt_flakes_draw2c(int first, int count, int cdx8, int cdy8);
@@ -1315,7 +1315,7 @@ void gt_chain_step_draw(int x, int y, int col) {
 }
 #endif /* GT_FLAKES */
 
-/* canvas window blit (gt_canvas.s) — independent of the flake fields */
+/* canvas window blit (gt_canvas.s) - independent of the flake fields */
 #ifdef GT_CANVAS
 extern unsigned char cv_dy, cv_fl, cv_h, cv_grp;
 extern int cv_dx;
@@ -1334,7 +1334,7 @@ void gt_canvas_view(int dx, int dy, int opaque, int height) {
      * `ORA _frameflip` at queue time, exactly like QF_SPR/QF_RECT. Hardwiring
      * it here forced the presented page = the DRAW page whenever a canvas piece
      * was the last $2007 writer before present (the endframe idle loops keep
-     * pumping) — presenting the half-drawn page on one flip parity => the
+     * pumping) - presenting the half-drawn page on one flip parity => the
      * "entities black every other frame" flicker. 0xD5/0x55 = 0xD7/0x57 & ~0x02. */
     cv_fl = (opaque == 1) ? 0xD5 : 0x55; /* omitted optional arrives as -1 */
     cv_h = (height > 0 && height < 128) ? (unsigned char)height : 0;
@@ -1350,9 +1350,9 @@ void gt_canvas_view(int dx, int dy, int opaque, int height) {
  * 256x256 canvas. The blitter's GX/GY bit7 selects the quadrant per-pixel and
  * wraps SEAMLESSLY across quadrant boundaries as the source counter crosses 128
  * (same mechanism gt_bg_draw relies on), so a plain opaque copy at (ox,oy)
- * spans all four quadrants correctly — no strip mangling like canvas_view.
+ * spans all four quadrants correctly - no strip mangling like canvas_view.
  * Staged as two 64-tall pieces (the blitter height field is 7-bit). Queued
- * (async), opaque — the track is the base layer under car/props/HUD. */
+ * (async), opaque - the track is the base layer under car/props/HUD. */
 static void track_piece(unsigned char vy, unsigned char gx, unsigned char gy) {
     gt_ent[0] = DMA_NMI | DMA_ENABLE | DMA_IRQ | DMA_OPAQUE | DMA_GCARRY;
     gt_ent[1] = 0;                       /* VX: screen x */
@@ -1430,7 +1430,7 @@ void gt_balls_step(GTFIX *x, GTFIX *y, GTFIX *vx, GTFIX *vy, int *act,
     gt_balls_z();
 }
 /* per-frame drag on the full 16.16 velocities: v -= (v>>8)*5, which is
- * (v>>6)+(v>>8) to within 3/65536 — the compiled long shifts cost ~500
+ * (v>>6)+(v>>8) to within 3/65536 - the compiled long shifts cost ~500
  * per ball, this ~130. */
 void gt_balls_drag_z(void);
 void gt_balls_drag(GTFIX *vx, GTFIX *vy, int *act, int n) {
@@ -1589,7 +1589,7 @@ void gt_pool_sprs(int *x, int *y, unsigned char *used, unsigned char *cells,
 #endif /* GT_POOLMV */
 
 #ifdef GT_HITS
-/* two-pool AABB overlap scan (gt_hits.s) — pairs of live ordinals out */
+/* two-pool AABB overlap scan (gt_hits.s) - pairs of live ordinals out */
 extern unsigned char *hs_ax, *hs_ay, *hs_aw, *hs_ah, *hs_au;
 extern unsigned char *hs_bx, *hs_by, *hs_bw, *hs_bu, *hs_pairs;
 extern unsigned char hs_an, hs_bn, hs_bh, hs_sh;
@@ -1631,7 +1631,7 @@ void gt_hit_scan(int *ax, int *ay, unsigned char *aw, unsigned char *ah,
 #endif /* GT_HITS */
 
 #ifdef GT_CHUNKS
-/* 24px atlas-chunk grid renderer (gt_chunks.s) — see the asm header. */
+/* 24px atlas-chunk grid renderer (gt_chunks.s) - see the asm header. */
 extern unsigned char *ck_grid, *ck_lut, *ck_lut2, *ck_props;
 extern unsigned char ck_w, ck_h, ck_stride, ck_x0, ck_y0;
 #pragma zpsym ("ck_grid")
@@ -1663,7 +1663,7 @@ void gt_chunks_draw(int *grid, unsigned char *lut, unsigned char *lut2,
 /* Props-only walk: collect the (propidx, screenx, screeny) triples for the
  * visible chunk window WITHOUT painting the track. The track cache already
  * holds the road+decal pixels, but props (trees/fences/guardrails, cg>>10) are
- * live sprites drawn over the car each frame — this feeds cprops[] so that pass
+ * live sprites drawn over the car each frame - this feeds cprops[] so that pass
  * still runs. Mirrors gt_chunks_z's prop emission (byte triples, 45-byte cap,
  * 0-terminated); sparse cells make it far cheaper than a full chunks_draw. */
 void gt_track_props(int *grid, unsigned char *props, int stride,
@@ -1707,11 +1707,11 @@ static void hv_span(int a0, int a1, int b, int vert);
 #define GT_LINE_DIAG line_diag
 #endif
 
-/* gt_line.s — asm Bresenham VRAM-poke walk for on-screen diagonals. The zp vars
+/* gt_line.s - asm Bresenham VRAM-poke walk for on-screen diagonals. The zp vars
  * are its arg block (set by GT_LINE_DIAG before the call). Caller must be in
  * CPU-to-VRAM mode; all coords 0..127 (the C wrapper only takes the asm path
  * when both endpoints are on-screen, which keeps the whole line in-box). */
-/* gt_line's state block lives in BSS (absolute), not zero page — only the
+/* gt_line's state block lives in BSS (absolute), not zero page - only the
  * internal ln_ptr is zp. This keeps the always-resident zp footprint to 2 bytes
  * (a line-using game was overflowing the zp budget otherwise). */
 extern unsigned char ln_x, ln_y, ln_dx, ln_dy, ln_sx, ln_sy, ln_col, ln_n;
@@ -1766,7 +1766,7 @@ void GT_LINE_DIAG(int x0, int y0, int x1, int y1, unsigned char col) {
      * cyc). When the SHORTER axis span is large the runs are all tiny, so
      * CPU-poke the pixels straight into VRAM instead: enter CPU mode ONCE, then
      * ~20 cyc/pixel. Poke only when the shorter axis is >= 8 (so the run path
-     * would emit many short 1px blits) — for few-pixel lines the run path's
+     * would emit many short 1px blits) - for few-pixel lines the run path's
      * handful of blits beats the CPU-mode drain. Off-screen pixels are skipped
      * per-pixel (clip in the loop). */
     if (dx >= 8 && -dy >= 8) {
@@ -1867,7 +1867,7 @@ void gt_p8_line_z(void) {
 #endif
 
 
-/* circle engine contract (gt_circ.s) — shared by banked and flat builds */
+/* circle engine contract (gt_circ.s) - shared by banked and flat builds */
 extern int cc_x, cc_y;
 extern unsigned char cc_r, cc_c;
 #pragma zpsym ("cc_x")
@@ -1896,7 +1896,7 @@ void GT_CIRCFILL_Z(void) {
     if (r == 0) { pset_raw(cx, cy, col); return; }
     if (r > 127) r = 127;
     /* the midpoint loop + span staging live in gt_circ.s (~45 cycles a
-     * span against ~300 through hspan_raw — cherry's explosion discs) */
+     * span against ~300 through hspan_raw - cherry's explosion discs) */
     cc_x = cx; cc_y = cy;
     cc_r = (unsigned char)r;
     cc_c = (unsigned char)~col;
@@ -1981,7 +1981,7 @@ void gt_p8_border(int c) {
 
 /* ---- input: latch + two reads per pad (active-low), per the C SDK ----
  * FLASH2M: the block banks to 0 by default; -DGT_INPUT_B2 moves it to
- * bank 2 (a placement-ladder rung — which bank has room is per-cart). */
+ * bank 2 (a placement-ladder rung - which bank has room is per-cart). */
 #ifdef GT_INPUT_B2
 #define GT_INPUT_BANK 2
 #else
@@ -2008,7 +2008,7 @@ static unsigned char gt_p8_btnp_impl(int i, int pl);
 #endif
 
 /* held/newpress words live in zp (gt_blitq.s) so btn()/btnp() with constant
- * arguments compile to inline bit tests — no call at all. */
+ * arguments compile to inline bit tests - no call at all. */
 static unsigned char hold_cnt[2][8];
 
 /* P8 button index -> mask bit in the assembled pad word */
@@ -2111,19 +2111,19 @@ unsigned char gt_p8_btnp(int i, int pl) {
 
 /* headroom meter: every pass through the vsync-wait poll loop bumps this.
  * Idle cycles ~= polls * ~40, so tooling can report work-vs-slack per
- * frame (the pace itself pins at 2.0 once a 30fps cart makes rate — this
+ * frame (the pace itself pins at 2.0 once a 30fps cart makes rate - this
  * is the number that says HOW MUCH room is left under the lock). */
 unsigned long gt_idle_polls;
 
 static void await_vsync(void) {
     gt_frameflag = 1;
     /* pump while waiting: completed blits would otherwise leave the ring
-     * idle for the whole vsync spin — this is where queued pixel time hides */
+     * idle for the whole vsync spin - this is where queued pixel time hides */
     while (gt_frameflag) { gt_q_pump(); ++gt_idle_polls; }
 }
 
 /* Wait until the NMI vsync counter reaches `target` (a gt_ticks value). If it's
- * ALREADY there — because the frame's work spilled past the edge on its own —
+ * ALREADY there - because the frame's work spilled past the edge on its own -
  * this returns immediately, so the fixed per-frame waits OVERLAP the work
  * instead of stacking on top of it. That's the whole 30fps fix: a frame doing
  * 1.5 vsyncs of work + 0.5 vsync of idle wait costs 2 vsyncs, not 3. */
@@ -2192,7 +2192,7 @@ void gt_autocls_set(int c) { gt_autocls = c; }
  * records (n, totalCyclesCount) on every write there, so the micro-benchmark
  * harness reads the cycle delta between two gt.mark() calls = exact cost of the
  * code between them. Ships in every build (a single STA, ~4 cycles) but is only
- * ever called by generated benchmark carts — kept out of the cheat sheet. */
+ * ever called by generated benchmark carts - kept out of the cheat sheet. */
 void gt_mark(int n) { GT_MARK_ADDR = (unsigned char)n; }
 
 #ifdef GT_AUTOCLS
@@ -2212,7 +2212,7 @@ static void queue_autocls(void) {
 static unsigned char hook_tick_last;
 
 /* monotonic game-frame counter: one tick per completed endframe. The pace
- * instruments difference THIS against gt_ticks (vsyncs) — every ad-hoc
+ * instruments difference THIS against gt_ticks (vsyncs) - every ad-hoc
  * per-cart counter (tick/gtime/frames) resets somewhere and lied.
  * Lives in zp (gt_blitq.s): the fixed bank had literally zero bytes to
  * spare when this landed (just-one-boss went 'VECTORS over by 1'). */
@@ -2226,7 +2226,7 @@ void gt_endframe(void) {
     ++gt_frames;
 
     /* DEADLINE PACING (the 30fps fix): advance the target by this frame's
-     * quota and wait until gt_ticks REACHES it — rather than doing `quota`
+     * quota and wait until gt_ticks REACHES it - rather than doing `quota`
      * unconditional edge-waits after the work. When _update/_draw already
      * spilled past an edge, that edge is spent toward the quota, not paid on
      * top of it. Result: a frame can use its FULL 2-vsync budget for work
@@ -2240,7 +2240,7 @@ void gt_endframe(void) {
     /* Overrun resync: if the frame blew its budget so hard that the work alone
      * already reached/passed the deadline, DON'T add a fresh quota of idle on
      * top (that rounds a 2.4-vsync frame up to a 4-vsync one). Snap the deadline
-     * DOWN to the current tick — the flip await_vsync() below then rounds the
+     * DOWN to the current tick - the flip await_vsync() below then rounds the
      * frame up to the next whole vsync (ceil of the work), which is the honest
      * minimum: 2.4v of work costs 3 vsyncs, not 4. This also stops a hitch from
      * leaving us permanently behind: the cadence re-anchors to reality here. */
@@ -2249,12 +2249,12 @@ void gt_endframe(void) {
 
     /* Drain THIS frame's blits with blitter/CPU overlap before the flip. Wait
      * for at least one vsync edge (pumping the queue the whole time) so the
-     * blitter finishes its pixels IN PARALLEL — a full-screen cls is 16k pixels
+     * blitter finishes its pixels IN PARALLEL - a full-screen cls is 16k pixels
      * of blitter time that must hide inside a wait, not be paid synchronously.
      * The edge we wait for is counted toward the deadline (await_vsync advances
      * gt_ticks), so it is NOT extra: a frame whose work already spanned edges
      * just consumes them here. It also guarantees a heavy frame advances by at
-     * least one vsync — so ceil(work), never a busy-spin with no present. */
+     * least one vsync - so ceil(work), never a busy-spin with no present. */
     await_vsync();
     await_drawing();
     flip_pages();
@@ -2262,7 +2262,7 @@ void gt_endframe(void) {
     gt_time_tick();
 
     /* Hold to the deadline: sit out whatever vsyncs remain in the quota (0..n).
-     * THIS is where the fix lives — instead of a second unconditional edge-wait,
+     * THIS is where the fix lives - instead of a second unconditional edge-wait,
      * we wait only until gt_ticks reaches the deadline the work+flip haven't
      * already passed. Work that overran the first edge is spent against the
      * quota, so ~1.9 vsyncs of work + one flip edge = 2 total, not 3. */

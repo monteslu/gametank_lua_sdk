@@ -1,9 +1,9 @@
-/* gt_atantab.h — generated: octant-folded atan lookup for the N8 (8.8)
+/* gt_atantab.h - generated: octant-folded atan lookup for the N8 (8.8)
  * gt_fatan2 fast path. Index by the 8.8 ratio r=min/max (0..255); the
  * value is the folded angle a = fmul(r, 32 + fmul(11, 256-r)) in 8.8
  * turns (0..32 = 0..0.125 turn = 0..45deg). Replaces two gt_fmul calls
  * (~1200 cyc) with one 256-byte table load. r==256 (exactly 1.0) uses
- * index 255 — off by <1/256, negligible at this angular resolution. */
+ * index 255 - off by <1/256, negligible at this angular resolution. */
 static const unsigned char gt_atantab[256] = {
   0,0,0,1,1,1,1,1,1,2,2,2,2,2,2,2,
   3,3,3,3,3,3,4,4,4,4,4,4,5,5,5,5,

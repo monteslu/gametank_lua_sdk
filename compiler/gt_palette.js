@@ -1,9 +1,9 @@
-// gtlua — the GameTank CAPTURE sub-palette (256 entries, the one the
+// gtlua - the GameTank CAPTURE sub-palette (256 entries, the one the
 // emulator/hardware displays). Extracted from gametank-libretro
 // vendor/gametank_palette.h (PALETTE_SELECT_CAPTURE). Each entry is the
 // [r,g,b] (0-255) that hardware color BYTE i produces on screen. Used by
 // gt.rgb(r,g,b) to resolve an RGB request to the nearest color byte at
-// COMPILE TIME (no runtime cost) — the same nearest-match that built
+// COMPILE TIME (no runtime cost) - the same nearest-match that built
 // P8_PALETTE. Regenerate from the core if the palette table ever changes.
 export const GT_CAPTURE_PALETTE = [
   [26,26,26], [49,49,49], [71,71,71], [93,93,93], [116,116,116], [139,139,138], [161,161,161], [185,185,185],

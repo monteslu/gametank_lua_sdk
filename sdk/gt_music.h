@@ -1,9 +1,9 @@
-/* gt_music.h — PICO-8-style sfx()/music() runtime surface (see gt_music.c).
+/* gt_music.h - PICO-8-style sfx()/music() runtime surface (see gt_music.c).
  *
  * Data model (all indices are 1-based MIDI note numbers, 0 = rest):
- *   SfxStep  { note, dur }      — one step of a sound effect on one channel;
+ *   SfxStep  { note, dur }      - one step of a sound effect on one channel;
  *                                 `note` plays (or rests) for `dur` frames.
- *   SongEvent{ ch, note, delay }— key channel `ch` (0-3) to `note`; `delay` is
+ *   SongEvent{ ch, note, delay }- key channel `ch` (0-3) to `note`; `delay` is
  *                                 the number of frames before the NEXT event.
  * The FM Instrument struct is byte-compatible with the upstream tracker. */
 #ifndef GT_MUSIC_H
@@ -69,7 +69,7 @@ void gt_music_play(const SongEvent *events, unsigned char count,
                    const unsigned char *instr4, unsigned char loop);
 void gt_music_stop(void);
 
-/* .gtm2 — Clyde's official linear FM song format (the one midiconvert.js makes
+/* .gtm2 - Clyde's official linear FM song format (the one midiconvert.js makes
  * and src/gt/audio/music.c plays). Plays alongside the PICO-8 sfx/pattern path. */
 void gt_gtm2_play(const unsigned char *song, unsigned char loop);
 void gt_gtm2_stop(void);

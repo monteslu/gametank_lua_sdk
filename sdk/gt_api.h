@@ -1,4 +1,4 @@
-/* gt_api.h — the GameTank runtime surface gtlua-generated C links against.
+/* gt_api.h - the GameTank runtime surface gtlua-generated C links against.
  * v0.2: the PICO-8-shaped API (see PICO8.md). Colors are PICO-8 indices 0-15
  * routed through a runtime palette table (pal() remaps it); 0x100|byte is a
  * raw GameTank palette color (gt.rgb()); -1 means "current draw color". */
@@ -139,7 +139,7 @@ void gt_bg_draw(int sx, int sy);
 void gt_track_compose(unsigned char *map, int cols, int cx, int cy, int cw, int ch);
 void gt_track_view(int sx, int sy);
 /* cgrid-driven compose: paints the 32x32 sub-tile (256x256) TORUS window
- * directly from the packed chunk grid (road+decal, colorkey layering) — no RAM
+ * directly from the packed chunk grid (road+decal, colorkey layering) - no RAM
  * tile-map. World tile (tx0+i) -> canvas ((tx0+i)&31)*8. track_col/row2 refresh
  * one canvas column/row for incremental scroll. track_view reads at
  * (camx&255, camy&255). */
@@ -188,7 +188,7 @@ void gt_audio_init(void);
 void gt_note(int ch, int note, int vol);
 void gt_noteoff(int ch);
 
-/* sfx()/music() tracker (gt_music.c) — only compiled/linked when the game
+/* sfx()/music() tracker (gt_music.c) - only compiled/linked when the game
  * uses them. gt_api.c always ships and calls the per-frame sequencer through
  * a hook pointer (null until gt_music_init() installs gt_music_tick), so
  * gt_endframe() never references an unlinked symbol in audio-free games. */
@@ -204,7 +204,7 @@ void gt_gtm2_play(const unsigned char *song, unsigned char loop);
 void gt_gtm2_stop(void);
 void gt_p8_spr(int n, int x, int y, int w, int h, int flip);
 
-/* PCM audio path (gt_pcm.c) — bit-exact sample playback via the ACP PCM
+/* PCM audio path (gt_pcm.c) - bit-exact sample playback via the ACP PCM
  * firmware. Only linked when the game calls pcm_init(). */
 void gt_pcm_init(int count);
 void gt_pcm_music(int id);

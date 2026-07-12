@@ -1,8 +1,8 @@
--- just one boss — gametank port
+-- just one boss - gametank port
 -- Hand-translated from "Just One Boss" by bridgs (ayla nonsense)
 -- (lexaloffle.com/bbs/?tid=30767), original licensed CC-BY-NC-SA 4.0.
 -- This adaptation (real game logic + the real sprite sheet) is released
--- under the same license: CC-BY-NC-SA 4.0 — see LICENSE in this
+-- under the same license: CC-BY-NC-SA 4.0 - see LICENSE in this
 -- directory. This cart ships the largest slice that fits the 3-bank
 -- FLASH2M budget: title + a two-phase card-dodging boss fight. Every
 -- divergence from the original cart (extra attacks, phases 3-4, sound,
@@ -1023,7 +1023,7 @@ function sub_step(b)
       sA[b] = S_NONE
     end
   end
-  -- (S_CAST — the reflection/green-mirror summon — is deferred in this slice.)
+  -- (S_CAST - the reflection/green-mirror summon - is deferred in this slice.)
 end
 
 -- extracted sub-action branches (split out of the monolithic sub_step so
@@ -1197,7 +1197,7 @@ end
 
 
 -- SLICE: the boss reveal is compressed from the cart's 15-beat cinematic to
--- its essentials — hands appear, the boss cycles a few expressions, then the
+-- its essentials - hands appear, the boss cycles a few expressions, then the
 -- top hat pops on. Same actors, same expression set, fewer in-between beats.
 
 -- (green-mirror phase-4 schedule deferred; see PORT_NOTES.md.)

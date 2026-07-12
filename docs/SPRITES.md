@@ -1,11 +1,11 @@
 # Frame tables: `sprf` and `.gsi`
 
-`spr(n)` draws sprites off an 8×8 grid — quick and PICO-8-familiar. When you want
+`spr(n)` draws sprites off an 8×8 grid - quick and PICO-8-familiar. When you want
 **arbitrary-size sprites**, **per-frame draw offsets**, **animation frames**, or
 sprites anywhere in a **full 256×256 sheet**, use a **frame table**: a `.gsi`
 file listing named/numbered frames, drawn with `sprf`.
 
-This is the GameTank console's own sprite model — a `.gsi` is the exact format
+This is the GameTank console's own sprite model - a `.gsi` is the exact format
 Clyde Shaffer's official SDK uses, so frame data made for GameTank drops straight
 into gtlua.
 
@@ -20,7 +20,7 @@ sprf(3, px, py, false, true) -- flipped vertically
 - `frame` is the frame's index in the table (0-based).
 - `x, y` place the sprite (camera offset applies, like `spr`).
 - `flipx`, `flipy` mirror it. Flipping works from **any** quadrant of the sheet.
-- The frame's own size, source position, and draw offset come from the table —
+- The frame's own size, source position, and draw offset come from the table -
   you don't pass width/height.
 
 ## The `.gsi` format
@@ -35,12 +35,12 @@ A `.gsi` is a packed array of **8-byte frame records**:
 | 3      | h     | uint8 | sprite height in pixels                        |
 | 4      | gx    | uint8 | source X in the sheet (0–255)                  |
 | 5      | gy    | uint8 | source Y in the sheet (0–255)                  |
-| 6–7    | —     | —     | reserved (0), for byte-for-byte SDK compat     |
+| 6–7    | -     | -     | reserved (0), for byte-for-byte SDK compat     |
 
 `gx/gy` are pixel coordinates in the 256×256 sheet, so a frame can point into any
 of the four quadrants; gtlua figures out the quadrant for you at build time. The
 draw offset (`vxo/vyo`) lets frames of different sizes share a common anchor
-(e.g. a walk cycle where each frame is a slightly different height) — the classic
+(e.g. a walk cycle where each frame is a slightly different height) - the classic
 use is centering: `vxo = -w/2, vyo = -h/2`.
 
 ## Building with a frame table
@@ -78,7 +78,7 @@ Frame tables come from your sprite layout. The most direct path today:
 (A `gtlua gfx frames` authoring command is a natural future addition; for now the
 format above is the contract.)
 
-## Grid vs. frame table — when to use which
+## Grid vs. frame table - when to use which
 
 | use `spr(n)` when…                        | use `sprf(frame)` when…                        |
 |-------------------------------------------|------------------------------------------------|
@@ -87,5 +87,5 @@ format above is the contract.)
 | your art fits the first 128×128 quadrant  | you use the full 256×256 sheet (all quadrants) |
 | porting a PICO-8 game with minimal changes| authoring natively for GameTank                |
 
-Both read the same `.gtg` sheet — you can start on the grid and add frame tables
+Both read the same `.gtg` sheet - you can start on the grid and add frame tables
 where you need the extra reach.

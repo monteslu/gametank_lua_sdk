@@ -1,4 +1,4 @@
--- orbit: PICO-8-style demo — a ship orbits with sin/cos turn math,
+-- orbit: PICO-8-style demo - a ship orbits with sin/cos turn math,
 -- d-pad nudges the orbit, 🅾️ reverses, ❎ changes colors.
 -- Exercises: fixed point, trig, one-line ifs, btnp, circfill, camera.
 

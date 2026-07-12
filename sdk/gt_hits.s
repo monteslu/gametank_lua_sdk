@@ -1,19 +1,19 @@
 ; ---------------------------------------------------------------------------
-; gt.hit_scan — two-pool AABB overlap scan (shmup enemies x bullets), asm.
+; gt.hit_scan - two-pool AABB overlap scan (shmup enemies x bullets), asm.
 ;
 ; Cherry-bomb's compiled scan (35 enemies x 5 bullets x 4 compares + width/
-; height lookups per pair) measured ~65k/frame — nearly half its combat
+; height lookups per pair) measured ~65k/frame - nearly half its combat
 ; budget. Phase 1 caches each live B slot's screen box (x>>hs_sh plus the
 ; width byte field; B height is pool-constant hs_bh+1). Phase 2 walks A
 ; (the big pool) once, testing each live A box against the cached B boxes
 ; at ~30 cycles a pair. Overlaps land in the pairs byte list as LIVE
-; ORDINALS (nth live slot in all() order, 1-based) — (a_ord, b_ord), pairs
-; ascending in a_ord, 0-terminated — so the Lua handler resolves them in a
+; ORDINALS (nth live slot in all() order, 1-based) - (a_ord, b_ord), pairs
+; ascending in a_ord, 0-terminated - so the Lua handler resolves them in a
 ; single for-in-all() walk. Geometry only: mission ghosts etc. re-check in
 ; the handler (hits are rare events).
 ;
 ; Negative/offscreen coordinates: the logical downshift wraps them to large
-; bytes, which inverts the box and fails every compare — same no-hit verdict
+; bytes, which inverts the box and fails every compare - same no-hit verdict
 ; the signed original produced offscreen.
 ; ---------------------------------------------------------------------------
 .export _gt_hits_z

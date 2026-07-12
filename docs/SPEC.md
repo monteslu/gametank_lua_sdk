@@ -1,4 +1,4 @@
-# gtlua language specification — v0.2
+# gtlua language specification - v0.2
 
 gtlua is a statically-compiled, PICO-8-flavored Lua dialect for the GameTank
 (design rationale and roadmap: [PICO8.md](PICO8.md)). It keeps PICO-8's
@@ -12,8 +12,8 @@ compiler bug.
 
 A program is one `.lua` file containing, at top level:
 
-- `local name = <constant expression>` — module state
-- `function name(params...) ... end` — function definitions
+- `local name = <constant expression>` - module state
+- `function name(params...) ... end` - function definitions
 
 **Callbacks (the PICO-8 contract):** define `_update60()` (60 fps) or
 `_update()` (30 fps: logic and draw run every second vblank), plus
@@ -22,7 +22,7 @@ inputs before each update and ends the frame after `_draw()` (blitter
 drain, vsync, page flip). Top-level statements other than declarations are
 errors; top-level initializers must be compile-time constants.
 
-## Numbers — PICO-8 16.16 fixed point
+## Numbers - PICO-8 16.16 fixed point
 
 One `number` type, semantically identical to PICO-8's (verified against the
 emulated hardware in `examples/mathcheck`):
@@ -30,7 +30,7 @@ emulated hardware in `examples/mathcheck`):
 - signed 32-bit, 16 integer + 16 fraction bits: −32768.0 … 32767.99998
 - **overflow wraps** (two's complement); **division by zero saturates** to
   ±0x7FFF.FFFF; `abs(-32768)` saturates
-- `\` (floor division) and `%` (modulo) are **floored** — `-9\2 == -5`,
+- `\` (floor division) and `%` (modulo) are **floored** - `-9\2 == -5`,
   `-9%2 == 1` (sign of divisor)
 - `sgn(0) == 1`; `flr` rounds toward −∞
 - literals: decimal (`1.5`), hex (`0x11.4`), binary (`0b101.1`)
@@ -43,7 +43,7 @@ C ints (fast on the 6502); everything else is a 32-bit `long`. Integer
 arithmetic wraps at the same boundaries as PICO-8's 16 integer bits, `/`
 always produces a fixed result, and fractional values widen any variable
 they flow into (inference runs to a fixpoint across assignments, arguments,
-and returns). Power-of-two `/ \ %` fold to shifts/masks — bit-exact for
+and returns). Power-of-two `/ \ %` fold to shifts/masks - bit-exact for
 16.16.
 
 ## Dialect (PICO-8 syntax)
@@ -66,7 +66,7 @@ and returns). Power-of-two `/ \ %` fold to shifts/masks — bit-exact for
 ## Booleans and conditions
 
 `true`/`false`, comparisons, `and or not` (boolean operands only), and
-`btn`/`btnp` results. **Conditions must be boolean** — `if n then` on a
+`btn`/`btnp` results. **Conditions must be boolean** - `if n then` on a
 number is an error with a fix-it (`n ~= 0`). PICO-8 calls 0 truthy and C
 calls it falsy; gtlua refuses to guess. This also rules out the
 `x = x or default` value idiom (needs `nil`, which doesn't exist here).
@@ -79,11 +79,11 @@ calls it falsy; gtlua refuses to guess. This also rules out the
   `pal([c0,c1])` `pset(x,y,[c])` `rect(x0,y0,x1,y1,[c])`
   `rectfill(x0,y0,x1,y1,[c])` (corner coords, inclusive)
   `circ(x,y,r,[c])` `circfill(x,y,r,[c])` `line(x0,y0,x1,y1,[c])`
-- **input**: `btn(i,[pl])` `btnp(i,[pl])` — 0=⬅️ 1=➡️ 2=⬆️ 3=⬇️ 4=🅾️(GT A)
+- **input**: `btn(i,[pl])` `btnp(i,[pl])` - 0=⬅️ 1=➡️ 2=⬆️ 3=⬇️ 4=🅾️(GT A)
   5=❎(GT B) 6=GT C 7=START; `btnp` auto-repeats after 15 logical frames
   then every 4 (30 fps values; doubled at 60, per PICO-8)
 - **math**: `flr ceil abs sgn sqrt min max mid sin cos atan2 rnd srand`
-  `t()/time()` — `min`/`max` accept one arg (second defaults 0), `rnd(x)`
+  `t()/time()` - `min`/`max` accept one arg (second defaults 0), `rnd(x)`
   is uniform in [0,x), `rnd()` in [0,1), `t()` is seconds since boot
 - **gt.***: `gt.rgb(byte)` raw GameTank color (256-color escape hatch),
   `gt.border(c)` fills the overscan ring, `gt.ticks()` frames since boot
@@ -98,7 +98,7 @@ memory peek operators.
 
 ## Generated code contract (for debugging)
 
-Module variables are non-static C globals `gtl_<name>` (ints or longs) —
+Module variables are non-static C globals `gtl_<name>` (ints or longs) -
 they appear in `build/<name>.lbl`, so tests assert game state by reading
 RAM (the `examples/mathcheck` pattern). User functions are `static`
 `gtl_<name>`. Generated C is fully parenthesized, one Lua statement per C

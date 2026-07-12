@@ -1,14 +1,14 @@
-/* gt_audio.c — GameTank audio coprocessor (a second 65C02 driving a DAC).
+/* gt_audio.c - GameTank audio coprocessor (a second 65C02 driving a DAC).
  * Init/upload protocol and the MIDI pitch table adapted from the
  * MIT-licensed gametank_sdk (audio_coprocessor.c). v1 voice model: one
- * sine operator per channel — clean tones for game sfx; the FM instrument
+ * sine operator per channel - clean tones for game sfx; the FM instrument
  * and tracker layers come with the sfx converter. */
 #include "gametank.h"
 #include "gt_api.h"
 
-/* FLASH2M builds: the ENTIRE audio unit — firmware blob, this file's code,
+/* FLASH2M builds: the ENTIRE audio unit - firmware blob, this file's code,
  * gt_pitch_table, and the gt_music sequencer with its tables and converted
- * sfx/music blobs — owns PRIVATE BANK 3. Game code never places there, so
+ * sfx/music blobs - owns PRIVATE BANK 3. Game code never places there, so
  * audio data stops competing with port code in the placement Tetris (cherry
  * wedged for hours on exactly that), and everything the per-note path reads
  * lives under one mapping. That one-bank rule is a correctness invariant:
@@ -29,12 +29,12 @@
 #define AUDIO_PARAMS ((volatile unsigned char *) 0x3070)
 /* ACP zero page $02/$03 is WavePTR: the firmware's reset code points it at
  * the sine table ($0600). The LOW byte stays $00 forever (the table is
- * page-aligned!) so the boot handshake must poll the HIGH byte at $3003 —
+ * page-aligned!) so the boot handshake must poll the HIGH byte at $3003 -
  * upstream gets this right by reading a 16-bit int at $3002. Polling the
  * single byte at $3002 hangs the console forever. */
 #define WAVE_TABLE_PAGE ((volatile unsigned char *) 0x3003)
 
-/* 108 MIDI notes, 2 bytes each (MSB, LSB) — from the MIT gametank_sdk.
+/* 108 MIDI notes, 2 bytes each (MSB, LSB) - from the MIT gametank_sdk.
  * Non-static: gt_music.c (sfx/music) reads the same table via `extern`. */
 #ifdef GT_BANKED
 #pragma rodata-name ("B3RODATA")
@@ -82,7 +82,7 @@ void GT_AUDIO_INIT(void) {
     unsigned char op;
     *audio_rate = 0x7F;
     /* banked: this impl runs under bank 3 (its wrapper mapped it), and the
-     * blob is B3RODATA — same bank, plain read */
+     * blob is B3RODATA - same bank, plain read */
     for (i = 0; i < 4096; ++i) aram[i] = gt_acp_fw[i];
     AUDIO_PARAMS[0] = 0;
     *audio_reset = 0;
@@ -101,7 +101,7 @@ void GT_AUDIO_INIT(void) {
  *
  * Voice model: the firmware renders each channel as a 4-operator FM chain
  * (audio_fw.asm doChannel). An amplitude byte scales an operator via
- * sin(p)+sin(p+amp) — so 128 (=half the sine period) is SILENT and values
+ * sin(p)+sin(p+amp) - so 128 (=half the sine period) is SILENT and values
  * away from 128 get louder; music.c encodes level L as (L>>1)+128. Only the
  * 4th operator (index op+3) reaches the DAC; ops 1-3 are phase modulators.
  * Keeping the modulators at 128 zeroes their stages out of the chain and

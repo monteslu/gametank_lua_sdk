@@ -1,13 +1,13 @@
 # gt-lua Cheat Sheet
 
 **A friendly Lua that compiles straight to native 65C02 machine code** for the
-[GameTank](https://gametank.zone) — Clyde Shaffer's open 8-bit console. There is
+[GameTank](https://gametank.zone) - Clyde Shaffer's open 8-bit console. There is
 no interpreter and no VM at runtime: your `.lua` is turned into C, then into real
 6502 assembly, then into a `.gtr` cartridge. You get the whole 3.58 MHz.
 
 If you've used a fantasy console before, this will feel familiar: a 128×128
 screen, an 8×8 sprite sheet, and `_draw()`/`_update()` callbacks. If you
-haven't — this one page is the whole language.
+haven't - this one page is the whole language.
 
 ```
 gtlua build main.lua --sheet gfx.gtg -o game.gtr
@@ -28,19 +28,19 @@ Runs in the emulator, on gametank.zone, and on real hardware via a GTFO cart.
  │  Input    2 controllers, 6 buttons + START each    │
  │  Numbers  16.16 fixed point  (or 8.8 with --num8)  │
  │  Blitter  hardware rectangle / sprite copier        │
- │  Limit    ROM / RAM size — there is NO cycle cap    │
+ │  Limit    ROM / RAM size - there is NO cycle cap    │
  └──────────────────────────────────────────────────┘
 ```
 
 Two namespaces:
 
-- **Global, unprefixed** — the core language (`spr`, `btn`, `circfill`, `rnd`…).
-- **`gt.*`** — GameTank-only extras and fast asm draw engines (`gt.rgb`,
+- **Global, unprefixed** - the core language (`spr`, `btn`, `circfill`, `rnd`…).
+- **`gt.*`** - GameTank-only extras and fast asm draw engines (`gt.rgb`,
   `gt.bg_draw`, `gt.pool_move`…).
 
 ---
 
-## Program structure — the 4 callbacks
+## Program structure - the 4 callbacks
 
 ```lua
 function _init()       -- runs ONCE at startup
@@ -49,7 +49,7 @@ function _update()     -- game logic @ 30 fps (every 2nd vsync)
 function _draw()       -- draw ONCE per visible frame
 ```
 
-Pick **one** update rate. `_draw()` **is** the main loop — there's no cartridge
+Pick **one** update rate. `_draw()` **is** the main loop - there's no cartridge
 loop to write. Minimal skeleton:
 
 ```lua
@@ -69,7 +69,7 @@ function _draw()  cls(1)  circfill(x, 64, 5, 8) end
        (A)4  5(B)  6(C)
 ```
 
-The GameTank pad has **three** face buttons — A(4), B(5), and **C(6)**, plus
+The GameTank pad has **three** face buttons - A(4), B(5), and **C(6)**, plus
 START(7). Two players via the optional second argument.
 
 | Call | Returns | Notes |
@@ -86,7 +86,7 @@ The glyphs `⬅️ ➡️ ⬆️ ⬇️ 🅾️ ❎` are literal constants `0`�
 
 Draw calls take a color index `0`–`15`. Each is picked at **compile time** as
 the nearest match in the GameTank's full 256-color space. Want more? `gt.rgb`
-opens the whole palette — you get *more* colors, never fewer.
+opens the whole palette - you get *more* colors, never fewer.
 
 | # | name | byte | | # | name | byte |
 |--:|------|-----:|-|--:|------|-----:|
@@ -107,7 +107,7 @@ gt.border(1)             -- overscan border color
 ```
 
 > **Color 0 is transparent** for sprites (the colorkey). The framebuffer bytes
-> *are* colors — there's no lookup table between memory and the screen.
+> *are* colors - there's no lookup table between memory and the screen.
 
 ---
 
@@ -125,7 +125,7 @@ gt.border(1)             -- overscan border color
 |---|---|
 | `cls([c])` | clear screen (blitter fill), default color 0 |
 | `spr(n, x, y, [w, h], [fx, fy])` | sheet cell `n` (0-255); `w×h` cells; `fx/fy` = hardware flip |
-| `rect(x0,y0,x1,y1,c)` / `rectfill(...)` | box outline / filled — **corners inclusive** |
+| `rect(x0,y0,x1,y1,c)` / `rectfill(...)` | box outline / filled - **corners inclusive** |
 | `circ(x,y,r,c)` / `circfill(...)` | circle outline / filled |
 | `line(x0,y0,x1,y1,c)` | line (CPU Bresenham) |
 | `pset(x,y,[c])` / `pget(x,y)` | one pixel |
@@ -151,10 +151,10 @@ a fix-it) if you reach for the parts that aren't here yet.
 
 ---
 
-## Numbers — 16.16 fixed point
+## Numbers - 16.16 fixed point
 
 Everything is signed **16.16 fixed point** (a whole part and a 16-bit
-fraction). This is *not* a limitation — it's the natural number format for a
+fraction). This is *not* a limitation - it's the natural number format for a
 6502, and it comes with clean, predictable edge cases.
 
 ```
@@ -165,10 +165,10 @@ fraction). This is *not* a limitation — it's the natural number format for a
 ```
 
 Literals: `1`, `0.5`, `-3.25`, `0x1a`, binary via bit ops. Write decimals
-freely — `angle += 0.008` is exact.
+freely - `angle += 0.008` is exact.
 
 > **Speed knob:** build with `--num8` to use **8.8 fixed** (range ±127.99).
-> Half the math work — a big win on physics-heavy carts that don't need the
+> Half the math work - a big win on physics-heavy carts that don't need the
 > range.
 
 ---
@@ -220,7 +220,7 @@ for i = 1, 10 do ... end             -- fractional & negative steps ok
 for i = 10, 1, -1 do ... end
 
 a != b        -- same as a ~= b
-a \ b         -- floored int divide flr(a/b) — use a power-of-two divisor
+a \ b         -- floored int divide flr(a/b) - use a power-of-two divisor
 sfx"3"  print"hi"                    -- paren-less string calls
 // a line comment                    -- (as well as Lua's --)
 ```
@@ -247,7 +247,7 @@ bytes = array8(256)                  -- 256 byte-wide cells (0..255)
 **named functions + a `kind` field + `if/elseif` state machines**.
 
 Fields must be booleans in conditions: `if (e.dead)` needs `e.dead` to be
-`true`/`false`, not a number — `if (n)` on a number is an error on purpose.
+`true`/`false`, not a number - `if (n)` on a number is an error on purpose.
 
 ---
 
@@ -302,11 +302,11 @@ gt.noteoff(ch)           -- release it
 The sheet is one 128×128 image of 8×8 cells, indexed `0`–`255` (16 across,
 16 down). Pass `--sheet gfx.gtg` at build time (make one with `gtlua gfx import`;
 see [GRAPHICS.md](GRAPHICS.md)). For arbitrary-size / animated sprites and the
-full 256×256 sheet, use frame tables — [SPRITES.md](SPRITES.md).
+full 256×256 sheet, use frame tables - [SPRITES.md](SPRITES.md).
 
 ```
  sheet cell layout            a blit costs ~the same setup
- ┌──┬──┬──┬── … 16 ──┐        REGARDLESS of size — so ONE big
+ ┌──┬──┬──┬── … 16 ──┐        REGARDLESS of size - so ONE big
  │ 0│ 1│ 2│           │       blit beats many tiny ones.
  ├──┼──┼──┼── …       │       That's why the gt.* engines below
  │16│17│…             │       batch work into wide blits.
@@ -320,7 +320,7 @@ framebuffer, so static backgrounds are pre-painted into spare video RAM once
 
 ---
 
-## `gt.*` — GameTank power tools
+## `gt.*` - GameTank power tools
 
 Because native code has no cycle governor, these asm engines do bulk work the
 blitter can chew through fast.
@@ -384,7 +384,7 @@ blitter can chew through fast.
 | `gt.ticks()` | frame counter |
 
 `hexdata("…")` (global, unprefixed) turns a compile-time hex string into ROM
-bytes — handy for baking level or lookup data straight into the cartridge.
+bytes - handy for baking level or lookup data straight into the cartridge.
 
 ---
 
@@ -392,11 +392,11 @@ bytes — handy for baking level or lookup data straight into the cartridge.
 
 1. **Framebuffer bytes are colors.** No CLUT, so `pal` can't recolor sprites
    already on screen, and sprite transparency is **color 0 only**.
-2. **Conditions must be boolean.** `if (n)` on a number is an error — the
+2. **Conditions must be boolean.** `if (n)` on a number is an error - the
    language never guesses whether `0` is true.
 3. **No `nil`, no `x or default`.** Containers are capacity-bounded; no
    closures / metatables / coroutines. Use `kind` fields + state machines.
-4. **No cycle or token cap.** You get all 3.58 MHz — the only limit is ROM/RAM
+4. **No cycle or token cap.** You get all 3.58 MHz - the only limit is ROM/RAM
    size. Feed the blitter with the `gt.*` engines and it flies.
 5. **Trig is turns-based** (0..1 per revolution) and **screen-oriented**
    (y down), so `sin(0.25) == 1`.

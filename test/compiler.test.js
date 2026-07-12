@@ -150,7 +150,7 @@ test("/ by power-of-two constant becomes a shift", () => {
 
 test("a fixed multiply whose operand transitively touches fa/fb stays cdecl", () => {
   // sqrt/atan2/rnd and %/\\ all reach gt_fmul/gt_fdiv internally, which write
-  // fa/fb — so the zp fastcall's staged fa would be clobbered before the call.
+  // fa/fb - so the zp fastcall's staged fa would be clobbered before the call.
   // These MUST emit the cdecl gt_fmul (args marshalled at call time), never zp.
   const c = cOf("local a = 0.5\nlocal b = 2.5\nlocal c2 = 0.75\nlocal r = 0.0\n" +
     "function _update60()\n  r = a * sqrt(b)\n  r = a * (b % c2)\nend\nfunction _draw()\nend\n");

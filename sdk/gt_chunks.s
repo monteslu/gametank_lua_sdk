@@ -1,5 +1,5 @@
 ; ---------------------------------------------------------------------------
-; gt.chunks_draw — 24px atlas-chunk grid renderer (driftmania's track), asm.
+; gt.chunks_draw - 24px atlas-chunk grid renderer (driftmania's track), asm.
 ;
 ; Walks a cell window of a packed int grid: each cell cg holds
 ;   road  = cg & 31          -> ckd LUT -> k: k>=16 atlas chunk, else flat
@@ -15,7 +15,7 @@
 ;   ck_lut  : road ckd LUT (bytes);  ck_lut2: decal ckd LUT (bytes)
 ;   ck_w/ck_h: window cells;  ck_x0/ck_y0: world px of the window origin
 ;             (24*cx0 - cam_x etc, precomputed screen-space by the caller)
-;   ck_props: byte list out — triples (propidx, cellx, celly), 0-terminated
+;   ck_props: byte list out - triples (propidx, cellx, celly), 0-terminated
 ;   gt_qbank in entry+7 for atlas blits; fills pre-invert via p8pal.
 ; ---------------------------------------------------------------------------
 .export _gt_chunks_z
@@ -256,7 +256,7 @@ decalflat:
         lda     _p8pal,y
         eor     #$FF
         pha
-        lda     ck_runc         ; (no open run can exist here — flushed)
+        lda     ck_runc         ; (no open run can exist here - flushed)
         pla
         sta     ck_runc
         lda     ck_sx

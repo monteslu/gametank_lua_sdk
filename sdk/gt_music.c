@@ -1,4 +1,4 @@
-/* gt_music.c — PICO-8-style sfx()/music() for the GameTank audio coprocessor.
+/* gt_music.c - PICO-8-style sfx()/music() for the GameTank audio coprocessor.
  *
  * The GameTank has a second 65C02 (the ACP) running a fixed 4-operator FM
  * firmware (uploaded by gt_audio_init() in gt_audio.c). Each of its 4 channels
@@ -20,9 +20,9 @@
  *     tracker file is not Lua-idiomatic. Instead sfx/music are triggered BY
  *     INDEX and the data lives in plain C arrays the compiler emits (either
  *     the built-in bank below, or user-defined sound()/song() tables). This
- *     keeps everything in the flat address space — no banking gymnastics.
+ *     keeps everything in the flat address space - no banking gymnastics.
  *   - SFX are a simple list of {note,duration} steps on one channel (upstream
- *     packs 4 amplitudes + 4 notes per frame — powerful but nobody hand-writes
+ *     packs 4 amplitudes + 4 notes per frame - powerful but nobody hand-writes
  *     it). A step here holds forever/for `dur` frames, then the next step.
  *   - Songs are per-channel note+duration events (see the SongEvent format in
  *     gt_music.h). music(-1) stops, like PICO-8.
@@ -43,7 +43,7 @@
 #define NUM_FM_OPS   16
 
 /* FLASH2M banked build (-DGT_BANKED, passed by bin/gtlua.js): this whole unit
- * — the ~2.4 KB sequencer code AND its instrument/sfx/song tables — lives in
+ * - the ~2.4 KB sequencer code AND its instrument/sfx/song tables - lives in
  * PRIVATE BANK 3 with the rest of the audio unit (see gt_audio.c). The public
  * entry points are renamed with an _impl suffix; fixed-bank far-call stubs
  * (gt_music_stubs.s) own the plain names and bank-switch there around each
@@ -53,7 +53,7 @@
  * gt_pitch_table, which gt_audio.c homes next to the firmware blob. The old
  * layout (music in bank 2, table in bank 0) had every gt_sfx()-keyed note
  * fetch its frequency pair from whatever bank-2 bytes sat at the table's
- * address — audibly musical garbage, caught by comparing converted-sfx
+ * address - audibly musical garbage, caught by comparing converted-sfx
  * recordings against the cart data. Co-locating also frees bank 2 (sheet +
  * compose) for the converted sfx/music blobs the hexdata emitter homes here.
  *
@@ -89,7 +89,7 @@ extern const unsigned char gt_pitch_table[216];
  * op_transpose[4], then feedback + channel transpose. */
 /* Voicing note (measured, not theoretical): the synth's per-channel output
  * caps at ~1/4 of the DAC swing so four channels sum without clipping, and
- * the carrier amplitude curve peaks near 0xE0 — 0xFF WRAPS TO SILENCE.
+ * the carrier amplitude curve peaks near 0xE0 - 0xFF WRAPS TO SILENCE.
  * The old carriers (0x10-0x6f, upstream tracker mix levels) reached only
  * ~40% of the usable range and decayed to nothing in ~100ms: "quiet
  * clicks". Carriers now sit at the measured sweet spot with decays slow
@@ -103,10 +103,10 @@ static const Instrument gt_instr[GT_NUM_INSTR] = {
     /* 5 HORN */    { {0x00,0x00,0x40,0xe0},{0x00,0x00,0x04,0x06},{0x00,0x00,0x00,0x40},{12,36,12,24},0, -12 },
     /* 6 BELL */    { {0x50,0x30,0x50,0xe0},{0x02,0x03,0x01,0x04},{0x00,0x00,0x00,0x00},{0,24,0,19},  2,   0 },
     /* 7 BLIP */    { {0x00,0x00,0x00,0xe0},{0x00,0x00,0x00,0x12},{0x00,0x00,0x00,0x00},{0,0,0,0},    0,   0 },
-    /* 8 CHIP — pure carrier, exact pitch, gentle body: the closest FM gets
+    /* 8 CHIP - pure carrier, exact pitch, gentle body: the closest FM gets
      * to PICO-8's plain oscillators (triangle/organ). Modulators silent. */
     /* 8 CHIP */    { {0x00,0x00,0x00,0xc0},{0x00,0x00,0x00,0x02},{0x00,0x00,0x00,0x70},{0,0,0,0},    0,   0 },
-    /* 9 CHIP2 — carrier + one mild octave modulator: a touch of brightness
+    /* 9 CHIP2 - carrier + one mild octave modulator: a touch of brightness
      * for the square/saw/pulse family, still fully harmonic. */
     /* 9 CHIP2 */   { {0x00,0x00,0x28,0xc0},{0x00,0x00,0x02,0x02},{0x00,0x00,0x10,0x70},{0,0,12,0},   0,   0 },
 };
@@ -209,7 +209,7 @@ static void key_off(unsigned char ch) {
     note_held_mask &= (unsigned char)~ch_mask[ch];
 }
 
-/* state reset — banked into bank 2 (renamed _impl) alongside the sequencer. */
+/* state reset - banked into bank 2 (renamed _impl) alongside the sequencer. */
 void gt_music_run_init(void) {
     unsigned char i;
     for (i = 0; i < NUM_FM_OPS; ++i) {
@@ -364,7 +364,7 @@ void gt_music_tick(void) {
                     /* Upstream's sign-XOR step trick computes (sustain-amps)
                      * in 8 bits: any level more than 128 ABOVE its sustain
                      * wraps positive and snapped to sustain on the first
-                     * tick — instant mute. Upstream never ran carriers past
+                     * tick - instant mute. Upstream never ran carriers past
                      * 0x6f so it never tripped; our measured-loud voices
                      * (0xC0-0xE0 over sustain 0) always did. Explicit
                      * unsigned clamping, both directions: */
@@ -474,10 +474,10 @@ void gt_music_tick(void) {
 
 /* ===========================================================================
  * Built-in sound effects and songs (the zero-authoring PICO-8 path). A kid
- * calls sfx(0) for a jump, music(0) for a tune — no data to write.
+ * calls sfx(0) for a jump, music(0) for a tune - no data to write.
  * Notes are 1-based MIDI (0 = rest); see gt_music.h for the step format.
  * GT_NO_BUILTIN_SFX (set by bin/gtlua.js when the cart registers converted
- * PICO-8 banks) compiles the whole zero-authoring layer out — a cart playing
+ * PICO-8 banks) compiles the whole zero-authoring layer out - a cart playing
  * its own cart data never falls through to these, and the ~700 bytes of
  * tables matter in a full bank.
  * ========================================================================= */
@@ -539,15 +539,15 @@ static const unsigned char *sfx_bank = 0;
 void gt_sfx_bank(const unsigned char *bank) { sfx_bank = bank; }
 
 /* converted PICO-8 music bank (bin/p8sfx.mjs --music): u8 n; n x 5 bytes
- * { flags, ch0..ch3 } — flags bit0 = loop start, bit1 = loop end, bit2 =
+ * { flags, ch0..ch3 } - flags bit0 = loop start, bit1 = loop end, bit2 =
  * stop-after; chN = an sfx-bank id or 0xFF for a silent channel. A pattern
  * plays its channels' converted sfx simultaneously through the normal
- * per-channel step machinery and advances when the longest one ends —
+ * per-channel step machinery and advances when the longest one ends -
  * PICO-8's music IS 4-channel sfx playback, so the engine mirrors that. */
 void gt_music_bank(const unsigned char *bank) { mus_bank = bank; }
 
 /* start bank sfx `id` on channel `ch`; returns its total frame count (0 if
- * the id is empty/out of range — the channel just stays silent) */
+ * the id is empty/out of range - the channel just stays silent) */
 static void scale_carrier(unsigned char ch, unsigned char vol) {
     unsigned char op = (unsigned char)((ch << 2) + 3);
     env_initial[op] = (unsigned char)(((unsigned int)env_initial[op] * vol) >> 7);
@@ -713,7 +713,7 @@ void gt_music_init(void) {
     /* vblank-driven: the NMI shim ticks the sequencer once per real vsync,
      * evenly spaced no matter how long the game's frame runs. (The endframe
      * hook ticked the right NUMBER of times during slowdown, but in a burst
-     * — note onsets quantized to game frames, audibly janky.) */
+     * - note onsets quantized to game frames, audibly janky.) */
     extern void gt_music_nmi_shim(void);
     extern void (*gt_nmi_hook)(void);
     gt_music_run_init();             /* reset sequencer state FIRST */

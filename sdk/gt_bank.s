@@ -18,7 +18,7 @@
 VIA_ORA  = $2801
 VIA_DDRA = $2803
 
-; DATA (not BSS): starts at $FF — an impossible bank — so the FIRST switch
+; DATA (not BSS): starts at $FF - an impossible bank - so the FIRST switch
 ; always programs the hardware shifter. The same-bank early-out below would
 ; otherwise no-op the boot-time gt_bank(0) against a zeroed tracker while
 ; the cart's power-on shifter state is random.
@@ -40,7 +40,7 @@ _gt_bank_busy: .res 1             ; nonzero while the latch bit-bang is in
 _gt_bank := gt_bank_raw
 
 ; The generic path shifts 7 bits through a carry dance: ~235 cycles per
-; switch — and every cross-bank stub switches TWICE (call + restore). A
+; switch - and every cross-bank stub switches TWICE (call + restore). A
 ; profiled combat frame spent ~30% of its cycles in here. gtlua only ever
 ; switches to banks 0/1/2, whose bit sequences are constants: straight-
 ; lined below at ~105 cycles (~2.2x). Same-bank requests return in 9.

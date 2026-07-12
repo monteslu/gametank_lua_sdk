@@ -3,7 +3,7 @@
 Write [GameTank](https://gametank.zone/) games in **PICO-8-flavored Lua**.
 This SDK compiles a statically-typed Lua dialect to C, builds it with cc65
 against a bundled GameTank runtime, and produces a `.gtr` cartridge (a flat
-32 KB EEPROM, or a 2 MB FLASH2M banked cart for bigger games — chosen
+32 KB EEPROM, or a 2 MB FLASH2M banked cart for bigger games - chosen
 automatically) that runs in the
 [emulator](https://github.com/clydeshaffer/GameTankEmulator), on
 [gametank.zone](https://gametank.zone/), and on real hardware via
@@ -35,12 +35,12 @@ end
 ## Requirements
 
 - [Node.js](https://nodejs.org/) 18+ (runs the compiler)
-- the cc65 toolchain — either on your `PATH`, or built into the repo with
+- the cc65 toolchain - either on your `PATH`, or built into the repo with
   `scripts/install_tools.sh`
 
 ## Quickstart
 
-This is a **clone-and-build SDK** (like the official GameTank C SDK) — not an
+This is a **clone-and-build SDK** (like the official GameTank C SDK) - not an
 npm package. Clone it, write your game as a `.lua` file, and build:
 
 ```sh
@@ -78,7 +78,7 @@ the frame after `_draw()` (blitter drain, vblank, page flip).
 **Numbers are PICO-8 numbers**: 16.16 fixed point, −32768 to 32767.99998,
 wrap on overflow, division by zero saturates. `sin`/`cos`/`atan2` use turns
 (0..1) with PICO-8's screen-space-inverted sin. Under the hood the compiler
-infers which values stay integral and keeps them in fast 16-bit ints — an
+infers which values stay integral and keeps them in fast 16-bit ints - an
 optimization, never a semantic change.
 
 **The dialect** keeps PICO-8's syntax: `+=`-style compound assignment,
@@ -97,17 +97,17 @@ per-function compatibility map is
 | | |
 |---|---|
 | lifecycle | `_init` `_update` `_update60` `_draw` |
-| graphics | `cls` `camera` `color` `pal` `pset` `rect` `rectfill` `circ` `circfill` `line` `sset` `spr(n,x,y,[w,h],[flip_x,flip_y])` — flips are free (hardware blitter mirror) |
+| graphics | `cls` `camera` `color` `pal` `pset` `rect` `rectfill` `circ` `circfill` `line` `sset` `spr(n,x,y,[w,h],[flip_x,flip_y])` - flips are free (hardware blitter mirror) |
 | sprites | 8×8-grid `spr(n)` off a `.gtg` sheet (`--sheet`, [docs/GRAPHICS.md](docs/GRAPHICS.md)); `sprf(frame,x,y,[fx],[fy])` for arbitrary-size / animated frames off a `.gsi` table ([docs/SPRITES.md](docs/SPRITES.md)) |
-| input | `btn(i,[pl])` `btnp(i,[pl])` — indices 0-3 d-pad, 4=🅾️(GT A), 5=❎(GT B), **6=GT C**, 7=START; `btnp` has PICO-8 auto-repeat |
+| input | `btn(i,[pl])` `btnp(i,[pl])` - indices 0-3 d-pad, 4=🅾️(GT A), 5=❎(GT B), **6=GT C**, 7=START; `btnp` has PICO-8 auto-repeat |
 | math | `flr` `ceil` `abs` `sgn` `sqrt` `min` `max` `mid` `sin` `cos` `atan2` `rnd` `srand` `t`/`time` |
-| data | `array(n,[v])` — 16-bit elements · `array8(n,[v])` — byte elements 0-255, half the RAM and ~2× faster in counting loops |
-| sound | `sfx(n,[ch])` `music(n,[loop])` (built-in FM effects/tunes — see below); `song(data,[loop])` plays a native `.gtm2` FM song ([docs/MUSIC.md](docs/MUSIC.md)); low-level `gt.note`/`gt.noteoff` |
-| gametank extras | `gt.rgb(b)` — raw palette byte (the GameTank has 256 colors; 0-15 are mapped to the PICO-8 palette), `gt.border(c)`, `gt.ticks()`, `gt.starfield_*`, `gt.bg_compose`/`gt.bg_draw` (see below) |
+| data | `array(n,[v])` - 16-bit elements · `array8(n,[v])` - byte elements 0-255, half the RAM and ~2× faster in counting loops |
+| sound | `sfx(n,[ch])` `music(n,[loop])` (built-in FM effects/tunes - see below); `song(data,[loop])` plays a native `.gtm2` FM song ([docs/MUSIC.md](docs/MUSIC.md)); low-level `gt.note`/`gt.noteoff` |
+| gametank extras | `gt.rgb(b)` - raw palette byte (the GameTank has 256 colors; 0-15 are mapped to the PICO-8 palette), `gt.border(c)`, `gt.ticks()`, `gt.starfield_*`, `gt.bg_compose`/`gt.bg_draw` (see below) |
 
 Colors are PICO-8 indices (0 black, 7 white, 8 red, 12 blue, …), mapped to
 the closest GameTank palette entries; `pal(c0,c1)` remaps. The GameTank screen
-is 8-bit — ~200 distinct colors, far more than PICO-8's 16 — and `gt.rgb()`
+is 8-bit - ~200 distinct colors, far more than PICO-8's 16 - and `gt.rgb()`
 reaches all of them: `gt.rgb(255,128,0)` picks the nearest hardware color to
 that RGB (resolved at compile time, zero runtime cost), or `gt.rgb(byte)`
 takes a raw palette byte 0–255. Use it anywhere a color is expected:
@@ -117,7 +117,7 @@ takes a raw palette byte 0–255. Use it anywhere a color is expected:
 
 Drawing a tilemap with a per-tile `spr()` loop costs one blit per visible
 tile, and on the GameTank a blit is ~1200 cycles of setup *regardless of
-size* — a screenful of tiles blows the ~50-blit/frame budget for 30fps. The
+size* - a screenful of tiles blows the ~50-blit/frame budget for 30fps. The
 GameTank has 512 KB of sprite RAM (32 pages of 128×128) and the SDK normally
 uses only one (the sheet), so you can pre-render a static background into a
 spare page **once** and blit the whole thing as a single cheap blit each frame:
@@ -137,20 +137,20 @@ end
 `gt.bg_compose` reads tiles from the loaded `--sheet` (cell N is at sheet cell
 `(N%16, N//16)`), clears the page to color 0, and paints the `cw×ch` window
 starting at map cell `(cx,cy)`; tile 0 is left empty. It's a one-time cost of
-up to a second or so of CPU time (the canvas clear alone is 64 KB of writes) —
+up to a second or so of CPU time (the canvas clear alone is 64 KB of writes) -
 call it at level load, not every frame, and expect the screen to sit black
 until `_init` returns.
 
 The bg page is a **256×256 canvas** (`cw`/`ch` up to 32 cells), so a level
 bigger than one screen composes once and **scrolls for free**: `gt.bg_draw(sx,
 sy)` blits a 128×128 window at source offset `(sx,sy)` (0–128 in each axis),
-seamlessly across the internal page boundaries — pass your camera position to
+seamlessly across the internal page boundaries - pass your camera position to
 scroll. Moving/animated tiles still want `spr()` on top.
 
 ### Sound: `sfx` / `music`
 
 The GameTank has a second 65C02 audio coprocessor (a 4-channel, 4-operator FM
-synth). PICO-8 style, you trigger sound by index — no tracker files to author:
+synth). PICO-8 style, you trigger sound by index - no tracker files to author:
 
 ```lua
 function _init()
@@ -167,7 +167,7 @@ shoot · `3` explode · `4` blip · `5` powerup · `6` hurt · `7` select. Omit
 `ch` to auto-assign one of the 4 channels, or pass `0–3` to pin it. Built-in
 **tunes** (`music(n,[loop])`, n = 0–1): loops by default; `music(-1)` stops,
 `music(n,false)` plays once. A per-frame sequencer (ported from the upstream
-GameTank tracker) advances envelopes + steps the song automatically — it costs
+GameTank tracker) advances envelopes + steps the song automatically - it costs
 almost nothing when nothing is playing. For a single raw tone, the low-level
 `gt.note(ch,note,vol)` / `gt.noteoff(ch)` primitives are still there.
 
@@ -178,7 +178,7 @@ Coming next (see [docs/PICO8.md](docs/PICO8.md) for the full roadmap): `map`/
 
 ## Not-Lua walls (loud, never silent)
 
-Conditions must be boolean (`if x ~= 0 then`, not `if x then` — Lua calls 0
+Conditions must be boolean (`if x ~= 0 then`, not `if x then` - Lua calls 0
 truthy, C doesn't, gtlua refuses to guess). No `nil`, closures, metatables,
 coroutines, or `goto`. Every unsupported feature is a compile-time error
 that says what to write instead.
@@ -212,7 +212,7 @@ can drop to single-digit fps. **[docs/performance.md](docs/performance.md)** is
 the field guide: the two things that dominate a frame (blit count and
 fixed-point math), the ~19,000-cycle fixed-point `%` / `/` footgun and how to
 dodge it, per-primitive blit budgets, and how to profile a slow cart by
-bisection. Read it before optimizing — measure, don't guess.
+bisection. Read it before optimizing - measure, don't guess.
 
 ## License
 

@@ -1,7 +1,7 @@
-# Driftmania — GameTank port notes
+# Driftmania - GameTank port notes
 
-Hand-translation of **"Driftmania"** by **maxbize** (Frenchie14) — PICO-8,
-<https://github.com/maxbize/PICO-8> — to the GameTank via the `gtlua` SDK.
+Hand-translation of **"Driftmania"** by **maxbize** (Frenchie14) - PICO-8,
+<https://github.com/maxbize/PICO-8> - to the GameTank via the `gtlua` SDK.
 Original and this port are both CC-BY-NC-SA 4.0 (see `LICENSE`).
 
 Reference used: `carts/driftmania.p8` (the original cart: its `__lua__`
@@ -28,7 +28,7 @@ node bin/gtlua.js build ports/driftmania/main.lua \
 Copy `main.gtr` to `~/roms/gametank/driftmania.gtr` to run.
 
 `--num8` is the shipped build: the port is math-bound (5-8 vsyncs/frame in
-16.16), and driftmania was authored num8-ready — carx/cary/camxw/checkpoint/
+16.16), and driftmania was authored num8-ready - carx/cary/camxw/checkpoint/
 trail coords are all `int` world-pixels, and only the SMALL physics fixeds
 (velocities ±4.4, angles 0..1, spd, sub-pixel remainders) are fixed-point, so
 every fixed value fits the 8.8 range. num8 moved the driving histogram from
@@ -38,7 +38,7 @@ wraps), so the unit-velocity reciprocal is gated `spd >= 0.5` with a direct-
 divide fallback below that (see `_car_move`). Build WITHOUT `--num8` for an
 A/B on the drift feel if the reduced precision ever looks wrong.
 
-### The old `build.mjs` is dead — do not use it
+### The old `build.mjs` is dead - do not use it
 
 `ports/driftmania/build.mjs` is a stale relic (same story as combo-pool's):
 it only assembles the old core SDK objects and now fails to link (missing
@@ -68,19 +68,19 @@ lives at the top of it). See "RAM budget" below.
 Gaps 1–3 are shared with combo-pool; gap 0 is the one that shaped this port
 the most.
 
-**P0 — no read-only / flash-resident array. THE dominant constraint.**
+**P0 - no read-only / flash-resident array. THE dominant constraint.**
 `gtlua`'s `array(N)` and `pool(N)` are always in RAM (C `int[]` in BSS, or a
-DATA array that still *runs* in RAM). Driftmania's lookup tables — the 30×30
+DATA array that still *runs* in RAM). Driftmania's lookup tables - the 30×30
 chunk grid, per-angle collision-outline probes (32×8), wheel offsets (32×4),
-tile-definition and collision-mask tables — are **written once at init and
+tile-definition and collision-mask tables - are **written once at init and
 only read during play**, i.e. they are pure ROM data. But with no way to
 declare a `const` array that lives in a flash bank, all of them consume the
 scarce ~7.4 KB RAM. The *un-packed* layout needed 7.26 KB of arrays alone,
-which does not fit alongside the stack + scalars — the build failed with
+which does not fit alongside the stack + scalars - the build failed with
 `BSS over by 653`. There is **no `peek`/`poke`/`mget`-style byte reader** in
 the dialect either, so a port cannot even hand-roll a flash table and index
 it. Workaround (see `tools/gen.js`): pack two small values per 16-bit int
-everywhere the hot path can cheaply unpack them — draw-kind|uniform-tile,
+everywhere the hot path can cheaply unpack them - draw-kind|uniform-tile,
 two tile-ids per int, `(x+8)|(y+8)<<8` wheel offsets, `(dx+16)|(dy+16)<<8`
 bbox probes. This halved the array RAM to ~5.0 KB and made the port fit
 (0x187E BSS, ~1 KB headroom). *Fix (highest value for this SDK):* a
@@ -90,7 +90,7 @@ so games can keep large read-only tables out of RAM entirely. This would
 delete all of the packing in `gen.js` and roughly **double** the data budget
 a GameTank gtlua game can carry.
 
-**P1 — banked builds can't place audio's ACP firmware.**
+**P1 - banked builds can't place audio's ACP firmware.**
 `sdk/gt_audio.c` `#include`s a ~4 KB ACP firmware blob (`gt_acp_fw.h`) into
 RODATA. In a banked build cc65 lands that blob in the **fixed** bank, which
 overflows it (`RODATA over by 3192` here). `build.mjs` text-transforms a copy
@@ -102,7 +102,7 @@ of `gt_audio.c` to wrap the include in `#pragma rodata-name(push,"SHEET") …
 bank, or expose an SDK `#pragma` hook so a game need not rewrite
 `gt_audio.c`.
 
-**P2 — cc65 string-literal pool ignores the active `#pragma rodata-name`.**
+**P2 - cc65 string-literal pool ignores the active `#pragma rodata-name`.**
 cc65 defers the string-literal pool to the *end* of the translation unit,
 after `emit.js`'s `#pragma rodata-name` scopes have popped, so every
 `print("…")` literal lands in the fixed bank's RODATA. `build.mjs` appends
@@ -113,13 +113,13 @@ end-of-unit `rodata-name`, or route string literals into a placement-aware
 segment. Fragile: a game whose literals span multiple banks can't be fixed
 by a single tail pragma.
 
-**P3 — no first-class banked build for a sheet + audio game.**
+**P3 - no first-class banked build for a sheet + audio game.**
 `bin/gtlua.js`'s automatic function/data placement isn't good enough for a
 real banked game (see the auto-retarget failure above); a hand-written
 `PLACEMENT` map is required. *Fix:* call-graph-aware, RODATA-balancing
 default placement so `node bin/gtlua.js build … --sheet …` "just works".
 
-**P4 — no per-frame division / trig budget documented.** `sin/cos/atan2/
+**P4 - no per-frame division / trig budget documented.** `sin/cos/atan2/
 sqrt/` `/` are software routines; the physics uses `cos`, `sin`, `sqrt`,
 `atan2` and a few divides **per frame** (not per entity), which is
 affordable, but a porter has to discover the cost. A "trig and divide are
@@ -127,7 +127,7 @@ affordable, but a porter has to discover the cost. A "trig and divide are
 stays within budget because there is exactly one car; a multi-car AI field
 would need a CORDIC/table approach.)
 
-**P5 — cosmetic: the flat-build error only says "re-targeting … failed",**
+**P5 - cosmetic: the flat-build error only says "re-targeting … failed",**
 not "your RAM/BSS is over budget, shrink your data". The `BSS over by N`
 line does appear, but the first-time porter reads "FLASH2M bank placement
 failed" and assumes it's a code-size/bank problem, not a RAM problem. A
@@ -141,7 +141,7 @@ The section of `main.lua` between the `GENERATED DATA` markers is produced
 by `tools/gen.js` and must not be hand-edited. Its shape:
 
 **Chunk grid.** The A1 track is 30×30 *chunks* of 3×3 tiles (90×90 tiles,
-720×720 px) — bigger than one 128×128 screen. Each of the three PICO-8 map
+720×720 px) - bigger than one 128×128 screen. Each of the three PICO-8 map
 layers (road, decals, props) is dictionary-compressed to layer-local dense
 chunk ids (≤31 each), and the three ids are packed into one grid word:
 
@@ -187,7 +187,7 @@ lookups; mod-3 is `tc - div3[tc+1]*3`.
    port is the A1 slice. The map built-in and physics are the real cart's;
    adding tracks is a data-only change (more `cgrid`/tile tables) but each
    track's ~5 KB of packed data does not co-reside in RAM, so multiple
-   tracks would need P0's flash-resident arrays (or a bank-swap-in loader) —
+   tracks would need P0's flash-resident arrays (or a bank-swap-in loader) -
    deferred rather than shipped as a slideshow. **A playable single track at
    an honest 30 fps was chosen over three tracks at a slideshow.**
 
@@ -241,7 +241,7 @@ On the results screen, **A** restarts the race.
 
 Drift by tapping the handbrake (B) mid-corner: the car keeps its momentum
 while the nose swings, and the velocity vector slowly rotates back toward the
-facing — the classic Driftmania feel. Grass under ≥2 wheels cuts your grip,
+facing - the classic Driftmania feel. Grass under ≥2 wheels cuts your grip,
 steering, and top speed; hitting a fence bounces you and stuns the throttle.
 
 ---
@@ -254,5 +254,5 @@ Target pacing is **2.0 vsyncs per game frame** (an honest 30 fps on a 60 Hz
 field). Measure at runtime from `_gt_ticks` (0x2AA) and `_gt_time_acc`
 (0x204): `vsyncs_per_frame = ticks / ((time_acc/1092)/2)`.
 
-Measured pacing: see the "Verified" section — filled in from a live emulator
+Measured pacing: see the "Verified" section - filled in from a live emulator
 run reading those two RAM addresses.

@@ -1,21 +1,21 @@
 ; ---------------------------------------------------------------------------
-; gt.balls — one physics substep for a 2D ball table, in 65C02.
+; gt.balls - one physics substep for a 2D ball table, in 65C02.
 ;
 ; Combo-pool's compiled movement + spatial grid + pair scan measured ~57k
 ; per frame (two substeps) with 45% of the frame in cc65's 32-bit fixed
 ; helpers. This engine runs one substep in ~4k: half-velocity integration,
 ; wall bounces with clamp + a per-ball bounce flag, an 8x8 spatial-grid
 ; rebuild, and a contact-pair scan. The branchy impulse/merge resolution
-; stays in Lua (do_coll), fed from the pair list this writes — collisions
+; stays in Lua (do_coll), fed from the pair list this writes - collisions
 ; are rare events; the scan is the every-frame cost.
 ;
 ; The port's arrays stay 16.16 fixed (4 bytes/element, little-endian:
-; frac_lo, frac_hi, int_lo, int_hi). The engine reads/writes bytes 1..2 —
-; the embedded 8.8 core — and zeroes byte 0 / sign-extends byte 3 on write,
+; frac_lo, frac_hi, int_lo, int_hi). The engine reads/writes bytes 1..2 -
+; the embedded 8.8 core - and zeroes byte 0 / sign-extends byte 3 on write,
 ; so the Lua side keeps operating on the same values seamlessly (physics
 ; precision 1/256 px; the lowest fraction byte truncates each step).
 ; GT_NUM8 builds (-D GT_NUM8): the arrays ARE 8.8 ints (stride 2, the
-; whole element is the core) — offsets halve and the frac/sign fixups
+; whole element is the core) - offsets halve and the frac/sign fixups
 ; vanish; everything else is identical.
 ;
 ; zp contract (set by the C wrapper each call):
@@ -28,7 +28,7 @@
 ;                              (1-based) terminated by 0
 ;   bp_n                     : ball count (<= 32)
 ; Walls: x clamps to [4,124], y bounces at <4 or (>112 while vy>0.1: the
-; vy>0.1 nuance stays in Lua via the flag — here y>112 bounces when vy>0,
+; vy>0.1 nuance stays in Lua via the flag - here y>112 bounces when vy>0,
 ; > 0.1 in 8.8 is 25; see wall_y for the exact check).
 ; ---------------------------------------------------------------------------
 .export _gt_balls_z
@@ -126,7 +126,7 @@ act:    ldy     bz_i
         bra     xstore
 xlow:   ; x < 4: negate vx, park just INSIDE the wall (x=5, not 4) so a ball
         ; shoved back by a neighbour's collision push isn't re-clamped onto the
-        ; exact boundary every frame — the original nudges inward (b.x += b.vx);
+        ; exact boundary every frame - the original nudges inward (b.x += b.vx);
         ; this 1px inset is the cheap equivalent that un-pins wall/corner jams
         ; (the "balls stuck in the corner, stuck bounce sound, particle spam").
         jsr     negvx
@@ -195,7 +195,7 @@ xstore: ; write x back (A=lo X=hi)
         ; ---- wall y: <4 bounce; >112 bounce only when vy > 0.1 (25 in 8.8) ----
         ; The position is SIGNED 8.8. hi byte bit7 set => y is NEGATIVE => the
         ; ball punched through the TOP: clamp to y=4 (NOT ">=112", which stranded
-        ; a ball at y=-50 off-screen forever — the earlier unsigned-only fix read
+        ; a ball at y=-50 off-screen forever - the earlier unsigned-only fix read
         ; byte 206 as "bottom" and left it there). Then, for on-screen y, an
         ; unsigned >=112 catches the bottom incl. a small positive overshoot.
         cpx     #128
@@ -213,7 +213,7 @@ ylow:   jsr     negvy
 ymaybe: ; y >= 112: only a wall if vy > 0.1 (hi>0, or hi==0 && lo>25)
         ldy     bz_o
         iny
-        lda     (_bp_vy),y      ; vy hi (post-negation state not yet — raw)
+        lda     (_bp_vy),y      ; vy hi (post-negation state not yet - raw)
         bmi     ystore          ; moving up: pass
         bne     ywall
         dey
@@ -310,7 +310,7 @@ sact:   ldx     bz_i
         clc
         adc     bg_gx,x
         sta     bz_o            ; home cell
-        ; neighbor offsets: 0 (home), +1, +8, +9, -7 (right-up) — the 2x2
+        ; neighbor offsets: 0 (home), +1, +8, +9, -7 (right-up) - the 2x2
         ; window the Lua scan used covered (gx-1..gx)x(gy-1..gy) per ball
         ; with i>j de-dup; equivalent coverage: home, right, down, diag,
         ; and right-up, pairing each ball with HIGHER-indexed members.
@@ -472,9 +472,9 @@ full:   sty     bz_pi
 .endproc
 
 ; ---------------------------------------------------------------------------
-; gt_balls_drag — per-frame drag on the full 16.16 velocities:
+; gt_balls_drag - per-frame drag on the full 16.16 velocities:
 ;   v -= (v >> 6) + (v >> 8)   computed as   v -= (v >> 8) * 5
-; ((v>>8)<<2 differs from v>>6 by at most 3/65536 per frame — imperceptible;
+; ((v>>8)<<2 differs from v>>6 by at most 3/65536 per frame - imperceptible;
 ; the byte-shift form runs ~130 cycles/ball vs ~500 through cc65's long
 ; helpers). Uses bp_vx/bp_vy/bp_act/bp_n from the step contract.
 ; ---------------------------------------------------------------------------
@@ -491,7 +491,7 @@ bd_o:   .res 1                  ; element byte offset (i*4)
 .ifdef GT_NUM8
 ; 8.8: v -= (v>>6) + (v>>8) on the FULL 16-bit velocity (arithmetic shifts).
 ; The old code took d = the HI BYTE only (v>>8 as an int), so any velocity
-; below 1.0 (hi byte 0) got ZERO drag — slow balls rolled forever. Shift the
+; below 1.0 (hi byte 0) got ZERO drag - slow balls rolled forever. Shift the
 ; whole 16-bit word so the sub-integer bits decay too.  bz_t = v>>6 + v>>8.
 .macro DRAG1 ptr
         ; bd_d = v (16-bit working copy)
@@ -634,7 +634,7 @@ next:   inc     bz_i
 .endproc
 
 ; ---------------------------------------------------------------------------
-; gt_parts_step — particle pool integrator for 16.16 SoA pools:
+; gt_parts_step - particle pool integrator for 16.16 SoA pools:
 ;   for every used slot: x += vx; y += vy; v *= (1 - 1/32 - 1/64)
 ; The damping is v -= (v>>6)*3 == (v>>5)+(v>>6) exactly (both = floor terms
 ; summed; ~2 lsb of 1/65536 units apart from the compiled form per frame).
@@ -761,7 +761,7 @@ pp_o:   .res 1
         rol     bd_d+2
         rol     bd_d+3
         ; d3 = d + (d >> 1)?? NO: v>>5 + v>>6 = (v>>6)*3 = d + d>>?? d IS v>>6;
-        ; d*3 = (d<<1) + d — shift a copy left once into bz_t/bd extras
+        ; d*3 = (d<<1) + d - shift a copy left once into bz_t/bd extras
         lda     bd_d
         sta     bz_t
         lda     bd_d+1
@@ -835,7 +835,7 @@ next:   inx
 .endproc
 
 ; ---------------------------------------------------------------------------
-; gt_balls_draw — one 16x16 QF_SPR per nonzero cell byte, positions from the
+; gt_balls_draw - one 16x16 QF_SPR per nonzero cell byte, positions from the
 ; 16.16 fixed arrays' integer bytes, centered at (-8, -7) like the port's
 ; draw_ball_spr. ~80 cycles per ball vs ~700 through flr + the spr() C path.
 ;   bp_x/bp_y: fixed arrays; bp_fl reused as the cells byte array; bp_n count
@@ -897,7 +897,7 @@ free:   ldx     _gt_qhead
         lsr     a
         sta     _gt_q+4,x       ; GY
         ; ---- x: the blit registers are 7-bit, so edge overhang must CLIP
-        ; (a negative or >112 VX byte aliases across the screen — the
+        ; (a negative or >112 VX byte aliases across the screen - the
         ; combo-pool edge-garbage bug) ----
         ldy     bz_o
         lda     (_bp_x),y

@@ -1,5 +1,5 @@
 ; ---------------------------------------------------------------------------
-; gt_line — diagonal line CPU-poke walk in 65C02.
+; gt_line - diagonal line CPU-poke walk in 65C02.
 ;
 ; The C run-based path (gt_api.c GT_LINE_DIAG) is optimal for near-axis-aligned
 ; lines (few long fill blits) but a true diagonal degenerates to one 1px blit
@@ -33,7 +33,7 @@
 .PC02
 
 ; The whole Bresenham state lives in ZERO PAGE (fast) but OVERLAID on gt_circ's
-; shared draw scratch — circ/circfill and line are synchronous blocking draws, so
+; shared draw scratch - circ/circfill and line are synchronous blocking draws, so
 ; only one runs at a time and they can share the same 15 zp bytes. This gives line
 ; the fast zp inner loop (7,985 cyc, vs 9,321 in abs-addressed BSS) at ZERO net zp
 ; or RAM cost: neither the zp-tight carts (combo-pool) nor the RAM-tight ones
@@ -52,7 +52,7 @@ ln_e2   = _gt_draw_scratch + 10  ; 2*err (signed 16, 2 bytes)
 ptmp    = _gt_draw_scratch + 12  ; scratch
 
 .segment "ZEROPAGE" : zeropage
-ln_ptr:  .res 2          ; VRAM write pointer (MUST be zp — indirect plot)
+ln_ptr:  .res 2          ; VRAM write pointer (MUST be zp - indirect plot)
 
 .segment "CODE"
 

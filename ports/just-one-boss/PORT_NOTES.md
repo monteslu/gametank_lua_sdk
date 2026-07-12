@@ -1,6 +1,6 @@
-# Just One Boss — GameTank / gtlua port notes
+# Just One Boss - GameTank / gtlua port notes
 
-A port of **"Just One Boss"** by *bridgs* (ayla nonsense) —
+A port of **"Just One Boss"** by *bridgs* (ayla nonsense) -
 <https://www.lexaloffle.com/bbs/?tid=30767>, original PICO-8 cart, licensed
 CC-BY-NC-SA 4.0. This adaptation is released under the same license (see
 `LICENSE`). Real game logic, the real sprite sheet, and transcribed tracker
@@ -19,11 +19,11 @@ holds the gtlua runtime.
 
 The original is written on three gtlua-incompatible pillars:
 
-1. **Closures + upvalues** — every entity is a table of closures capturing
+1. **Closures + upvalues** - every entity is a table of closures capturing
    local state (`self`, timers, target coordinates).
-2. **Per-entity method tables** — `entity.update`, `entity.draw`, dispatched
+2. **Per-entity method tables** - `entity.update`, `entity.draw`, dispatched
    through a polymorphic `render_layer`/`update` sweep.
-3. **A promise/timeline library** — attacks are authored as
+3. **A promise/timeline library** - attacks are authored as
    `promise:then(...):then(...):wait(30):then(...)` chains that suspend and
    resume across frames (effectively coroutines).
 
@@ -45,7 +45,7 @@ do A; wait(30); do B; wait(10); do C   if A==THIS then
 ```
 
 State lives in **parallel top-level `array`s indexed by actor**, never in a
-per-entity table (gtlua arrays are 1-based, RAM-only, fixed-size — see §4).
+per-entity table (gtlua arrays are 1-based, RAM-only, fixed-size - see §4).
 
 ### The machine set (what replaced which closures)
 
@@ -61,37 +61,37 @@ per-entity table (gtlua arrays are 1-based, RAM-only, fixed-size — see §4).
 
 Easing (`ease(kind,p)`, kinds `E_LIN/E_IN/E_OUT/E_OUTIN`) and the cubic bezier
 (`bez`) are copied verbatim, so **frame counts and motion curves match the
-original at 30 fps** — the timing/feel of what shipped is faithful, not
+original at 30 fps** - the timing/feel of what shipped is faithful, not
 approximated.
 
 ### Pattern-by-pattern mapping of the shipped attacks
 
-**Ready pose (`S_READY`)** — original `ready(n)` promise: set the idle pose,
+**Ready pose (`S_READY`)** - original `ready(n)` promise: set the idle pose,
 raise both hands, wait, flash the "about to attack" expression. Machine:
 `sS 0→1` raises hands (`hand_appear`) + `set_idle`; `sN[b]` carries the beat
 count; the per-step waits are the original's `wait()` values.
 
-**Card volley (`S_CARDS` / `S_CARDS_L` / `S_CARDS_R`)** — the signature attack.
+**Card volley (`S_CARDS` / `S_CARDS_L` / `S_CARDS_R`)** - the signature attack.
 Original: each hand runs a `throw_cards` closure that spawns a staggered fan of
 `card` entities aimed at the player's row, then returns to rest. Machine:
 `sub_step` step 0 calls `hand_start_cards(hand, first, row)` on one or both
 hands (staggered right-then-left, mirrored for the reflection in the original);
 `hand_step`'s `H_CARDS` then spawns the fan on its own timer (`spawn_card`) and
 resolves when the hand's throw animation completes. The card projectile physics
-(`update_cards`) — bezier in-flight arc, 4-frame flip animation, row-aimed
-target — are carried over unchanged.
+(`update_cards`) - bezier in-flight arc, 4-frame flip animation, row-aimed
+target - are carried over unchanged.
 
-**Reel-on-hit (`S_REEL` / `R_REEL`)** — original: when a phase's health bar
+**Reel-on-hit (`S_REEL` / `R_REEL`)** - original: when a phase's health bar
 fills, the boss recoils, all three actors shake and scatter, then the
 phase-change fires. Machine: `R_REEL` cancels the current attack, makes the
 boss reappear, runs `S_REEL` (the shake/scatter loop using `mv_to_d` +
 `poof_at` per actor for `sN` iterations), then hands off to `R_CHG1`.
 
-**Phase change (`R_CHG1`)** — see Deferred for what was trimmed; the shipped
+**Phase change (`R_CHG1`)** - see Deferred for what was trimmed; the shipped
 version keeps the reel + an angry-expression beat before `finish_phase_change`
 bumps `boss_phase` and calls `decide_next_action`.
 
-**Intro (`R_INTRO`)** — original 15-beat reveal cinematic. Shipped: a compact
+**Intro (`R_INTRO`)** - original 15-beat reveal cinematic. Shipped: a compact
 4-beat version (hands appear → cycle expressions 5,6 → top hat pops on via
 `poof_at`). Same actors, same expression set (`bexpr` indices), fewer
 in-between beats.
@@ -100,13 +100,13 @@ in-between beats.
 
 ## 2. What's in the shipped slice
 
-Per the task's explicit fallback ("ship the largest coherent slice — title +
-boss fight through its main phases — and list what's deferred"), the cart ships
+Per the task's explicit fallback ("ship the largest coherent slice - title +
+boss fight through its main phases - and list what's deferred"), the cart ships
 a **complete two-phase card-dodging fight**:
 
 - **Title screen** with a hand-built **block-letter "JUST ONE / BOSS" logo**
   (`draw_title_logo` / `draw_letter`, stamped from a 3×5 bit-mask `glyph`
-  array as `rectfill`s — no font sprite). Press ➡️ / 🅾️ (GT A) to start.
+  array as `rectfill`s - no font sprite). Press ➡️ / 🅾️ (GT A) to start.
 - **Curtain open** stage transition (`draw_curtains` / `update_curtains`).
 - **The boss reveal cinematic** (`R_INTRO`): hands rise, the mirror cycles its
   expressions, the top hat pops on in a puff.
@@ -127,8 +127,8 @@ a **complete two-phase card-dodging fight**:
 - Particle **bursts** on tile pickup and the **poof** smoke on
   appear/reel/hat.
 
-The whole fight loop the original is famous for — *dodge the projectiles while
-stepping on tiles to damage the boss, survive the phase change, finish it* — is
+The whole fight loop the original is famous for - *dodge the projectiles while
+stepping on tiles to damage the boss, survive the phase change, finish it* - is
 present and plays end to end.
 
 ---
@@ -136,7 +136,7 @@ present and plays end to end.
 ## 3. Deferred content (every divergence from the cart)
 
 All of these were cut **only** to fit the 3-bank FLASH2M code budget (see §5),
-in rough order of how much budget they freed. Nothing was cut for difficulty —
+in rough order of how much budget they freed. Nothing was cut for difficulty -
 each was translated and working at some point; the fight simply exceeds one
 cart.
 
@@ -150,7 +150,7 @@ cart.
 | **Conjure / flower field** (`S_CONJ`) | the mirror plants a field of blooming flowers you must weave through | budget | `S_CONJ` no-ops; `conjure_spawn`/`bloom_flowers`/`flowers` pool removed. |
 | **Fist-pound attack** (`S_POUND`/`H_POUND`) | hands slam the grid | budget | `H_POUND` enum + `hand_start_pound` removed. |
 | **Background music** | full tracker song | budget (the sfx note tables were the single biggest generated-C cost) | `USED_ROWS=[]` in `tools/mkmusic.mjs`; row sequencer removed. |
-| **All sound** (final cut) | interactive one-shots (card throw, hurt, tile, menu) over the gt.note sequencer | budget — the last ~2.5 KB needed to make the banker converge | The **~30 `jb_sfx()`/`music_*()` call sites were left in place at their original beats**; the helpers + `update_audio` are no-ops. Un-stub those four functions and restore `GAME_SFX` in `tools/mkmusic.mjs` to bring sound back. This is the single most-restorable cut. |
+| **All sound** (final cut) | interactive one-shots (card throw, hurt, tile, menu) over the gt.note sequencer | budget - the last ~2.5 KB needed to make the banker converge | The **~30 `jb_sfx()`/`music_*()` call sites were left in place at their original beats**; the helpers + `update_audio` are no-ops. Un-stub those four functions and restore `GAME_SFX` in `tools/mkmusic.mjs` to bring sound back. This is the single most-restorable cut. |
 | **Bouquet-offering cinematic** | the phase-1→2 change had the boss offer a bouquet, then three fist-pounds | budget | `R_CHG1` trimmed to reel + expression beat; `bbouq`/`g_bouquet` removed. |
 | **Screen bezier slides** | title/win/lose screens slide in/out over 100 frames | budget | screens appear/leave in place; `scr_slide` kept as a leave flag. |
 | **Floating score popups** | "×N" combo popups | budget | `points` pool + `print_pts` removed; score still accrues. |
@@ -169,9 +169,9 @@ branch," not "re-architect."
 
 Concrete things that broke and the fix, beyond the closure→machine rewrite:
 
-- **No `nil`, no `x or default`** — every field must be initialized; option
+- **No `nil`, no `x or default`** - every field must be initialized; option
   defaults become explicit `if`.
-- **No boolean returns / no `not x`** — helpers like `hands_busy`, `sub_busy`,
+- **No boolean returns / no `not x`** - helpers like `hands_busy`, `sub_busy`,
   `try_step`, `coin_die` return `0/1` and are tested `== 0` / `~= 0`. A bare
   `if x then` where `x` is numeric is illegal; must be `if x ~= 0 then`.
 - **Pools: fields are frozen by the FIRST `add()`** and are only accessible
@@ -179,14 +179,14 @@ Concrete things that broke and the fix, beyond the closure→machine rewrite:
   same field set** (a struct literal), and you cannot read `pool[i].field`
   outside the iterator. Pool cap ≤ 64.
 - **`array(N)` is 1-based, top-level, RAM-only, ≤4096, and cannot be
-  ROM-initialized** — you can give a scalar fill (`array(6, 0.0)`) but not a
+  ROM-initialized** - you can give a scalar fill (`array(6, 0.0)`) but not a
   table of distinct constants. This forced the sprite/glyph data to be
   **generated as `if`-ladder dispatch functions** (`gen/*.lua`) rather than
-  data tables — see §5's note on where the RODATA actually comes from.
-- **`spr` has no flip and `pal` is 2-arg only (no `palt`)** — every mirrored or
+  data tables - see §5's note on where the RODATA actually comes from.
+- **`spr` has no flip and `pal` is 2-arg only (no `palt`)** - every mirrored or
   transparent-keyed sprite had to be baked as a distinct entry in the sheet
   generator, or drawn from primitives.
-- **`print` takes a literal or a number, not a concatenation** — no
+- **`print` takes a literal or a number, not a concatenation** - no
   `print("score "..n)`; the label and the value are two separate `print`
   calls, which is why the HUD/screens split them.
 - **Conditions must be explicit comparisons** and one-line `if (c) stmt` has no
@@ -197,10 +197,10 @@ Concrete things that broke and the fix, beyond the closure→machine rewrite:
 ## 5. SDK gap report (prioritized)
 
 > The richest gap report intended for the gtlua/GameTank SDK team. Everything
-> here is a real wall hit shipping a real, dense game — ranked by how much it
+> here is a real wall hit shipping a real, dense game - ranked by how much it
 > cost this port.
 
-### GAP 1 — **3-bank FLASH2M tops out around ~40 KB of game code, and it is
+### GAP 1 - **3-bank FLASH2M tops out around ~40 KB of game code, and it is
 ### the *fixed* bank, not the game banks, that overflows.**
 
 This dominated the entire back half of the port. The symptom is a
@@ -208,9 +208,9 @@ This dominated the entire back half of the port. The symptom is a
 three game banks (bank0/1/2) fit comfortably under their margins.** The binding
 constraint is the **FIXED bank** (16 KB), which must hold, all together:
 
-- the whole gtlua runtime CODE (~13 KB — non-negotiable),
+- the whole gtlua runtime CODE (~13 KB - non-negotiable),
 - the runtime **RODATA** (`gt_math.o` ≈ 1024 B trig/math tables + `gt_api.o` ≈
-  498 B — *always linked*, identical to a working reference build),
+  498 B - *always linked*, identical to a working reference build),
 - every **cross-bank call stub** (a trampoline per bank-crossing call; this port
   generated ~30 stubs ≈ 1.2 KB), and
 - any function the banker classifies as reachable from **both** the update and
@@ -222,13 +222,13 @@ adding a shared helper called from both paths, or an attack that calls a draw-is
 helper, silently grows the fixed bank and can flip a converging build to failing.
 
 Observed dynamics worth documenting for users:
-- The banker's `over by N` shrinks **non-linearly** as you cut content — cutting
+- The banker's `over by N` shrinks **non-linearly** as you cut content - cutting
   5 KB of game code moved the fixed overflow by only ~5 KB across several cuts,
   because the banker re-shuffles CODE between banks each attempt and the fixed
   dump is whatever it couldn't place.
 - The **most effective cut was not game logic but reducing cross-bank calls**:
   deleting the (now no-op) `jb_sfx`/`music_*` *call sites* dropped the fixed
-  overflow from 1410 B straight to 22 B by removing ~6 stubs — far more than the
+  overflow from 1410 B straight to 22 B by removing ~6 stubs - far more than the
   equivalent bytes of logic would have.
 - The last few hundred bytes came from **shortening `print()` string
   literals** (they land in fixed RODATA).
@@ -242,16 +242,16 @@ Observed dynamics worth documenting for users:
    fixed bank.
 3. **A build report that names the fixed-bank breakdown** (runtime / stubs /
    both-reachable / RODATA) and, on failure, **names the functions dumped to
-   fixed and the cross-bank edges that generated the most stubs** — so a user
+   fixed and the cross-bank edges that generated the most stubs** - so a user
    knows *what to cut* instead of bisecting content for an afternoon.
 4. **A pragma / hint to pin a hot shared helper into a specific bank** (or force
    inlining) to cut a stub the user knows is on the hot path.
 5. **Banker determinism / a "why did it fail" trace.** During this port the
    reported failing segment flipped between `CODE`, `RODATA`, and `VECTORS`
    across otherwise-identical inputs as the 8-attempt rebalance landed on
-   different placements — confusing when you're bisecting by the error string.
+   different placements - confusing when you're bisecting by the error string.
 
-### GAP 2 — **Arrays cannot be ROM-initialized with distinct constants.**
+### GAP 2 - **Arrays cannot be ROM-initialized with distinct constants.**
 `array(N)` is RAM-only with at most a single scalar fill. Any lookup table
 (sprite pixels, glyph masks, sfx note sequences, level data) must be emitted as
 a generated **`if`-ladder dispatch function** instead of a `const` array. That
@@ -259,22 +259,22 @@ is (a) more code bytes than the equivalent packed data, and (b) the reason the
 gfx/music are 200 KB+ of generated C. A `const`/`rodata` array form (even
 write-once) would massively shrink data-heavy games. **Second-biggest ask.**
 
-### GAP 3 — **`spr` has no horizontal/vertical flip.**
+### GAP 3 - **`spr` has no horizontal/vertical flip.**
 Every mirrored sprite (left vs right hand, the reflection boss) must be baked as
 a separate sheet entry, doubling sheet usage for symmetric art. A flip flag on
 `spr` would have saved sheet space *and* let the green-mirror reflection ship.
 
-### GAP 4 — **`pal` is 2-arg only; no `palt` (color-key transparency).**
+### GAP 4 - **`pal` is 2-arg only; no `palt` (color-key transparency).**
 Forced either baking tint variants into the sheet (the grayscale set that got
 cut) or drawing from primitives. A palette-remap + transparent-index API would
 remove a whole class of baked-variant bloat.
 
-### GAP 5 — **`print` cannot concatenate.**
+### GAP 5 - **`print` cannot concatenate.**
 `print("score "..n)` is illegal; you must emit the label and the value as two
 calls at hand-computed x offsets. Minor, but it multiplies string-literal count
 (which, per GAP 1, lands in the scarce fixed RODATA).
 
-### GAP 6 — **No boolean values at all.**
+### GAP 6 - **No boolean values at all.**
 Every predicate helper returns `0/1` and every condition is an explicit
 comparison. Workable, but it's a constant translation tax porting any codebase
 that returns/stores booleans, and an easy source of silent bugs
@@ -292,7 +292,7 @@ node bin/gtlua.js build ports/just-one-boss/main.lua \
      --sheet ports/just-one-boss/sheet.bin       # -> main.gtr (2 MB FLASH2M)
 ```
 
-Final placement: `functions fixed:0 bank0:66 bank1:32 bank2:3` — **zero game
+Final placement: `functions fixed:0 bank0:66 bank1:32 bank2:3` - **zero game
 functions in the fixed bank** (the banker found a clean split once the fixed
 budget cleared).
 

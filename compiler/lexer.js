@@ -1,4 +1,4 @@
-// gtlua lexer — PICO-8-flavored Lua tokens.
+// gtlua lexer - PICO-8-flavored Lua tokens.
 //
 // Dialect notes (see PICO8.md):
 //  - `//` starts a comment (PICO-8/C style); `\` is floor division
@@ -137,7 +137,7 @@ export function lex(src, file) {
         advance();
         while (i < src.length && isDigit(src[i])) { fracPart += src[i]; advance(); }
       } else if (src[i] === "." && src[i + 1] !== ".") {
-        // trailing dot: "1." — treat as integral
+        // trailing dot: "1." - treat as integral
         advance();
       }
       const value = parseFloat(`${intPart || "0"}.${fracPart || "0"}`);

@@ -1,4 +1,4 @@
-/* gt_font.h — original 3x5 pixel font for print(), 4px advance.
+/* gt_font.h - original 3x5 pixel font for print(), 4px advance.
  * 5 bytes per glyph, low 3 bits per row (bit2 = left pixel).
  * Order: 0-9, A-Z, space ! - : . /                                  */
 static const unsigned char gt_font[42][5] = {
@@ -15,4 +15,4 @@ static const unsigned char gt_font[42][5] = {
 };
 
 /* gt_glyph() lives with the print block in gt_api.c (bank 0 under
- * FLASH2M) — its only caller. */
+ * FLASH2M) - its only caller. */

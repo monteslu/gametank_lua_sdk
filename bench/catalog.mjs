@@ -1,4 +1,4 @@
-// catalog.mjs — the per-function benchmark + unit-test catalog.
+// catalog.mjs - the per-function benchmark + unit-test catalog.
 //
 // Every callable name in the gt-lua API surface (39 globals + 45 gt.* members +
 // 4 callbacks; the benchmark-only `gt.mark` is excluded) gets ONE entry here.
@@ -16,13 +16,13 @@
 //     statement:  true if `call` is a void statement (draw ops), else it's an
 //                 expression assigned to `local q`
 //     reps:       loop count inside the marked window (amortizes mark overhead)
-//     verify:     (state) => true|string  — unit-test assertion. state = {
+//     verify:     (state) => true|string  - unit-test assertion. state = {
 //                   ram: Uint8Array(0x2000), vram: Uint8Array(0x8000),
 //                   px(x,y,page=0): hw color at (x,y), HW: p8 index->hw color
 //                 }. Return true if correct, or a failure message string.
 //                 Omit for names where a per-call output check isn't meaningful
-//                 (flagged `signal:"low"`) — those still get a perf row.
-//     signal:     "low" — measurement carries little useful signal (inline
+//                 (flagged `signal:"low"`) - those still get a perf row.
+//     signal:     "low" - measurement carries little useful signal (inline
 //                 special forms, no-op-ish ops); reported honestly.
 //     note:       one-line human note (why signal is low, caveats)
 //   }
@@ -39,7 +39,7 @@ export const HW = {
 const pxAt = (vram, x, y, page = 0) => vram[page * 16384 + y * 128 + x];
 
 // ---------------------------------------------------------------------------
-// DRAW OPS  (the pilot category — verified end-to-end)
+// DRAW OPS  (the pilot category - verified end-to-end)
 // ---------------------------------------------------------------------------
 const draw = [
   {
@@ -122,7 +122,7 @@ const math = [
   { name: "flr", category: "math", ...R, reps: 16, call: "res = flr(3.5)", resultGlobal: "res", verify: (s, r) => r.result === 3 || `flr(3.5)=${r.result} want 3` },
   { name: "ceil", category: "math", ...R, reps: 16, call: "res = ceil(2.1)", resultGlobal: "res", verify: (s, r) => r.result === 3 || `ceil(2.1)=${r.result} want 3` },
   // abs/sgn use a VARIABLE arg (not a constant) so the number reflects real
-  // per-call cost — a constant folds away and hides the win.
+  // per-call cost - a constant folds away and hides the win.
   { name: "abs", category: "math", globals: "local res = 0\nlocal v = -3", statement: true, reps: 16, call: "res = abs(v)", resultGlobal: "res", verify: (s, r) => r.result === 3 || `abs(v=-3)=${r.result} want 3` },
   { name: "sgn", category: "math", globals: "local res = 0\nlocal v = -5", statement: true, reps: 16, call: "res = sgn(v)", resultGlobal: "res", verify: (s, r) => r.result === -1 || `sgn(v=-5)=${r.result} want -1` },
   { name: "min", category: "math", ...R, reps: 16, call: "res = min(5,3)", resultGlobal: "res", verify: (s, r) => r.result === 3 || `min(5,3)=${r.result} want 3` },
@@ -134,10 +134,10 @@ const math = [
   { name: "atan2", category: "math", ...R, reps: 16, call: "res = atan2(1,0)", resultGlobal: "res", verify: (s, r) => Number.isInteger(r.result) || `atan2 no result` },
   { name: "rnd", category: "math", ...R, reps: 16, call: "res = rnd(10)", resultGlobal: "res", signal: "low", note: "returns a fixed in [0,10); value varies, only cost is measured" },
   { name: "srand", category: "math", statement: true, reps: 16, call: "srand(42)", signal: "low", note: "seeds the RNG (state); no return" },
-  { name: "t", category: "math", ...R, reps: 16, call: "res = t()", resultGlobal: "res", signal: "low", note: "elapsed time (fixed); grows over frames — cost only" },
+  { name: "t", category: "math", ...R, reps: 16, call: "res = t()", resultGlobal: "res", signal: "low", note: "elapsed time (fixed); grows over frames - cost only" },
   { name: "time", category: "math", ...R, reps: 16, call: "res = time()", resultGlobal: "res", signal: "low", note: "alias of t()" },
   { name: "rgb", category: "math", ...R, reps: 16, call: "res = gt.rgb(0)", resultGlobal: "res", verify: (s, r) => Number.isInteger(r.result) || `gt.rgb no result`, note: "raw GameTank palette color (0x100|byte)" },
-  { name: "ticks", category: "math", ...R, reps: 16, call: "res = gt.ticks()", resultGlobal: "res", signal: "low", note: "frame tick counter; grows — cost only" },
+  { name: "ticks", category: "math", ...R, reps: 16, call: "res = gt.ticks()", resultGlobal: "res", signal: "low", note: "frame tick counter; grows - cost only" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -161,7 +161,7 @@ const audio = [
 ];
 
 // ---------------------------------------------------------------------------
-// TABLE / DATA  (constructors + list ops — mostly one-time allocs; low signal)
+// TABLE / DATA  (constructors + list ops - mostly one-time allocs; low signal)
 // ---------------------------------------------------------------------------
 const table = [
   { name: "array", category: "table", statement: true, reps: 8, globals: "local a = array(8,0)\nlocal res = 0", call: "res = a[1]", resultGlobal: "res", verify: (s, r) => r.result === 0 || `array(8,0)[1]=${r.result} want 0` },
@@ -189,16 +189,16 @@ const text = [
 const special = [
   { name: "autocls", category: "special", statement: true, reps: 16, call: "gt.autocls(0)", signal: "low", note: "sets the post-flip auto-clear color (state)" },
   { name: "gflush", category: "special", statement: true, reps: 2, call: "gt.gflush()", signal: "low", note: "drains the blit queue + restores draw state; cost depends on queue depth" },
-  // callbacks: not callable as expressions — measured as 'the empty-body frame
+  // callbacks: not callable as expressions - measured as 'the empty-body frame
   // cost' which the baseline already captures. Flagged as structural.
-  { name: "_init", category: "callback", statement: true, reps: 1, call: "", signal: "low", note: "lifecycle callback; runs once at boot, not per-frame — no per-call cost" },
+  { name: "_init", category: "callback", statement: true, reps: 1, call: "", signal: "low", note: "lifecycle callback; runs once at boot, not per-frame - no per-call cost" },
   { name: "_update", category: "callback", statement: true, reps: 1, call: "", signal: "low", note: "30fps logic+draw mode callback; structural, not a call" },
   { name: "_update60", category: "callback", statement: true, reps: 1, call: "", signal: "low", note: "60fps logic callback; structural" },
   { name: "_draw", category: "callback", statement: true, reps: 1, call: "", signal: "low", note: "per-frame draw callback; structural (it's the frame body itself)" },
 ];
 
 // ---------------------------------------------------------------------------
-// ENGINES — the gt.* power-tools. These mutate GRAM / arrays / pools, so per-
+// ENGINES - the gt.* power-tools. These mutate GRAM / arrays / pools, so per-
 // call PIXEL verification is impractical; they're measured for CYCLE COST and
 // verified structurally (builds + reaches _draw's markers). Setup mirrors the
 // real port call sites (driftmania / the ball/enemy demos). All signal:"low".

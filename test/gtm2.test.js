@@ -1,4 +1,4 @@
-// test/gtm2.test.js — the .gtm2 FM song format (compiler/gtm2.mjs).
+// test/gtm2.test.js - the .gtm2 FM song format (compiler/gtm2.mjs).
 // Verifies our bytes match Clyde's official format (midiconvert.js / music.c):
 // cfg + 4 instruments + {delay, mask, notes...} events, 1-based notes, single
 // trailing-zero terminator.
@@ -98,7 +98,7 @@ test("instrument names resolve to the built-in indices", () => {
 
 test("parses a REAL midiconvert.js .gtm2 (the SDK boot jingle, byte-for-byte)", () => {
   // exactly the 21 bytes Clyde's own scripts/converters/midiconvert.js emits for
-  // assets/sdk_default/jingle.mid — our parser must read it and our encoder must
+  // assets/sdk_default/jingle.mid - our parser must read it and our encoder must
   // reproduce it byte-identical (parity with the official format authority).
   // (the canonical bytes, verified against midiconvert.js output this session)
   const canonical = Buffer.from([

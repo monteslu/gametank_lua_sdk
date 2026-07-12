@@ -1,4 +1,4 @@
-/* gt_sintab8.h — generated: PICO-8 sin table in 8.8 fixed (int16),
+/* gt_sintab8.h - generated: PICO-8 sin table in 8.8 fixed (int16),
  * derived from gt_sintab.h (16.16) >> 8. Used by the N8 gt_fsin/gt_fcos
  * fast path: a single 2-byte indexed load instead of a long-table index
  * + 32-bit >>8. 256 steps per turn. */

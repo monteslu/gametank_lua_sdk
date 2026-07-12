@@ -1,15 +1,15 @@
-; gt_music_stubs.s — FLASH2M fixed-bank far-call stubs for the gt_music unit.
+; gt_music_stubs.s - FLASH2M fixed-bank far-call stubs for the gt_music unit.
 ;
 ; The banked build exiles gt_music.c (the sfx/music sequencer + its
 ; instrument/sfx/song tables, ~2.7 KB) out of the always-mapped FIXED bank into
 ; game bank 2 ($8000-$BFFF, with the firmware + sheet), reclaiming fixed-bank
 ; RODATA/CODE the near-full runtime needs. These stubs live in the FIXED bank
-; and own the plain public symbol names, so every caller — game code in any
-; bank, and gt_api's gt_endframe -> (*gt_frame_hook)() — links to the stub
+; and own the plain public symbol names, so every caller - game code in any
+; bank, and gt_api's gt_endframe -> (*gt_frame_hook)() - links to the stub
 ; transparently. Each stub switches to bank 2, jsr's the real _impl function,
 ; restores the caller's bank, and returns. Same shape as gt_math_stubs.s.
 ;
-; ABI: cc65 __fastcall__/__near__ — the last argument (and return value) ride
+; ABI: cc65 __fastcall__/__near__ - the last argument (and return value) ride
 ; in A/X (high word in sreg); earlier arguments sit on the cc65 C-stack in RAM.
 ; The stub touches only A/X and one BSS byte (via gt_bank_raw); it never
 ; disturbs c_sp, sreg, or the C-stack RAM, and the bank switch only remaps the
@@ -68,7 +68,7 @@ label:
 .endmacro
 
 ; ---------------------------------------------------------------------------
-; gt_music_nmi_shim — the vblank-driven sequencer tick (installed into
+; gt_music_nmi_shim - the vblank-driven sequencer tick (installed into
 ; gt_nmi_hook by gt_music_init). Runs the bank-3 tick from INSIDE the NMI:
 ; wall-clock spacing no matter how long the game's frame runs, which is what
 ; a separate sound CPU feels like even though the sequencing stays on the

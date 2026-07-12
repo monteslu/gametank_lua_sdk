@@ -1,9 +1,9 @@
 ; ---------------------------------------------------------------------------
-; gt.flakes — ambient drifting-particle field (snow / motes), pure 65C02.
+; gt.flakes - ambient drifting-particle field (snow / motes), pure 65C02.
 ;
 ; WHY ASM: the same loop in the Lua dialect measured ~2,500 cycles per flake
 ; (isolated microbench), and a C implementation compiles to the same class of
-; code — cc65's 16-bit codegen on RMW-heavy bodies runs 5-10x the instruction-
+; code - cc65's 16-bit codegen on RMW-heavy bodies runs 5-10x the instruction-
 ; count estimate (pointer helpers, address recomputation, spills). This loop
 ; is ~175 cycles per flake: byte-split state arrays, Y-indexed direct
 ; addressing, ring entries staged in place (no gt_ent, no push copy).
@@ -63,7 +63,7 @@ fd_ptr:  .res 2               ; CPU-poke pointer                 ; range draw: f
 
 ; void __fastcall__ gt_flakes_draw2(int first, int count, int camdx8, int camdy8)
 ; camdy8 in A/X; stack (top first): camdx8, count, first. Draws flakes
-; [first, first+count) — layered fields (clouds behind the map, snow in
+; [first, first+count) - layered fields (clouds behind the map, snow in
 ; front) share the one state.
 _gt_flakes_draw2:
         stz     fd_cpu
@@ -184,7 +184,7 @@ vis:    ; on screen (0..127): stage a QF_RECT ring entry in place
         beq     slot
         ; ---- CPU mode (caller entered it): poke the pixel directly.
         ; vram = $4000 | (y << 7) | x; color un-inverts (ci is stored
-        ; pre-inverted for the blitter's colorfill register). 1x1 only —
+        ; pre-inverted for the blitter's colorfill register). 1x1 only -
         ; the CPU entry point is gated to fields built with w = h = 1.
         lda     _fl_yh,y
         lsr     a               ; y>>1 -> high byte offset
@@ -238,7 +238,7 @@ next:   cpy     fd_lo
         jmp     loop
 done:   rts
 
-; void __fastcall__ gt_flakes_draw2c(...) — draw2 but pixels poke through
+; void __fastcall__ gt_flakes_draw2c(...) - draw2 but pixels poke through
 ; CPU mode (the caller must have entered it). For 1x1 flake fields drawn
 ; at the frame tail: ~35 cycles a flake vs ~130 through the ring + IRQ.
 .export _gt_flakes_draw2c
@@ -271,7 +271,7 @@ _gt_flakes_draw2c:
         jmp     loop
 :       rts
 
-; void __fastcall__ gt_flakes_draw(int camdx8, int camdy8) — all flakes
+; void __fastcall__ gt_flakes_draw(int camdx8, int camdy8) - all flakes
 _gt_flakes_draw:
         stz     fd_cpu
         sta     fd_cdyl
@@ -291,7 +291,7 @@ _gt_flakes_draw:
 jl:     jmp     loop
 
 ; ---------------------------------------------------------------------------
-; gt.chain — follower chain (hair, tails): 5 segments ease toward a target
+; gt.chain - follower chain (hair, tails): 5 segments ease toward a target
 ; with the port's integer 5/8 smoothing ((d*5+4)>>3), drawn as p8 round
 ; dots (radii 2,2,1,1,1) staged straight into the blit ring. The same
 ; update+draw measured ~11k/frame through the compiler; this is ~1.6k.
@@ -343,7 +343,7 @@ ce_d:   .res 2                  ; ease scratch (16-bit d*5)
         clc
         adc     ce_d
         sta     ce_d
-        txa                     ; recompute nothing — hi add:
+        txa                     ; recompute nothing - hi add:
         and     #$80
         beq     :+
         lda     #$FF
@@ -414,7 +414,7 @@ free:   ldx     _gt_qhead
         rts
 .endproc
 
-; void gt_chain_z(void) — gt_a0/a1 = target, gt_a2 = p8 color
+; void gt_chain_z(void) - gt_a0/a1 = target, gt_a2 = p8 color
 .proc _gt_chain_z
         stz     _gt_draw_mode
         ldy     _gt_a2
@@ -499,6 +499,6 @@ d1:     lda     _ch_y,y
 
 ; ---------------------------------------------------------------------------
 ; (gt_canvas_view_z moved to gt_canvas.s: linking the canvas must not drag
-; in this unit's flake-field BSS — see the combo-pool RAM-collision bug)
+; in this unit's flake-field BSS - see the combo-pool RAM-collision bug)
 
 

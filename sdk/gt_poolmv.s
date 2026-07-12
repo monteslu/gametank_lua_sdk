@@ -1,5 +1,5 @@
 ; ---------------------------------------------------------------------------
-; gt.pool_move — bulk pool integration: x[i] += sx[i], y[i] += sy[i] for
+; gt.pool_move - bulk pool integration: x[i] += sx[i], y[i] += sy[i] for
 ; every used slot, optionally with the shift-damping cherry-bomb's particles
 ; use (v -= v>>3 + v>>5, i.e. *0.84375). ~35 cycles per live entity vs ~250
 ; through the compiler; a shmup frame moves 80-100 entities.
@@ -22,7 +22,7 @@ _pm_mode: .res 1
 _pm_ox:   .res 1                ; pool_sprs: pixel offset subtracted from x
 _pm_oy:   .res 1                ;            and y (sprite centering)
 
-; Pure per-routine scratch — never used for indirect (zp),y addressing, so it
+; Pure per-routine scratch - never used for indirect (zp),y addressing, so it
 ; costs only +1 cycle/access in RAM but keeps zeropage under the 256B ceiling
 ; (combo-pool's SDK stack is a tight fit). Do NOT move the _pm_* array pointers
 ; above or the (zp),y ball loops break.
@@ -106,7 +106,7 @@ next:   inc     pm_i
 .endproc
 
 ; pm_t (s16) -= (pm_t>>3) + (pm_t>>5), arithmetic. Uses pm_d scratch.
-; RAM scratch (no indirect use) — kept out of zeropage for headroom.
+; RAM scratch (no indirect use) - kept out of zeropage for headroom.
 .segment "BSS"
 pm_d:   .res 2
 pm_e:   .res 2
@@ -156,7 +156,7 @@ pm_e:   .res 2
 .endproc
 
 ; ---------------------------------------------------------------------------
-; gt.pool_sprs — bulk 8x8 sprite pass for a pool: every used slot with a
+; gt.pool_sprs - bulk 8x8 sprite pass for a pool: every used slot with a
 ; nonzero cell byte stages a QF_SPR ring entry at (x>>4, y>>4) (the 1/16th-
 ; pixel convention). ~80 cycles per sprite vs ~570 through spr()'s zp call.
 ;   reuses pm_x/pm_y/pm_used/pm_n; pm_cells = cell byte array.
@@ -168,7 +168,7 @@ pm_e:   .res 2
 QF_SPR2 = $55
 
 .segment "ZEROPAGE" : zeropage
-_pm_cells: .res 2               ; MUST stay zp — read via (_pm_cells),y
+_pm_cells: .res 2               ; MUST stay zp - read via (_pm_cells),y
 
 .segment "BSS"
 ps_t:      .res 1               ; plain scratch, no indirect use
@@ -271,12 +271,12 @@ next:   inc     pm_i
 .endproc
 
 ; ---------------------------------------------------------------------------
-; gt.pool_anim — bulk sprite animation: for every used slot,
+; gt.pool_anim - bulk sprite animation: for every used slot,
 ;   frame[i] += spd[i]; if frame[i] > maxf[i] then frame[i] = 16
 ; (frames in 16ths, reset-to-first like cherry's animate()). The compiled
 ; per-enemy version cost ~450 cycles a slot every frame; this is ~22.
 ; ALL THREE FIELDS ARE BYTE ARRAYS (the pool narrows small fields to
-; bytes — an int field here indexes as garbage; frame values stay <= 96
+; bytes - an int field here indexes as garbage; frame values stay <= 96
 ; by construction: maxf < 240 and spd small).
 ; Reuses pm_x (frame), pm_sx (speed), pm_sy (max), pm_used, pm_n.
 ; ---------------------------------------------------------------------------
@@ -303,7 +303,7 @@ done:   rts
 .endproc
 
 ; ---------------------------------------------------------------------------
-; gt.pool_edraw — the whole per-enemy sprite pass in one walk: derive the
+; gt.pool_edraw - the whole per-enemy sprite pass in one walk: derive the
 ; sheet cell from (aniframe, type, flash) through a per-type descriptor
 ; table, apply the shake nudge, clip against the 7-bit blit registers, and
 ; stage the sprite. cherry-bomb's compiled loop cost ~450 cycles an enemy
@@ -311,7 +311,7 @@ done:   rts
 ;
 ; desc: 3 bytes per type (1-based), (type-1)*3:
 ;   +0 base cell (the f=1 frame), +1 flash-variant base, +2 mode:
-;   0 = skip (the port draws it — cherry's boss), 1 = 8x8, cell = base+f-1,
+;   0 = skip (the port draws it - cherry's boss), 1 = 8x8, cell = base+f-1,
 ;   2 = 16x16, cell = base+(f-1)*2 (frames are 2 cells apart on the sheet).
 ; Field arrays: aniframe/type/flash/shake are BYTES (pool-narrowed);
 ; x/y are ints in 16ths. flash and shake decrement in here (the compiled
@@ -320,7 +320,7 @@ done:   rts
 .export _gt_pool_edraw_z
 .export _pe_ani, _pe_type, _pe_flash, _pe_shake, _pe_desc, _pe_nudge
 
-; Array pointers stay in zeropage — dereferenced via (zp),y. _pe_nudge also
+; Array pointers stay in zeropage - dereferenced via (zp),y. _pe_nudge also
 ; MUST stay zp: the C side (gt_api.c) imports it as an extern and cc65 emits a
 ; zeropage `sta` for it; a BSS address there is a link-time range error.
 .segment "ZEROPAGE" : zeropage
@@ -570,10 +570,10 @@ next:   inc     pm_i
 .endproc
 
 ; ---------------------------------------------------------------------------
-; gt.cost_decay — combo-pool's per-frame life-cost sum + combo-cooldown
+; gt.cost_decay - combo-pool's per-frame life-cost sum + combo-cooldown
 ; decay in one walk:  for every slot with act[i] != 0:
 ;   sum += cost[act[i] - 1];  lm[i] = max(0, lm[i] - 5)
-; act is an INT array (stride 2, low byte tested — the ball color/tier),
+; act is an INT array (stride 2, low byte tested - the ball color/tier),
 ; lm and cost are BYTE arrays. Returns the sum (int in A/X). ~30 cycles a
 ; slot against ~350 through the compiled loop.
 ; Reuses pm_x (act), pm_sx (lm), pm_sy (cost), pm_n.
@@ -618,7 +618,7 @@ next:   dex
 .endproc
 
 ; ---------------------------------------------------------------------------
-; gt.trail_stamp — combo-pool's ball motion trails in one walk. Per slot
+; gt.trail_stamp - combo-pool's ball motion trails in one walk. Per slot
 ; with act[i] != 0 (int array, stride 2, low byte = tier 1..7):
 ;   px = int(x[i]); py = int(y[i])            (fixed arrays)
 ;   if |px - tx[i]| + |py - ty[i]| >= 2: stage an 8x8 of sprs[tier-1]

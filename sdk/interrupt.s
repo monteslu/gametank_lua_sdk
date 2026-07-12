@@ -15,7 +15,7 @@
 
 .segment  "BSS"
 _gt_nmi_hook: .res 2              ; 0 = none; else called once per vblank
-                                  ; (the audio sequencer's wall clock — the
+                                  ; (the audio sequencer's wall clock - the
                                   ; installee must save every zp/reg it uses)
 
 .segment  "CODE"

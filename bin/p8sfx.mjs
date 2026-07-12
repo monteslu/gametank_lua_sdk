@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// p8sfx — convert a PICO-8 cart's __sfx__ data to a gtlua sfx bank blob.
+// p8sfx - convert a PICO-8 cart's __sfx__ data to a gtlua sfx bank blob.
 //
 // Input: an extracted cart.bin (the 32KB PICO-8 ROM image; sfx live at
 // 0x3200, 64 effects x 68 bytes) or a .p8 text cart (__sfx__ section).

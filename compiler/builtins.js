@@ -1,11 +1,11 @@
-// gtlua builtin functions — the PICO-8 global API surface (v0.2 slice) plus
+// gtlua builtin functions - the PICO-8 global API surface (v0.2 slice) plus
 // the gt.* GameTank extras.
 //
 // Param kinds:
-//   coord — pixel coordinate/radius: C int; fixed args are floored (>>16)
-//   num   — 16.16 number: C long; int args are promoted (<<16)
-//   int   — small integer (button index, player): C int; fixed args floored
-//   color — PICO-8 color 0-15 or gt.rgb() raw; optional -> -1 sentinel
+//   coord - pixel coordinate/radius: C int; fixed args are floored (>>16)
+//   num   - 16.16 number: C long; int args are promoted (<<16)
+//   int   - small integer (button index, player): C int; fixed args floored
+//   color - PICO-8 color 0-15 or gt.rgb() raw; optional -> -1 sentinel
 // Ret kinds: fixed | int | bool | void | same (polymorphic with args)
 
 export const BUILTINS = {
@@ -32,15 +32,15 @@ export const BUILTINS = {
   btnp:     { params: [["int", false], ["int", true]], ret: "bool", c: "gt_p8_btnp" },
 
   // ---- sound (gt_music.c) --------------------------------------------------
-  // sfx(n, [ch]) — fire built-in effect n (0-7); ch omitted = auto channel.
-  // music(n, [loop]) — start built-in tune n; music(-1) stops (PICO-8).
+  // sfx(n, [ch]) - fire built-in effect n (0-7); ch omitted = auto channel.
+  // music(n, [loop]) - start built-in tune n; music(-1) stops (PICO-8).
   // `audio` pulls in gt_audio_init()+gt_music.o at build time.
   sfx:   { params: [["int", false], ["int", true]], ret: "void", c: "gt_sfx", audio: true },
   sfx_bank: { params: [["array8", false]], ret: "void", c: "gt_sfx_bank", audio: true },
   music_bank: { params: [["array8", false]], ret: "void", c: "gt_music_bank", audio: true },
   // `loop` is a truthy flag (default on): music(0) loops, music(0,false) plays once.
   music: { params: [["int", false], ["flip", true]], ret: "void", c: "gt_music", audio: true },
-  // song(data, [loop]) — play a native .gtm2 FM song (Clyde's format); data is a
+  // song(data, [loop]) - play a native .gtm2 FM song (Clyde's format); data is a
   // hexdata() blob. loop defaults on. gt.song_stop() halts it. See docs/MUSIC.md.
   song: { params: [["array8", false], ["flip", true]], ret: "void", c: "gt_gtm2_play", audio: true },
   song_stop: { params: [], ret: "void", c: "gt_gtm2_stop", audio: true },
@@ -79,13 +79,13 @@ export const BUILTINS = {
 
 // gt.* extras (GameTank-specific)
 export const GT_MEMBERS = {
-  // gt.rgb(byte) — raw GameTank palette byte 0-255 (the full ~200-color space,
-  // beyond the 16 PICO-8 indices). gt.rgb(r,g,b) — pick by RGB (0-255 each,
+  // gt.rgb(byte) - raw GameTank palette byte 0-255 (the full ~200-color space,
+  // beyond the 16 PICO-8 indices). gt.rgb(r,g,b) - pick by RGB (0-255 each,
   // constant); resolved to the nearest hardware color at compile time.
   rgb:    { kind: "fn", params: [["int", false]], ret: "int", special: "rgb" },
   ticks:  { kind: "fn", params: [], ret: "int", c: "(int)gt_ticks", isValue: true },
   border: { kind: "fn", params: [["color", false]], ret: "void", c: "gt_p8_border" },
-  // frame clear queued after the page flip — its pixel time hides inside the
+  // frame clear queued after the page flip - its pixel time hides inside the
   // fps30 second vsync wait. Call once (usually _init); pass -1 to disable.
   autocls: { kind: "fn", params: [["int", false]], ret: "void", c: "gt_autocls_set" },
   note:    { kind: "fn", params: [["int", false], ["int", false], ["int", true]], ret: "void", c: "gt_note", audio: true },
@@ -96,16 +96,16 @@ export const GT_MEMBERS = {
   starfield_move: { kind: "fn", params: [["int", false]], ret: "void", c: "gt_starfield_move" },
   starfield_draw: { kind: "fn", params: [], ret: "void", c: "gt_starfield_draw" },
   // ambient flake field (snow/motes/slow clouds): SDK-owned state, CPU-mode
-  // pokes — ~60 cycles per flake vs ~350 for the Lua-loop + rectfill shape
+  // pokes - ~60 cycles per flake vs ~350 for the Lua-loop + rectfill shape
   flakes_init: { kind: "fn", params: [["int", false]], ret: "void", c: "gt_flakes_init" },
   flakes_draw: { kind: "fn", params: [["int", false], ["int", false]], ret: "void", c: "gt_flakes_draw" },
-  // layered range draw: (first, count, camdx8, camdy8) — clouds behind the
+  // layered range draw: (first, count, camdx8, camdy8) - clouds behind the
   // map and snow in front share one engine
   flakes_draw2: { kind: "fn", params: [["int", false], ["int", false], ["int", false], ["int", false]], ret: "void", c: "gt_flakes_draw2" },
   // manual slot setup for the non-snow layer: (i, x, y, w, h, spd8, col)
   flakes_set: { kind: "fn", params: [["int", false], ["int", false], ["int", false], ["int", false], ["int", false], ["int", false], ["int", false]], ret: "void", c: "gt_flakes_set" },
   // follower chain (hair/tails): eases 5 segments toward (x,y), draws p8
-  // round dots r=2,2,1,1,1 in the given color — all in asm (gt_flakes.s)
+  // round dots r=2,2,1,1,1 in the given color - all in asm (gt_flakes.s)
   flakes_mode: { kind: "fn", params: [["int", false], ["int", false]], ret: "void", c: "gt_flakes_mode" },
   chain_step_draw: { kind: "fn", params: [["int", false], ["int", false], ["int", false]], ret: "void", c: "gt_chain_step_draw" },
   // the 4-piece 128x128 canvas window blit (scrolling composed maps)
@@ -131,11 +131,11 @@ export const GT_MEMBERS = {
   // particle pool step: x += vx, y += vy, v *= 0.953 (v -= v>>5 + v>>6)
   // on every used slot; the pool needs fixed fields x, y, vx, vy
   parts_step: { kind: "fn", params: [["pool", false]], ret: "void", c: "gt_parts_step", special: "partsstep" },
-  // bulk pool integration: gt.pool_move(pool, mode) — moves every used slot
+  // bulk pool integration: gt.pool_move(pool, mode) - moves every used slot
   // (x += sx, y += sy; mode 1 also damps velocities by v -= v>>3 + v>>5).
   // The pool must have int fields x, y, sx, sy.
   pool_move: { kind: "fn", params: [["pool", false], ["int", false]], ret: "void", c: "gt_pool_move", special: "poolmove" },
-  // bulk animation: gt.pool_anim(pool, "frame", "spd", "maxf") — frame +=
+  // bulk animation: gt.pool_anim(pool, "frame", "spd", "maxf") - frame +=
   // spd per used slot, reset to 16 when frame > maxf (16ths-frames)
   // life-cost sum + cooldown decay: sum(cost[act[i]-1]) + lm[i]=max(0,lm[i]-5)
   // ball motion trails: stamp sprs[act[i]-1] at (tx-3,ty-3) when moved >= 2px
@@ -153,7 +153,7 @@ export const GT_MEMBERS = {
   // name string) is nonzero blits an 8x8 cell at (x>>4, y>>4)
   pool_sprs: { kind: "fn", params: [["pool", false], ["str", false], ["int", true], ["int", true]], ret: "void", c: "gt_pool_sprs", special: "poolsprs" },
   // two-pool AABB overlap scan: gt.hit_scan(A, "w", "h", B, "w", bh, shift,
-  // pairs) — pairs get (a_ord, b_ord) live ordinals, 0-terminated
+  // pairs) - pairs get (a_ord, b_ord) live ordinals, 0-terminated
   hit_scan: { kind: "fn", params: [["pool", false], ["str", false], ["str", false], ["pool", false], ["str", false], ["int", false], ["int", false], ["array8", false]], ret: "void", c: "gt_hit_scan", special: "hitscan" },
   // Offscreen-GRAM background canvas. The GameTank has 512 KB of GRAM (32
   // pages of 128x128); the SDK uses only page 0 (the sheet). A background
@@ -170,7 +170,7 @@ export const GT_MEMBERS = {
   // Freeform canvas building (atlases of pre-rendered chunks, big composed
   // sprites): clear the 256x256 canvas, stamp individual sheet tiles anywhere
   // (multiples of 8), then gt.gspr(gx,gy,w,h,x,y) queue-blits any rect of the
-  // canvas to the screen — camera-adjusted + colorkey like spr(), ONE blit no
+  // canvas to the screen - camera-adjusted + colorkey like spr(), ONE blit no
   // matter how many tiles it covers.
   bg_clear: { kind: "fn", params: [], ret: "void", c: "gt_bg_clear" },
   bg_tile: { kind: "fn", params: [["int", false], ["int", false], ["int", false]],

@@ -1,4 +1,4 @@
-// bench.mjs — micro-benchmark harness for gt-lua SDK functions.
+// bench.mjs - micro-benchmark harness for gt-lua SDK functions.
 //
 // Measures EXACT main-CPU cycles for a call via in-frame cycle MARKERS:
 //   _draw runs `gt.mark(1); <call×reps>; gt.mark(2)`. The libretro core

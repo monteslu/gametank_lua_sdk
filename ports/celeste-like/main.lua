@@ -278,7 +278,7 @@ function _draw()
   -- background hills (precomputed spans + the ground band)
   rectfill(0, 120, 127, 127, 13)
   -- constant bound on purpose: the compiler narrows the counter to a byte
-  -- and folds the 1-based indexing only for provably-bounded loops — worth
+  -- and folds the 1-based indexing only for provably-bounded loops - worth
   -- ~1k cycles/frame here, which is real margin this close to the vsync line
   for i = 1, 35 do
     rectfill(hx0[i], hy[i], hx1[i], hy[i], 13)

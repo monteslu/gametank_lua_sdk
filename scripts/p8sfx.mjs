@@ -1,14 +1,14 @@
 #!/usr/bin/env node
-// p8sfx — convert PICO-8 __sfx__ data into a paste-able gtlua source block
+// p8sfx - convert PICO-8 __sfx__ data into a paste-able gtlua source block
 // (note-event arrays + a tiny one-channel player driven from _update).
 //
 //   node scripts/p8sfx.mjs <cart.p8 | cart.bin> --sfx 9,18,20 [options]
 //   node scripts/p8sfx.mjs <cart.p8 | cart.bin> --list
 //
 // Inputs:
-//   cart.p8   plain-text cart — the __sfx__ section (one 168-hex-digit line
+//   cart.p8   plain-text cart - the __sfx__ section (one 168-hex-digit line
 //             per sfx: 8 header digits [editor mode, speed, loop start,
-//             loop end — 2 each] + 32 notes x 5 digits [pitch 2, waveform 1,
+//             loop end - 2 each] + 32 notes x 5 digits [pitch 2, waveform 1,
 //             volume 1, effect 1]).
 //   cart.bin  raw cart image (e.g. scripts/p8extract.mjs output): sfx live
 //             at 0x3200-0x42FF, 64 records x 68 bytes = 32 notes x 2 bytes
@@ -28,12 +28,12 @@
 // (30 fps), i.e. 128/30 = 4.267 ticks per frame, so the converter resamples
 // each sfx on the frame grid (sampling at frame midpoints) and run-length
 // merges identical frames into (note, vol, duration) events. Rows shorter
-// than a frame are resampled — very fast sfx (speed <= 4) lose in-between
+// than a frame are resampled - very fast sfx (speed <= 4) lose in-between
 // rows but keep their overall contour and length.
 //
 // Effects: 1 slide, 3 drop, 4 fade-in, 5 fade-out, 6/7 arpeggio are
 // approximated at frame granularity (per-frame pitch/volume steps);
-// 2 vibrato is dropped (sub-semitone — the pitch table has no detune).
+// 2 vibrato is dropped (sub-semitone - the pitch table has no detune).
 // All waveforms render as the GameTank's sine voice (documented timbre
 // difference; noise + custom instruments flagged in the emitted comments).
 //
@@ -101,7 +101,7 @@ function parseText(text) {
 /** @param {Buffer} buf @returns {Sfx[]} */
 function parseBin(buf) {
   if (buf.length < SFX_BIN_OFFSET + SFX_COUNT * SFX_BIN_SIZE)
-    fail(`binary cart too small (${buf.length} bytes) — need the full 0x8000 image (p8extract.mjs cart.bin)`);
+    fail(`binary cart too small (${buf.length} bytes) - need the full 0x8000 image (p8extract.mjs cart.bin)`);
   const out = [];
   for (let i = 0; i < SFX_COUNT; i++) {
     const base = SFX_BIN_OFFSET + i * SFX_BIN_SIZE;
@@ -138,7 +138,7 @@ function loadCart(file) {
   const head = buf.subarray(0, Math.min(buf.length, 512)).toString("latin1");
   const looksText = /pico-8 cartridge|__lua__|__sfx__/.test(head) ||
     (/\.p8$/i.test(file) && !/\.p8\.png$/i.test(file));
-  if (/\.png$/i.test(file)) fail("got a .p8.png — run scripts/p8extract.mjs first and pass its cart.bin");
+  if (/\.png$/i.test(file)) fail("got a .p8.png - run scripts/p8extract.mjs first and pass its cart.bin");
   return looksText ? parseText(buf.toString("utf8")) : parseBin(buf);
 }
 
@@ -151,7 +151,7 @@ function volMap(v) { // P8 0-7 (may be fractional after lerp) -> gt 0-127
   return Math.max(0, Math.min(127, Math.round((v * 127) / 7)));
 }
 
-function rowIsSilent(n) { return n.vol === 0 && n.fx !== 1; } // a slide row inherits prev volume ramping to 0 — audible
+function rowIsSilent(n) { return n.vol === 0 && n.fx !== 1; } // a slide row inherits prev volume ramping to 0 - audible
 
 /**
  * Resample one sfx onto the frame grid and RLE into events.
@@ -204,7 +204,7 @@ function convertSfx(sfx, { fps, transpose }) {
         pitch = gn.pitch;
         break;
       }
-      // 2 vibrato: sub-semitone wobble — dropped, plain note
+      // 2 vibrato: sub-semitone wobble - dropped, plain note
     }
     const gtNote = Math.max(0, Math.min(107, Math.round(pitch + transpose)));
     const gtVol = volMap(vol);
@@ -243,7 +243,7 @@ function emit(cartName, records, picks, opts) {
   const { prefix: P, channel, fps, transpose } = opts;
   const convs = picks.map((id) => {
     const c = convertSfx(records[id], opts);
-    if (c.events.length === 0) fail(`sfx ${id} is empty (all rows silent) — nothing to convert`);
+    if (c.events.length === 0) fail(`sfx ${id} is empty (all rows silent) - nothing to convert`);
     return { id, ...c };
   });
 
@@ -256,7 +256,7 @@ function emit(cartName, records, picks, opts) {
     at += c.events.length;
   }
   const total = at - 1;
-  if (total > 4096) fail(`${total} events exceed the 4096-element array cap — select fewer sfx`);
+  if (total > 4096) fail(`${total} events exceed the 4096-element array cap - select fewer sfx`);
 
   const L = [];
   L.push(`-- p8sfx: ${picks.join(",")} from ${cartName}`);

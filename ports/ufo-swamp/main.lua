@@ -265,7 +265,7 @@ function _draw()
     if btn(4) and fuel > 0 then
       -- thruster legs as their exact Bresenham pixels in fills: a 3px
       -- diagonal line() walks pset_raw in CPU mode and drains the queued
-      -- blits first — these two lines were 24% of all executed cycles
+      -- blits first - these two lines were 24% of all executed cycles
       rectfill(x - 2, y + 4, x - 2, y + 4, 9)
       rectfill(x - 1, y + 5, x - 1, y + 6, 9)
       rectfill(x + 2, y + 4, x + 2, y + 4, 9)

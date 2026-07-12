@@ -1,14 +1,14 @@
-# gt-lua Cheat Sheet — for PICO-8 users
+# gt-lua Cheat Sheet - for PICO-8 users
 
 **PICO-8-flavored Lua that compiles to native 65C02** for the GameTank. No
-interpreter, no VM — your Lua becomes machine code. The GameTank's 128×128
+interpreter, no VM - your Lua becomes machine code. The GameTank's 128×128
 screen is the same size as PICO-8's, so coordinates and sprite sheets transfer
 1:1. Measured against PICO-8 v0.2.7.
 
 Build: `gtlua build main.lua --sheet gfx.gtg -o game.gtr`
 
 > **New to PICO-8?** This page maps gt-lua *against* PICO-8. If you don't already
-> know PICO-8, read the standalone [`CHEATSHEET.md`](CHEATSHEET.md) instead — it's
+> know PICO-8, read the standalone [`CHEATSHEET.md`](CHEATSHEET.md) instead - it's
 > the full gt-lua reference with no PICO-8 assumed.
 
 **Status legend**
@@ -31,7 +31,7 @@ is GameTank-only extras.
 
 Draw calls take indices `0`–`15` by default (compile-time nearest-match into
 the GameTank's 256-color space). Escape hatch: `gt.rgb(r,g,b)` or
-`gt.rgb(byte)` for the full palette — **P8 devs get more colors, not fewer.**
+`gt.rgb(byte)` for the full palette - **P8 devs get more colors, not fewer.**
 
 | # | name | GT byte | RGB | | # | name | GT byte | RGB |
 |--:|------|--:|------|---|--:|------|--:|------|
@@ -44,7 +44,7 @@ the GameTank's 256-color space). Escape hatch: `gt.rgb(r,g,b)` or
 | 6 | light-grey | 6 | `#a1a1a1` | | 14 | pink | 94 | `#ea8ca2` |
 | 7 | white | 7 | `#b9b9b9` | | 15 | peach | 47 | `#cbb79f` |
 
-*(Colors are the GameTank's own palette bytes — the RGB shown is what the
+*(Colors are the GameTank's own palette bytes - the RGB shown is what the
 console actually displays, not PICO-8's originals. The RGB is the CAPTURE
 palette, GameTank's hardware-accurate default. It's muted vs PICO-8: no pure
 white/black, softer primaries. Full rationale + per-color notes:
@@ -57,7 +57,7 @@ white/black, softer primaries. Full rationale + per-color notes:
 ```
         [2]↑                O = 4  🅾️ → GameTank A
     [←]0    1[→]            X = 5  ❎ → GameTank B
-        [3]↓                C = 6  → GameTank C  (extra button — P8 has no 6!)
+        [3]↓                C = 6  → GameTank C  (extra button - P8 has no 6!)
                             START = 7
 ```
 
@@ -76,13 +76,13 @@ constants 0–5 in source.
 | `_update()` | ✅ | logic @ 30 fps (every 2nd vsync) |
 | `_draw()` | ✅ | 1× per visible frame |
 
-No cartridge loop / `goto` tweetcart form — `_draw()` **is** the loop.
+No cartridge loop / `goto` tweetcart form - `_draw()` **is** the loop.
 
 ## Dialect & syntax
 
 | Feature | | Notes |
 |---|:--:|---|
-| `a \ b` | 🟡 | floored int divide `flr(a/b)` — **power-of-two divisor** for now |
+| `a \ b` | 🟡 | floored int divide `flr(a/b)` - **power-of-two divisor** for now |
 | `//` | ✅ | a line comment, like PICO-8 |
 | `a != b` | ✅ | alias of `~=` |
 | `if (c) stmt else stmt` | ✅ | one-line if / while, parens required |
@@ -94,7 +94,7 @@ No cartridge loop / `goto` tweetcart form — `_draw()` **is** the loop.
 
 ## Number model
 
-Full **16.16 fixed point**, PICO-8 edge cases and all — it maps to the 6502 for
+Full **16.16 fixed point**, PICO-8 edge cases and all - it maps to the 6502 for
 free (Lexaloffle designed it for exactly this class of machine).
 
 | | | Notes |
@@ -106,7 +106,7 @@ free (Lexaloffle designed it for exactly this class of machine).
 | `sgn(0) == 1` | ✅ | `flr` toward −∞ |
 | `>>` / `>>>` | ✅ | arithmetic / logical shift |
 
-**gt speed knob:** `--num8` builds switch to 8.8 fixed (±127.99) — cuts the
+**gt speed knob:** `--num8` builds switch to 8.8 fixed (±127.99) - cuts the
 32-bit math tax hard on physics-heavy carts.
 
 ## Graphics & draw
@@ -126,7 +126,7 @@ free (Lexaloffle designed it for exactly this class of machine).
 | `clip(x,y,w,h)` | 🔵 | screen-edge only today; software-clip v0.3+ |
 | `fillp`, `tline` | ❌ | deferred indefinitely |
 
-## Palette & transparency — the largest real gap
+## Palette & transparency - the largest real gap
 
 | Call | | Notes |
 |---|:--:|---|
@@ -135,7 +135,7 @@ free (Lexaloffle designed it for exactly this class of machine).
 | `palt(0,on)` | 🟡 | color-0 transparency toggle |
 | `palt(c,true)`, c≠0 | 🔷 | compile error with a fix-it |
 
-GameTank framebuffer bytes **are** colors — no CLUT between GRAM and screen. So
+GameTank framebuffer bytes **are** colors - no CLUT between GRAM and screen. So
 `pal` hits primitives and **future** sprite loads (remap at load time); the
 full-screen `pal(t,1)` fade idiom needs a `gt.*` redraw-tinted path.
 
@@ -168,7 +168,7 @@ full-screen `pal(t,1)` fade idiom needs a `gt.*` redraw-tinted path.
 | `array(n)` / `array8(n)` | 🟡➕ | fixed / byte-wide arrays |
 
 **Cut (compiled subset):** nil / `x or default`, closures, metatables/OOP,
-coroutines. Use named functions + a `kind` field + `if/elseif` state machines —
+coroutines. Use named functions + a `kind` field + `if/elseif` state machines -
 the compiler errors loudly with the fix.
 
 ## Audio
@@ -191,7 +191,7 @@ Zero-authoring built-ins: `sfx(0)`=jump, 1=pickup, 2=shoot, 3=explode, 4=blip,
 | `print(str,[x,y],[c])` | ✅ | returns right-edge x (4×6 font) |
 | `?expr` | ✅ | print shorthand |
 | `s = "hello"` | ✅ | string literals |
-| `s .. s2` | 🔵 | runtime concat — v0.5 |
+| `s .. s2` | 🔵 | runtime concat - v0.5 |
 | `sub tostr tonum chr ord split` | 🔵 | v0.5 |
 
 Bake dynamic text into byte buffers and draw with `gt.print_buf` for HUDs (the
@@ -203,10 +203,10 @@ fast path); no runtime string building yet.
 |---|:--:|---|
 | `map(tx,ty,sx,sy,tw,th,[lyr])` | 🔵 | v0.4 |
 | `mget / mset(x,y,[v])` | 🔵 | v0.4 |
-| `fget / fset(n,[f],[v])` | 🔵 | tile flags — v0.4 |
+| `fget / fset(n,[f],[v])` | 🔵 | tile flags - v0.4 |
 
 **gt has it a different way today:** `gt.bg_compose` pre-paints a tilemap into a
-spare GRAM page once, then `gt.bg_draw` blits the whole page per frame — the
+spare GRAM page once, then `gt.bg_draw` blits the whole page per frame - the
 shipped tilemap path. Ports drive scrolling worlds with `gt.chunks_draw` asm
 engines.
 
@@ -215,12 +215,12 @@ engines.
 | Call | | Notes |
 |---|:--:|---|
 | `cartdata("id")` | 🔵 | v0.4 |
-| `dget / dset(i,[v])` | 🔵 | 0..63 persistent slots — v0.4 |
+| `dget / dset(i,[v])` | 🔵 | 0..63 persistent slots - v0.4 |
 
 The GameTank SAVE bank hardware exists for exactly this; the API layer is
 planned, not yet wired.
 
-## Memory / low-level — n/a by design
+## Memory / low-level - n/a by design
 
 | Call | | Notes |
 |---|:--:|---|
@@ -228,7 +228,7 @@ planned, not yet wired.
 | `memcpy memset cstore` | ❌ | |
 | `stat(x)` · `menuitem` | ❌ | |
 
-PICO-8's memory map (`0x6000` screen, `0x5f00` draw state…) **doesn't exist** —
+PICO-8's memory map (`0x6000` screen, `0x5f00` draw state…) **doesn't exist** -
 there's no VM to poke. Real GameTank hardware registers are reached through
 `gt.*` helpers and raw-color bytes, not a P8-compatible address space.
 
@@ -248,7 +248,7 @@ there's no VM to poke. Real GameTank hardware registers are reached through
 | `hexdata("…")` | compile-time byte blob → ROM |
 
 These exist because native code has no cycle governor: you get the whole
-3.5 MHz. The constraint moves from PICO-8's 8192-token cap to **ROM/RAM size** —
+3.5 MHz. The constraint moves from PICO-8's 8192-token cap to **ROM/RAM size** -
 and to the blitter, which these engines feed efficiently.
 
 ---
@@ -257,11 +257,11 @@ and to the blitter, which these engines feed efficiently.
 
 1. `pal()` can't recolor already-loaded sprites (framebuffer bytes are colors).
 2. `palt` is color-0 only.
-3. Conditions must be boolean — `if (n)` on a number is an error (P8 calls 0
+3. Conditions must be boolean - `if (n)` on a number is an error (P8 calls 0
    truthy, we won't guess).
 4. No nil, so `x = x or default` is gone; tables are capacity-bounded; no
    closures / metatables / coroutines.
-5. No token/cycle cap — games get all 3.5 MHz; the limit is ROM/RAM size.
+5. No token/cycle cap - games get all 3.5 MHz; the limit is ROM/RAM size.
 6. `sfx/music` play a native FM bank by index (or your converted cart), not raw
    PICO-8 SFX bytes.
 

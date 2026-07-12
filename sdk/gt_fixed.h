@@ -1,11 +1,11 @@
-/* gt_fixed.h — 16.16 fixed-point runtime with PICO-8 semantics.
+/* gt_fixed.h - 16.16 fixed-point runtime with PICO-8 semantics.
  * Numbers are signed 32-bit (C long): 16 integer bits, 16 fraction bits.
  * Overflow wraps; division by zero saturates to +/-0x7FFF.FFFF (P8 manual). */
 #ifndef GT_FIXED_H
 #define GT_FIXED_H
 
 #ifdef GT_NUM8
-/* 8.8 mode (--num8): fixed is 8.8 in a 16-bit int — range +-127.996, steps
+/* 8.8 mode (--num8): fixed is 8.8 in a 16-bit int - range +-127.996, steps
  * of 1/256. Same public names, int signatures; the emitter never touches the
  * zp fa/fb fastcall (that unit is 16.16 asm and isn't linked). min/max/mid/
  * abs/sgn are scale-invariant, so the int helpers serve both kinds. */
@@ -44,7 +44,7 @@ long gt_fdiv(long a, long b);
 /* zero-page fastcall ABI for the two hot 16.16 ops (gt_fixed_asm.s). The
  * emitter, at a multiply/divide whose operands don't themselves contain a
  * fixed mul/div, stores the operands straight into the zp longs fa/fb and
- * calls the argless entry — dropping cc65's per-call C-stack marshalling
+ * calls the argless entry - dropping cc65's per-call C-stack marshalling
  * (the `jsr pusheax` that spills the first arg). Nested/mixed sites still use
  * the cdecl gt_fmul/gt_fdiv above (the zp slots would collide). */
 extern long fa, fb;

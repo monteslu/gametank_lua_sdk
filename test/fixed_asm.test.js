@@ -1,10 +1,10 @@
-// fixed_asm.test.js — semantic regression gate for the hand-asm 16.16 core.
+// fixed_asm.test.js - semantic regression gate for the hand-asm 16.16 core.
 //
 // The hand-written 65C02 gt_fmul / gt_fdiv in sdk/gt_fixed_asm.s must be
 // bit-for-bit identical to the C reference in sdk/gt_fixed.c (PICO-8
 // semantics). Bit-exactness is *proven on the emulator* by a 1300+ vector
 // ROM (see the "emulator vector gate" note below), so this file's job is to
-// lock down the reference model those vectors are generated from — if someone
+// lock down the reference model those vectors are generated from - if someone
 // changes the intended semantics, these host-side reference checks change too
 // and the mismatch is caught before a ROM is ever built.
 //

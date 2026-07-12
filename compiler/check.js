@@ -1,7 +1,7 @@
-// gtlua semantic checker — scopes, arity, and the numeric-kind system.
+// gtlua semantic checker - scopes, arity, and the numeric-kind system.
 //
 // Numbers are PICO-8 16.16 fixed point semantically. The compiler tracks two
-// KINDS underneath: "int" (provably integral, 16-bit C int — fast on the
+// KINDS underneath: "int" (provably integral, 16-bit C int - fast on the
 // 6502) and "fixed" (32-bit 16.16, C long). Kinds are inferred to a fixpoint:
 // a slot (global, local, param, return) starts int and widens to fixed if any
 // fractional value flows into it. int arithmetic wraps at the same boundaries
@@ -80,7 +80,7 @@ export function check(chunk, file) {
           if (size === null || !Number.isInteger(size) || size < 1 || size > 64) {
             err(s, "pool(n) needs a constant capacity between 1 and 64");
           }
-          // pool(n, "f1,f2,...") — the listed fields are DECLARED byte-wide
+          // pool(n, "f1,f2,...") - the listed fields are DECLARED byte-wide
           // (values 0-255, stored in one byte, ~2-3x faster per access on
           // the 65C02). Explicit like array8: the compiler trusts the list
           // and errors only if a listed field turns out fixed-typed.
@@ -106,7 +106,7 @@ export function check(chunk, file) {
         }
         // fixed-capacity array: local pool = array(N [, initValue]).
         // array8(N [, init]) is the byte variant: elements are 0-255 stored in
-        // ONE byte each — half the RAM and roughly half the cycles per access
+        // ONE byte each - half the RAM and roughly half the cycles per access
         // on the 65C02 (single-register load, no high-byte traffic). Values
         // read back as ordinary ints; stores must be integers (flr() first).
         if (init && init.kind === "call" && init.callee.kind === "name" &&
@@ -185,7 +185,7 @@ export function check(chunk, file) {
   if (!functions.has("_update") && !functions.has("_update60") && !functions.has("_draw")) {
     diagnostics.push({
       file, line: 1, col: 1, severity: "error",
-      message: "define _update60() (60fps) or _update() (30fps), and _draw() — the PICO-8 callback contract",
+      message: "define _update60() (60fps) or _update() (30fps), and _draw() - the PICO-8 callback contract",
     });
   }
   if (functions.has("_update") && functions.has("_update60")) {
@@ -323,7 +323,7 @@ export function check(chunk, file) {
             if (s.op === "/=") rk = "fixed";
             if (s.op !== "=" && s.op !== "\\=") rk = join(rk, arr.elemKind);
             if (rk === "fixed" && arr.elemBytes) {
-              err(s.value, "array8 elements are bytes 0-255 — flr() the value " +
+              err(s.value, "array8 elements are bytes 0-255 - flr() the value " +
                            "or use array() for fractional elements");
               break;
             }
@@ -343,7 +343,7 @@ export function check(chunk, file) {
           }
           const sym = lookup(s.target.name);
           if (!sym) {
-            err(s, `'${s.target.name}' is not declared — gtlua has no implicit globals; ` +
+            err(s, `'${s.target.name}' is not declared - gtlua has no implicit globals; ` +
                    `declare it with 'local ${s.target.name} = ...'`);
             break;
           }
@@ -375,7 +375,7 @@ export function check(chunk, file) {
             if (t2.kind !== "name") return;
             const sym = lookup(t2.name);
             if (!sym) {
-              err(s, `'${t2.name}' is not declared — declare it with 'local ${t2.name} = ...'`);
+              err(s, `'${t2.name}' is not declared - declare it with 'local ${t2.name} = ...'`);
               return;
             }
             widenSlot(sym, kinds[i] ?? "int");
@@ -553,7 +553,7 @@ export function check(chunk, file) {
       }
       const sym = globals.get(obj.name);
       if (!sym || sym.kind !== "array") {
-        err(indexNode, `'${obj.name}' is not an array — declare one at top level with ` +
+        err(indexNode, `'${obj.name}' is not an array - declare one at top level with ` +
                        `'local ${obj.name} = array(16)'`);
         return null;
       }
@@ -564,7 +564,7 @@ export function check(chunk, file) {
     function condType(e) {
       const t = typeOf(e);
       if (t !== "bool") {
-        err(e, "conditions must be boolean — PICO-8 Lua treats 0 as true but compiled C does not, " +
+        err(e, "conditions must be boolean - PICO-8 Lua treats 0 as true but compiled C does not, " +
                "so gtlua requires an explicit comparison (write 'x ~= 0' or 'x > 0')");
       }
     }
@@ -670,7 +670,7 @@ export function check(chunk, file) {
         err(call, `${name}() takes ${required === params.length ? required : `${required}-${params.length}`} argument(s), got ${call.args.length}`);
       }
       call.args.forEach((a, i) => {
-        // an "array" param wants a bare array-global name passed by pointer —
+        // an "array" param wants a bare array-global name passed by pointer -
         // arrays aren't values, so don't type-check it as a number.
         if (params[i] && params[i][0] === "pool") {
           const sym = a.kind === "name" ? lookup(a.name) : null;
@@ -707,16 +707,16 @@ export function check(chunk, file) {
           if (!sym || sym.kind !== "array") {
             err(a, `${name}() argument ${i + 1} must be an array (declared with ${want8 ? "array8(n)" : "array(n)"})`);
           } else if (!want8 && sym.elemBytes) {
-            err(a, `${name}() argument ${i + 1} must be a 16-bit array(n) — array8 ` +
+            err(a, `${name}() argument ${i + 1} must be a 16-bit array(n) - array8 ` +
                    `elements are single bytes and the runtime reads int pairs`);
           } else if (want8 && !sym.elemBytes) {
-            err(a, `${name}() argument ${i + 1} must be an array8(n) — this runtime reads single bytes`);
+            err(a, `${name}() argument ${i + 1} must be an array8(n) - this runtime reads single bytes`);
           } else {
             a.sym = sym;   // annotate for the emitter
           }
           return;
         }
-        // a "flip" param (spr flip_x/flip_y) is a truthy flag — bool is the
+        // a "flip" param (spr flip_x/flip_y) is a truthy flag - bool is the
         // natural value here, so don't reject it the way number args do.
         if (params[i] && params[i][0] === "flip") { typeOf(a); return; }
         const t = typeOf(a);
@@ -738,9 +738,9 @@ export function check(chunk, file) {
           const sym = lookup(e.name);
           if (!sym) {
             if (functions.has(e.name)) {
-              err(e, `'${e.name}' is a function — functions are not values in gtlua (no closures); call it`);
+              err(e, `'${e.name}' is a function - functions are not values in gtlua (no closures); call it`);
             } else if (BUILTINS[e.name]) {
-              err(e, `'${e.name}' is a builtin function — call it: ${e.name}(...)`);
+              err(e, `'${e.name}' is a builtin function - call it: ${e.name}(...)`);
             } else if (e.name === "gt") {
               err(e, "'gt' is the hardware module; use gt.<function>(...)");
             } else {

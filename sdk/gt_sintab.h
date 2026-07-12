@@ -1,4 +1,4 @@
-/* gt_sintab.h — generated: PICO-8 sin table, 256 steps per turn.
+/* gt_sintab.h - generated: PICO-8 sin table, 256 steps per turn.
  * entry k = -sin(2*pi*k/256) * 65536  (P8 sin is screen-space inverted).
  * Regenerate with the node one-liner in the repo history if ever needed. */
 static const long gt_sintab[256] = {

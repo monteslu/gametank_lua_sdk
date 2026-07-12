@@ -1,8 +1,8 @@
 ; ---------------------------------------------------------------------------
-; gt_canvas — the canvas window blit, standalone.
+; gt_canvas - the canvas window blit, standalone.
 ;
 ; Extracted from gt_flakes.s: carts that use the composed canvas but not
-; the flake fields must not link ~700B of flake BSS — combo-pool's RAM was
+; the flake fields must not link ~700B of flake BSS - combo-pool's RAM was
 ; tight enough that doing so pushed BSS under the C stack and corrupted
 ; game state (instant sudden-death from trashed counters).
 ; ---------------------------------------------------------------------------
@@ -10,11 +10,11 @@
 
 .PC02
 
-; gt_canvas_view — the 4-piece 128x128 canvas window blit (newleste's map):
+; gt_canvas_view - the 4-piece 128x128 canvas window blit (newleste's map):
 ; the 256px canvas strip splits at most once in x (two pieces of <=127) and
 ; always twice in y (the blitter's 7-bit height), colorkey-transparent.
 ; Replaces ~7k of Lua wrap math + four 6-arg gspr calls with ~1.5k.
-;   cv_dx (16-bit world x), cv_dy (byte world y) — the screen origin is the
+;   cv_dx (16-bit world x), cv_dy (byte world y) - the screen origin is the
 ;   camera itself, so VX/VY are 0/64; canvas rows: crow = (dx>>8)*128 + dy.
 ; ---------------------------------------------------------------------------
 .export _gt_canvas_view_z, _cv_dx, _cv_dy, _cv_fl, _cv_h, _cv_grp

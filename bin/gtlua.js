@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// gtlua CLI — compile a .lua game to a GameTank .gtr cartridge.
+// gtlua CLI - compile a .lua game to a GameTank .gtr cartridge.
 //
 //   gtlua build <main.lua> [--sheet gfx.bin] [-o game.gtr]
 //   gtlua c <main.lua>                     print the generated C (debugging)
@@ -92,7 +92,7 @@ function runLink(cmd, args) {
   const text = `${r.stdout ?? ""}${r.stderr ?? ""}`;
   if (r.status === 0) return { ok: true, overflows: [], text };
   const overflows = [];
-  // NB: ld65 says "by 1 byte" (singular) — a 1-byte overflow with a plural-
+  // NB: ld65 says "by 1 byte" (singular) - a 1-byte overflow with a plural-
   // only pattern is invisible to the juggler and hard-fails the build
   const re = /Segment '?‘?([A-Z0-9]+)'?’? overflows memory area '?‘?\w+'?’? by (\d+) bytes?/g;
   let m;
@@ -105,7 +105,7 @@ function runLink(cmd, args) {
 }
 
 // Sum every non-game module's bytes per bank from an ld65 map (SDK objects,
-// the embedded sheet, cross-bank stubs). This is the REAL immovable load —
+// the embedded sheet, cross-bank stubs). This is the REAL immovable load -
 // the capacity model uses it instead of hand-tuned constants, which went
 // stale every time an SDK body moved banks.
 const MAP_SEG_BIN = {
@@ -136,7 +136,7 @@ function sdkLoadFromMap(mapPath) {
 }
 
 // scale each function's size estimate so per-bank sums match the REAL bytes
-// ld65 measured — the ~2 bytes/line heuristic runs ~10% off, which is the
+// ld65 measured - the ~2 bytes/line heuristic runs ~10% off, which is the
 // whole gap between converging and thrashing on carts at the capacity cliff
 function calibrateSizes(sizes, placement, realPort) {
   const est = { b0: 0, b1: 0, b2: 0, fixed: 0 };
@@ -208,7 +208,7 @@ function packbits(raw) {
 const GTG_BYTES = 16384;   // one native .gtg quadrant = 128x128 8bpp
 
 // A native .gtg sheet is 16384 bytes (one 128x128 quadrant). The old PICO-8
-// path is an 8192-byte 4bpp gfx.bin. Detect by size — the extension is not
+// path is an 8192-byte 4bpp gfx.bin. Detect by size - the extension is not
 // authoritative (a .gtg IS a real GameTank file; a .bin may be either).
 function isGtgSheet(sheetPath) {
   return !!sheetPath && statSync(sheetPath).size === GTG_BYTES;
@@ -255,7 +255,7 @@ function makeFrameTableC(framesPath, banked) {
 // compressed into its own ROM array and loaded into its GRAM quadrant (0=NW,
 // 1=NE, 2=SW, 3=SE) by gt_gsheet_load_packed. The grid spr(n) draw path reads
 // GRAM the same way regardless of how it was filled, so games keep working with
-// no Lua change — see docs/GRAPHICS.md. `banked` places the blobs in bank 2.
+// no Lua change - see docs/GRAPHICS.md. `banked` places the blobs in bank 2.
 // A --frames foo.gsi adds a frame table (for sprf) alongside, in the same bank.
 function makeGSheetC(sheetPath, banked, framesPath) {
   const quads = discoverQuadrants(sheetPath);
@@ -366,7 +366,7 @@ function hotSet(callGraph) {
 }
 // BFS depth from the per-frame roots: depth 1 = the frame dispatch layer
 // (runs every frame), deeper = increasingly conditional. Non-reachable
-// functions get Infinity (init/menu code — coldest).
+// functions get Infinity (init/menu code - coldest).
 function hotDepth(callGraph) {
   const depth = new Map();
   let ring = ["_update", "_update60", "_draw"];
@@ -394,7 +394,7 @@ function layoutScore(placement, callGraph, hot) {
   }
   return score;
 }
-// the stubbed edges of a layout, worst (hot) first — repair candidates
+// the stubbed edges of a layout, worst (hot) first - repair candidates
 function stubbedEdges(placement, callGraph, hot, depths) {
   const edges = [];
   for (const [caller, callees] of callGraph) {
@@ -426,7 +426,7 @@ function rebalance(placement, sizes, overflows, sheetBytes, callGraph, usesBg, u
   // gt_bg_compose's ~625 B decode body (usesBg), the ~2.7 KB sfx/music
   // sequencer + tables (usesMusic), and ~900 B of exiled cold gt_api bodies
   // (font upload, sheet load, starfield init/move). The 4 KB ACP firmware
-  // rides in BANK 0 (B0RODATA) — bank 2 was strangling the heavy audio
+  // rides in BANK 0 (B0RODATA) - bank 2 was strangling the heavy audio
   // carts. Reserve so the game-function packer doesn't overfill and fail
   // to converge.
   const B2_SDK_RESERVE =
@@ -456,7 +456,7 @@ function rebalance(placement, sizes, overflows, sheetBytes, callGraph, usesBg, u
     if (bin === "fixed") {
       // Fixed bank too full. Moving a function OUT of fixed isn't free: every
       // cross-bank edge it gains needs a far-call stub, and stubs live in the
-      // fixed bank's CODE — the thing we're trying to shrink. (Moving big
+      // fixed bank's CODE - the thing we're trying to shrink. (Moving big
       // fns blindly used to ping-pong: -600 bytes of function, +400 bytes of
       // stubs, forever.) So pick by NET gain: size minus the stub bytes the
       // move creates, and pick the target bank where the function's call
@@ -504,7 +504,7 @@ function rebalance(placement, sizes, overflows, sheetBytes, callGraph, usesBg, u
         movedHere = true;
       }
       // last resort: the stub estimate is pessimistic (shared stubs, existing
-      // edges) — if no net-positive move exists, try the least-bad candidate
+      // edges) - if no net-positive move exists, try the least-bad candidate
       // once and let ld65 be the judge.
       if (!movedHere && candidates.length) {
         const c = candidates[0];
@@ -519,7 +519,7 @@ function rebalance(placement, sizes, overflows, sheetBytes, callGraph, usesBg, u
     // banked bin too full: move FEW, LARGE functions. Small helpers are
     // disproportionately likely to be hot leaves (called every loop
     // iteration) and exiling one across a bank turns each call into two
-    // bank-register bit-bangs — the first solver draft moved the collision
+    // bank-register bit-bangs - the first solver draft moved the collision
     // helper to the spill bank and update loops made ~300 stub calls per
     // frame. Big functions (wave spawners, one-shot setups) cover the
     // overflow in one or two moves and are called rarely.
@@ -532,12 +532,12 @@ function rebalance(placement, sizes, overflows, sheetBytes, callGraph, usesBg, u
       console.error(`[juggle] ${segment} over ${bytes}; cap b0=${capacity.b0 - estUsed("b0")} b1=${capacity.b1 - estUsed("b1")} b2=${capacity.b2 - estUsed("b2")} fixed=${capacity.fixed - estUsed("fixed")}`);
     }
     // callbacks ARE movable between banks: they're already bank-placed and
-    // main() reaches them through stubs — pinning them wedged carts whose
+    // main() reaches them through stubs - pinning them wedged carts whose
     // update loop IS most of a bank (moving smaller helpers can never cover
     // the overflow). They stay out of `fixed` (no stub back-path needed).
     // coldest-first eviction: reachability alone calls everything "hot"
     // (the update tree transitively reaches death/level-load code), so
-    // rank by BFS depth from the frame roots — depth 1 is the per-frame
+    // rank by BFS depth from the frame roots - depth 1 is the per-frame
     // dispatch layer (celeste2's p_update), deep/unreachable is genuinely
     // cold. Evict deepest first, biggest first within a depth.
     const depths = hotDepth(callGraph);
@@ -564,7 +564,7 @@ function rebalance(placement, sizes, overflows, sheetBytes, callGraph, usesBg, u
       // rather than giving up: a too-big function is not a reason to wedge.
       // FIXED gets a safety margin: the estimates run light, and unlike the
       // game banks nothing downstream can relieve an overfilled fixed region
-      // (cherry repeatedly failed 'RODATA over by ~650' from exactly this —
+      // (cherry repeatedly failed 'RODATA over by ~650' from exactly this -
       // eight functions moved onto a 6KB estimate that was ~10% optimistic)
       const headroom = target === "fixed" ? fixedHeadroom : 0;
       if (capacity[target] - estUsed(target) < sz + headroom) continue;
@@ -592,13 +592,13 @@ function build(entry, outPath, sheetPath, num8 = false, framesPath = undefined) 
 
   const CFLAGS = ["-t", "none", "-Osr", "--cpu", "65c02", "--codesize", "500", "-g",
                   "--static-locals", "-I", SDK];
-  // --num8: fixed becomes 8.8-in-an-int everywhere — the game C and every
+  // --num8: fixed becomes 8.8-in-an-int everywhere - the game C and every
   // SDK unit must agree on the width, so the define rides the shared CFLAGS
   if (num8) CFLAGS.push("-DGT_NUM8");
   const AFLAGS = ["--cpu", "W65C02", "-g"];   /* -g: symbols reach the ld65 dbgfile */
   if (tc.asminc && existsSync(tc.asminc)) AFLAGS.push("-I", tc.asminc);
   // compile C then run the gtlua peephole pass over cc65's assembly output
-  // (tail-call fusion + dead reload elimination — see compiler/peephole.js)
+  // (tail-call fusion + dead reload elimination - see compiler/peephole.js)
   let phTail = 0, phReload = 0;
   const cc = (src, dst, extra = []) => {
     run(tc.cc65, [...CFLAGS, ...extra, "-o", dst, src]);
@@ -615,7 +615,7 @@ function build(entry, outPath, sheetPath, num8 = false, framesPath = undefined) 
   const usesAudio = result.c.includes("gt_audio_init(");
   const usesStarfield = result.c.includes("gt_starfield");
   const usesAutocls = result.c.includes("gt_autocls_set(");
-  // a native .gtg sheet is 8bpp (loaded raw, no palette expansion) — the 4bpp
+  // a native .gtg sheet is 8bpp (loaded raw, no palette expansion) - the 4bpp
   // packbits path (GT_SHEET_PACKED) doesn't apply; it uses GT_GSHEET instead.
   const gtgSheet = isGtgSheet(sheetPath);
   const usesPackedSheet = !!sheetPath && !gtgSheet &&
@@ -638,13 +638,13 @@ function build(entry, outPath, sheetPath, num8 = false, framesPath = undefined) 
   // sequencer are small and read across arbitrary game banks every frame, so
   // it stays in the always-mapped fixed bank (compiled plain, not -DGT_BANKED).
   const usesMusic = result.c.includes("gt_music_init(");
-  // gt_bg (offscreen-GRAM background) is only linked when the game uses it —
+  // gt_bg (offscreen-GRAM background) is only linked when the game uses it -
   // its compose body rides in bank 2 with the sheet, so linking it into a game
   // that doesn't need it just steals bank-2 space from the game's own code.
   const usesBg = result.c.includes("gt_bg_compose(") || result.c.includes("gt_bg_draw(") ||
     result.c.includes("gt_bg_clear(") || result.c.includes("gt_bg_tile(") ||
     result.c.includes("gt_bg_coln(") || result.c.includes("gt_gspr(");
-  // atlas builders (bg_clear/bg_tile) carry a second bank-2 decode body —
+  // atlas builders (bg_clear/bg_tile) carry a second bank-2 decode body -
   // only compile + reserve for it when the game actually stamps tiles
   const usesAtlas = result.c.includes("gt_bg_clear(") || result.c.includes("gt_bg_tile(") ||
     result.c.includes("gt_bg_coln(");
@@ -736,7 +736,7 @@ function build(entry, outPath, sheetPath, num8 = false, framesPath = undefined) 
 
   // 4. overflow -> FLASH2M banked build
   const over = link32.overflows.reduce((a, o) => a + o.bytes, 0);
-  console.error(`32 KB cart overflows by ~${over} bytes — re-targeting the 2 MB FLASH2M cart`);
+  console.error(`32 KB cart overflows by ~${over} bytes - re-targeting the 2 MB FLASH2M cart`);
   let sizes = functionSizes(B(`${name}.s`));
   // fold each function's rodata (string literals + literal-run tables) into
   // its size: rodata rides the function's bank (the emitter pushes
@@ -782,7 +782,7 @@ function build(entry, outPath, sheetPath, num8 = false, framesPath = undefined) 
   as(path.join(SDK, "gt_math_stubs.s"), B("gt_math_stubs.o"));
 
   // gt_bg_compose reads the sheet (which rides in bank 2 for FLASH2M) to paint
-  // the background page — recompile it banked: the decode body goes to B2CODE
+  // the background page - recompile it banked: the decode body goes to B2CODE
   // (bank 2, with the sheet) and a fixed-bank stub maps bank 2 before calling it.
   if (usesBg) {
     run(tc.cc65, [...CFLAGS, "-DGT_BANKED", "-DGT_SHEET_BANK=2",
@@ -793,7 +793,7 @@ function build(entry, outPath, sheetPath, num8 = false, framesPath = undefined) 
   }
 
   // The flat-attempt gt_audio.o placed the 4 KB ACP firmware blob in the
-  // fixed bank's RODATA — the single biggest reason banked games had to
+  // fixed bank's RODATA - the single biggest reason banked games had to
   // ship silent. Recompile it banked: the blob rides in bank 2 (with the
   // sheet) and gt_audio_init() maps that bank in before the ARAM upload.
   if (usesAudio) {
@@ -804,7 +804,7 @@ function build(entry, outPath, sheetPath, num8 = false, framesPath = undefined) 
 
   // gt_api carries ~2 KB of cold bodies (font upload, sheet load, circfill/
   // circ/line-diagonal, starfield init/move, the glyph table) that exile to
-  // bank 2 under GT_BANKED — the fixed window can't hold them all plus the
+  // bank 2 under GT_BANKED - the fixed window can't hold them all plus the
   // blitter font. Recompile banked so those pragmas take effect.
   run(tc.cc65, [...CFLAGS, "-DGT_BANKED", ...apiDefs,
                 "-o", B("gt_api.s"), path.join(SDK, "gt_api.c")]);
@@ -819,7 +819,7 @@ function build(entry, outPath, sheetPath, num8 = false, framesPath = undefined) 
   // _impl) and the fixed-bank stubs in gt_music_stubs.o bridge every call
   // (game code AND gt_endframe's frame hook) with a bank-2 switch.
   // a cart that registers converted PICO-8 banks never uses the built-in
-  // sfx/song tables — compile the zero-authoring layer out (~700 bytes)
+  // sfx/song tables - compile the zero-authoring layer out (~700 bytes)
   const noBuiltinSfx = result.c.includes("gt_sfx_bank(") ? ["-DGT_NO_BUILTIN_SFX"] : [];
   if (usesMusic) {
     run(tc.cc65, [...CFLAGS, "-DGT_BANKED", ...noBuiltinSfx,
@@ -831,7 +831,7 @@ function build(entry, outPath, sheetPath, num8 = false, framesPath = undefined) 
   let linked = null;
   let lastOverflows = [];
   // The min/max/mid ternary inlining is a speed-for-size trade. A game at the
-  // bank-capacity cliff can fail to place WITH it but link fine WITHOUT it —
+  // bank-capacity cliff can fail to place WITH it but link fine WITHOUT it -
   // so if placement is still failing halfway through the attempts, fall back
   // to the compact call form and start placement over.
   let midInline = true;
@@ -859,7 +859,7 @@ function build(entry, outPath, sheetPath, num8 = false, framesPath = undefined) 
     if (attempt === 18 && fixedHeadroom) {
       // the conservative fixed-move margin protects most carts from
       // overfilling the fixed region on light estimates, but some placements
-      // genuinely need to pack fixed to the byte — drop it before the more
+      // genuinely need to pack fixed to the byte - drop it before the more
       // destructive rungs
       fixedHeadroom = 0;
       workPlacement = initialPlacement(result.callGraph);
@@ -894,8 +894,8 @@ function build(entry, outPath, sheetPath, num8 = false, framesPath = undefined) 
     if (attempt === 32 && !apiDefs.includes("-DGT_NO_BLITFONT")) {
       // LAST-resort size relief: drop the GRAM blit font (~1 KB across
       // banks); print falls back to the per-pixel CPU path. This rung is
-      // CATASTROPHIC for text-heavy carts — celeste2 measured 7 vsyncs a
-      // frame (8.5 fps) with ~198k cycles of per-pixel glyphs — so every
+      // CATASTROPHIC for text-heavy carts - celeste2 measured 7 vsyncs a
+      // frame (8.5 fps) with ~198k cycles of per-pixel glyphs - so every
       // cheaper rung (including turning inlining off) goes first.
       apiDefs.push("-DGT_NO_BLITFONT");
       run(tc.cc65, [...CFLAGS, "-DGT_BANKED", ...apiDefs,
@@ -932,7 +932,7 @@ function build(entry, outPath, sheetPath, num8 = false, framesPath = undefined) 
     const link = compileAndLink(workPlacement);
     // re-measure per attempt: the .s parsed before the loop can be stale
     // (previous run's build dir) and the inlining rungs change which
-    // functions even exist — a stale map makes the mover shuffle size-0
+    // functions even exist - a stale map makes the mover shuffle size-0
     // ghosts while the real hogs stay put
     sizes = functionSizes(B(`${name}.s`));
     foldRodataSizes(result.c, sizes);
@@ -957,7 +957,7 @@ function build(entry, outPath, sheetPath, num8 = false, framesPath = undefined) 
           attempted.add(`${e.caller}>${e.callee}`);
           if (process.env.GTLUA_DEBUG) console.error(`[repair] trying edge ${e.caller}(${workPlacement[e.caller] ?? "fixed"}) -> ${e.callee}(${workPlacement[e.callee] ?? "fixed"}) w=${e.w}`);
           // a shared callee can't chase one caller's bank without stubbing
-          // its other callers — score BOTH directions, take the better
+          // its other callers - score BOTH directions, take the better
           const options = [];
           if (!pinned.has(e.callee)) options.push([e.callee, workPlacement[e.caller] ?? "fixed"]);
           if (!pinned.has(e.caller) && (workPlacement[e.callee] ?? "fixed") !== "fixed") {
@@ -975,7 +975,7 @@ function build(entry, outPath, sheetPath, num8 = false, framesPath = undefined) 
           workPlacement[best.fn] = best.target;
           let relink = compileAndLink(workPlacement);
           if (!relink.ok) {
-            // make room: the target bank is full — evict its biggest COLD
+            // make room: the target bank is full - evict its biggest COLD
             // resident to the roomiest other bank and retry once. (The
             // repair otherwise can't heal a hot edge whose callee is
             // squeezed out by cold code, e.g. celeste2's p_update stuck
@@ -983,7 +983,7 @@ function build(entry, outPath, sheetPath, num8 = false, framesPath = undefined) 
             // deepest-coldest first; rotate destinations so a full first
             // choice doesn't wedge the whole eviction (RODATA overflows in
             // particular follow the FN, so moving anything with a string
-            // pool relieves them — code size alone was blind to that)
+            // pool relieves them - code size alone was blind to that)
             const depthsE = hotDepth(result.callGraph);
             const cold = Object.entries(workPlacement)
               .filter(([fn, b]) => b === best.target && !pinned.has(fn) && fn !== best.fn)
@@ -1049,7 +1049,7 @@ function build(entry, outPath, sheetPath, num8 = false, framesPath = undefined) 
   img.set(pieces.subarray(4 * BANK_SIZE, 5 * BANK_SIZE), FLASH_SIZE - BANK_SIZE);
   writeFileSync(gtr, img);
 
-  // save the placement the successful link ACTUALLY used — the ladder rungs
+  // save the placement the successful link ACTUALLY used - the ladder rungs
   // rebind workPlacement, and saving the original seed object poisoned the
   // next build's starting point with a stale layout
   writeFileSync(B("banks.json"), JSON.stringify(workPlacement, null, 1));

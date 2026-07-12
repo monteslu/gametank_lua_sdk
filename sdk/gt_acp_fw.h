@@ -1,4 +1,4 @@
-/* gt_acp_fw.h — GameTank audio coprocessor firmware (4KB), from the
+/* gt_acp_fw.h - GameTank audio coprocessor firmware (4KB), from the
  * MIT-licensed gametank_sdk (assembled acp_image.bin). Uploaded to ARAM
  * by gt_audio_init(). */
 static const unsigned char gt_acp_fw[4096] = {

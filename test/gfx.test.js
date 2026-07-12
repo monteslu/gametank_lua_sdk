@@ -1,4 +1,4 @@
-// test/gfx.test.js — the .gtg sprite-sheet conversion core (compiler/gfx.mjs).
+// test/gfx.test.js - the .gtg sprite-sheet conversion core (compiler/gfx.mjs).
 // Verifies our .gtg bytes are the official GameTank format: 128x128 8bpp
 // quadrants, top-down row-major, CAPTURE-palette indices, color 0 transparent.
 

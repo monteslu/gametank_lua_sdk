@@ -1,4 +1,4 @@
-// gtlua parser — recursive descent, PICO-8-flavored Lua.
+// gtlua parser - recursive descent, PICO-8-flavored Lua.
 //
 // Dialect (PICO8.md): one-line `if (cond) stmt [else stmt]` / `while (cond)
 // stmt` shorthand (parens required, newline ends the body), `\` floor
@@ -158,7 +158,7 @@ export function parse(tokens, file) {
     const parenCond = at("(");
     const cond = expression();
 
-    // PICO-8 one-line shorthand: `if (cond) stmt [else stmt]` — parenthesized
+    // PICO-8 one-line shorthand: `if (cond) stmt [else stmt]` - parenthesized
     // condition, no `then`, body ends at end of line.
     if (parenCond && !at("then")) {
       if (peek().line !== tok.line || at("eof")) {

@@ -1,4 +1,4 @@
-// gtlua C emitter — lowers the checked AST to cc65-flavored C89.
+// gtlua C emitter - lowers the checked AST to cc65-flavored C89.
 //
 // Numeric kinds map to C types: int -> `int` (16-bit), fixed -> `long`
 // (32-bit 16.16). Conversions are explicit and single-evaluation:
@@ -126,7 +126,7 @@ const ZP_BUILTINS = {
 const BTN_MASKS = [512, 256, 2056, 1028, 16, 4096, 8192, 32];
 
 // Does this expression contain a user-function call? One could draw, which
-// would clobber the gt_a* slots mid-store-sequence — such call sites fall
+// would clobber the gt_a* slots mid-store-sequence - such call sites fall
 // back to the cdecl wrappers. (Annotation keys skipped: they cycle.)
 function hasUserCall(node) {
   if (!node || typeof node !== "object") return false;
@@ -158,7 +158,7 @@ function declaredNames(fn) {
 
 // Free names of a function body: references that aren't its own declarations.
 // If any of these collides with a name declared in the CALLER, inlining the
-// body there would capture the caller's local instead of the global — skip.
+// body there would capture the caller's local instead of the global - skip.
 function freeNames(fn) {
   const own = declaredNames(fn);
   const out = new Set();
@@ -231,7 +231,7 @@ function assignsTo(node, name) {
 // deliberately conservative: not just literal fixed `*`/`/`, but `%`/`\`
 // (which lower to gt_ffmod/gt_fdiv), AND any fixed-typed call (sqrt/atan2/rnd
 // transitively call gt_fmul/gt_fdiv; the cdecl wrappers write fa/fb too). Such
-// sites fall back to the cdecl gt_fmul/gt_fdiv, which is always correct — the
+// sites fall back to the cdecl gt_fmul/gt_fdiv, which is always correct - the
 // fallback is rare, so the conservatism is nearly free. (If a genuinely pure
 // fixed builtin is ever added, it can be whitelisted here.)
 function touchesFixedRuntime(node) {
@@ -301,7 +301,7 @@ export function emit(chunk, symbols, file, opts = {}) {
   const inliner = opts.inliner !== false;
   // opts.num8: the fixed kind is 8.8 in a 16-bit int (range +-127.996,
   // steps of 1/256) instead of PICO-8's 16.16 in a long. Every fixed op
-  // halves (or better); semantics are approximate, not bit-exact — a
+  // halves (or better); semantics are approximate, not bit-exact - a
   // per-cart choice, verified per-game. See docs/performance.md.
   const N8 = !!opts.num8;
   const FSH = N8 ? 8 : 16;             // fraction bits
@@ -322,7 +322,7 @@ export function emit(chunk, symbols, file, opts = {}) {
   // Functions with 1-3 all-int params take them in the gt_p0..2 zero-page
   // slots (the ABI that makes the draw builtins cheap) instead of cc65's
   // C-stack convention. LEAF fns (no user calls in the body) read the slots
-  // directly — zero copies, zero BSS; non-leaf fns copy the slots into their
+  // directly - zero copies, zero BSS; non-leaf fns copy the slots into their
   // static locals first thing so nested zp calls can't clobber them. A call
   // site with one call-bearing arg stores it first; a fn ever called with
   // TWO+ call-bearing args stays cdecl (order hazards). Re-landed on top of
@@ -331,12 +331,12 @@ export function emit(chunk, symbols, file, opts = {}) {
   // (draw_tiles) no longer exists as a call.
   const zpCall = new Set();
   for (const [name, fn] of functions) {
-    // params <= 3 ONLY: extending to 5 was measured a net loss — combo-pool
+    // params <= 3 ONLY: extending to 5 was measured a net loss - combo-pool
     // gameplay 4.99 -> 5.50 (a hot 4-5 param physics fn is slower through
     // the slots) vs celeste2's -0.07 win. gt_p3/gt_p4 stay reserved for a
     // future per-shape gate.
     // under --num8 a fixed param IS int-width, so fixed-taking functions
-    // (positions, speeds — the hot physics helpers) are zp-eligible too;
+    // (positions, speeds - the hot physics helpers) are zp-eligible too;
     // newleste's profile showed 18% of the frame in incsp2 stack cleanup
     // from exactly these calls
     const zpKindOk = (k) => k === "int" || (N8 && k === "fixed");
@@ -450,7 +450,7 @@ export function emit(chunk, symbols, file, opts = {}) {
   }
 
   // provably 0..255: narrowed u8 loop counters, 0..255 int literals, and
-  // array8 element reads. Conservative — anything else compares wide.
+  // array8 element reads. Conservative - anything else compares wide.
   function byteish(e) {
     if (!e) return false;
     if (e.kind === "number" && e.isInt) return e.value >= 0 && e.value <= 255;
@@ -485,15 +485,15 @@ export function emit(chunk, symbols, file, opts = {}) {
       const c = op === "~=" ? "!=" : op;
       // BYTE COMPARES: a var<=var int comparison goes through cc65's
       // tosicmp at ~127 cycles (measured; the constant form is ~15). When
-      // both sides are provably 0..255 — narrowed loop counters, byte
-      // constants, array8 reads — compare as unsigned char: lda/cmp.
+      // both sides are provably 0..255 - narrowed loop counters, byte
+      // constants, array8 reads - compare as unsigned char: lda/cmp.
       if (ck === "int" && byteish(e.left) && byteish(e.right)) {
         return `((unsigned char)${expr(e.left, "int")} ${c} (unsigned char)${expr(e.right, "int")})`;
       }
       // var-vs-var int compares stack through cc65's ~127-cycle tosicmp;
       // subtract-then-test-vs-zero measures 147 vs 243 cyc/iter on the
       // reference loop. Exact whenever the true difference fits in 16
-      // bits — a dialect guarantee for game data (coordinates, counters).
+      // bits - a dialect guarantee for game data (coordinates, counters).
       // Constant sides keep the direct form (the immediate path is faster
       // still). num8 fixed is int-width, so it rides the same shape.
       if ((ck === "int" || (N8 && ck === "fixed")) &&
@@ -530,7 +530,7 @@ export function emit(chunk, symbols, file, opts = {}) {
           return cv(`(${expr(e.left, "int")} * ${expr(e.right, "int")})`, "int", want);
         }
         // fixed result: (v<<16)*i == (v*i)<<16, so fixed*int needs only ONE
-        // long multiply (or a shift for power-of-two ints) — far cheaper
+        // long multiply (or a shift for power-of-two ints) - far cheaper
         // than the 4-partial-product gt_fmul.
         const intSide = e.left.tk === "int" ? e.left : (e.right.tk === "int" ? e.right : null);
         const fixSide = intSide === e.left ? e.right : e.left;
@@ -544,7 +544,7 @@ export function emit(chunk, symbols, file, opts = {}) {
           return cv(`(${expr(fixSide, "fixed")} * ${expr(intSide, "int")})`, "fixed", want);
         }
         {
-          // fixed literal side: the 8.8/16.16 raw value is an integer —
+          // fixed literal side: the 8.8/16.16 raw value is an integer -
           // strength-reduce (x * v) >> FSH into <=3 arithmetic shifts of x
           // (~40 cycles vs the ~600-cycle fmul; each term floors on its
           // own, so the result sits within 2 lsb of the runtime multiply)
@@ -619,7 +619,7 @@ export function emit(chunk, symbols, file, opts = {}) {
 
   // Lower a fixed multiply/divide. Fast path: when neither operand can touch
   // the fixed runtime (which owns the zp slots fa/fb), store both operands into
-  // fa/fb and call the argless zp entry — no cc65 stack marshalling. Otherwise
+  // fa/fb and call the argless zp entry - no cc65 stack marshalling. Otherwise
   // an operand's own fixed-runtime call would clobber fa/fb between the stage
   // and the call, so fall back to the cdecl form. `fn` is "gt_fmul"|"gt_fdiv";
   // the zp entry is `<fn>_zp`.
@@ -635,7 +635,7 @@ export function emit(chunk, symbols, file, opts = {}) {
 
   // 1-based array access with the -1 folded to link time. arr[x + 1] (the
   // ubiquitous 0-based-math pattern) collapses to arr[x]; arr[7] folds
-  // numerically; the general arr[i] becomes (arr - 1)[i] — the -1 rides the
+  // numerically; the general arr[i] becomes (arr - 1)[i] - the -1 rides the
   // symbol's address, not a runtime subtract.
   function indexRef(sym, idxNode, byteElems) {
     const [base, c] = peelIndex(idxNode);
@@ -647,7 +647,7 @@ export function emit(chunk, symbols, file, opts = {}) {
     // narrowed (u8) counter, where cc65 emits `lda _arr-1,y` direct
     // (measured +30%). For INT/fixed arrays the fold breaks cc65's
     // known-global indexed addressing and every access goes through the
-    // computed-pointer path — STORES land in jsr staspidx at ~90 cycles
+    // computed-pointer path - STORES land in jsr staspidx at ~90 cycles
     // apiece (measured: 2065 cycles per snow flake in newleste, 6x the
     // instruction-count estimate, via 25->10 count scaling). Int arrays
     // keep the explicit subtract: (i-1) stays u8, cc65 does asl/tay/
@@ -660,7 +660,7 @@ export function emit(chunk, symbols, file, opts = {}) {
 
   // Safe to evaluate more than once AND cheap: a literal, a plain variable, or
   // a small tree of simple arithmetic over those (no calls, no draws, no
-  // fixed-runtime ops). Used to inline min/max/mid as ternaries — the win is
+  // fixed-runtime ops). Used to inline min/max/mid as ternaries - the win is
   // only real when re-evaluating the operand costs less than a cdecl call.
   // opts.midInline === false turns the inlining off entirely: it's a
   // speed-for-size trade, and a game at the bank-capacity cliff needs the
@@ -680,7 +680,7 @@ export function emit(chunk, symbols, file, opts = {}) {
         return cheapPure(e.object, budget - 1) && cheapPure(e.index, budget - 1);
       case "binop":
         // int arithmetic/shifts/masks only; fixed *, /, %, \ can reach the
-        // runtime (touchesFixedRuntime) — leave anything like that alone.
+        // runtime (touchesFixedRuntime) - leave anything like that alone.
         if (touchesFixedRuntime(e)) return false;
         return cheapPure(e.left, budget - 1) && cheapPure(e.right, budget - 1);
       default: return false;
@@ -715,7 +715,7 @@ export function emit(chunk, symbols, file, opts = {}) {
       const sig = GT_MEMBERS[callee.field];
       if (sig.special === "rgb") {
         // gt.rgb(r,g,b): resolve to the nearest palette byte at COMPILE time
-        // (zero runtime cost) — the checker proved the 3 args constant.
+        // (zero runtime cost) - the checker proved the 3 args constant.
         if (e.args.length === 3) {
           const r = Math.round(constFold(e.args[0]) ?? 0);
           const g = Math.round(constFold(e.args[1]) ?? 0);
@@ -768,11 +768,11 @@ export function emit(chunk, symbols, file, opts = {}) {
       return `${sig.c}(${sig.params.map((p, i) => argAt(e, i, p[0], defaultFor(callee.field, i))).join(", ")})`;
     }
 
-    // user function — cross-bank calls go through a fixed-bank far-call stub
+    // user function - cross-bank calls go through a fixed-bank far-call stub
     if (e.userFn) {
       const fn = e.userFn;
       // INLINER: a body that is exactly `return <expr>` (no user calls inside)
-      // substitutes at the call site — the cc65 calling convention measured
+      // substitutes at the call site - the cc65 calling convention measured
       // ~1,200 cycles per invocation on a 4-line helper. Args paste in only
       // when pure (safe to duplicate) or used at most once; otherwise the
       // call stays. Kind conversion mirrors a real call (body at retKind,
@@ -803,8 +803,8 @@ export function emit(chunk, symbols, file, opts = {}) {
         if (st && st.kind === "return" && st.value &&
             !inlineStack.has(callee.name) &&
             e.args.length === fn.params.length && noCapture(callee.name)) {
-          // side-effecting args (user calls) must be pasted EXACTLY once —
-          // zero uses would drop the effect, two would double it — and at
+          // side-effecting args (user calls) must be pasted EXACTLY once -
+          // zero uses would drop the effect, two would double it - and at
           // most ONE such arg may inline (pasting reorders evaluation from
           // call-order to body-order; with a single effectful arg the pure
           // ones can't observe the difference)
@@ -877,7 +877,7 @@ export function emit(chunk, symbols, file, opts = {}) {
       const sv = e.args[1].sym?.forall?.slotVar ?? e.bindingSym?.forall?.slotVar;
       const f0 = `${pl.cname}_${pl.fields.keys().next().value}`;
       // Free slots chain through the FIRST field array (dead storage) with
-      // +1-encoded links so a BSS-zeroed head means "empty chain" — add()
+      // +1-encoded links so a BSS-zeroed head means "empty chain" - add()
       // pops in O(1) instead of scanning for a hole (an explosion's 51
       // adds used to walk the pool per particle). The high-water mark still
       // snaps to 0 when the pool empties (short all() scans), which also
@@ -894,9 +894,9 @@ export function emit(chunk, symbols, file, opts = {}) {
     // zp slots gt_a0.. (two sta's each) and call the argless _z entry point,
     // instead of paying cc65's C-stack push per argument. Skipped when an
     // argument expression could itself draw (a user-function call would
-    // clobber the slots mid-sequence) — those sites use the cdecl wrapper.
+    // clobber the slots mid-sequence) - those sites use the cdecl wrapper.
     if (ZP_BUILTINS[name] && !e.args.some(hasUserCall)) {
-      // spr has 7 params (n,x,y,w,h,flip_x,flip_y) but only 6 zp slots — pack
+      // spr has 7 params (n,x,y,w,h,flip_x,flip_y) but only 6 zp slots - pack
       // the two flip flags into gt_a5 as a bitmask (bit0 = X, bit1 = Y). The
       // asm reads gt_a5 to set WIDTH/HEIGHT bit7 + flip the GX/GY source edge.
       if (name === "spr") {
@@ -911,7 +911,7 @@ export function emit(chunk, symbols, file, opts = {}) {
       return `(gt_cam_x = ${args[0]}, gt_cam_y = ${args[1]})`;
     }
     // btn/btnp with constant button + player 0/1: an inline bit test on the
-    // zp pad word — no call at all (233 measured cycles down to a handful).
+    // zp pad word - no call at all (233 measured cycles down to a handful).
     if ((name === "btn" || name === "btnp") && e.args[0]?.kind === "number") {
       const idx = e.args[0].value | 0;
       const plArg = e.args[1];
@@ -985,7 +985,7 @@ export function emit(chunk, symbols, file, opts = {}) {
       case "min": case "max": {
         // int min/max of cheap PURE args inline as a ternary: a cc65 cdecl
         // call (3 pushes + jsr + compare) is ~250 cycles for what is 2
-        // compares — and min/max/mid sit in the hottest loops of every game
+        // compares - and min/max/mid sit in the hottest loops of every game
         // (collision clamps, camera). Multi-eval is safe because cheapPure()
         // admits only literals, plain variables, and simple arithmetic.
         const second = e.args[1] ?? { kind: "number", value: 0, isInt: true };
@@ -993,7 +993,7 @@ export function emit(chunk, symbols, file, opts = {}) {
         if ((!anyFixed || N8) && cheapPure(a0) && cheapPure(second)) {
           const A = expr(a0, mk), B = expr(second, mk);
           const op = b.special === "min" ? "<" : ">";
-          // the ternary's CONDITION is a var-vs-var compare — route it through
+          // the ternary's CONDITION is a var-vs-var compare - route it through
           // the same subtract-vs-zero shape as binop() so it skips tosicmp
           // (~127 cyc). The returned A/B keep the direct form.
           return `(${cmpCond(a0, second, op, mk)} ? (${A}) : (${B}))`;
@@ -1003,7 +1003,7 @@ export function emit(chunk, symbols, file, opts = {}) {
         return `${fn}(${expr(a0, anyFixed ? "fixed" : "int")}, ${sec})`;
       }
       case "mid": {
-        // median-of-3 inline (each arg evaluated at most twice) — same
+        // median-of-3 inline (each arg evaluated at most twice) - same
         // rationale as min/max above.
         if ((!anyFixed || N8) && e.args.every((a) => cheapPure(a))) {
           const mk = anyFixed ? "fixed" : "int";
@@ -1106,7 +1106,7 @@ export function emit(chunk, symbols, file, opts = {}) {
           break;
         }
         // compound: rebuild as t = t OP value with kind-correct lowering.
-        // For array elements the index expression is evaluated twice —
+        // For array elements the index expression is evaluated twice -
         // same as PICO-8's own compound-assignment expansion.
         const left = (isElem || isField) ? { ...s.target, tk } : { kind: "name", name: s.target.name, tk };
         const fake = {
@@ -1141,13 +1141,13 @@ export function emit(chunk, symbols, file, opts = {}) {
       case "callstmt": {
         // Statement-level inlining for FAT calls: a >=6-param user function
         // called as a statement pastes as a block that binds every argument
-        // to a local FIRST (evaluation order — including rnd() state — is
+        // to a local FIRST (evaluation order - including rnd() state - is
         // exactly a call's), then emits the body with params mapped to the
         // bindings. With --static-locals each binding is an absolute store
         // (~8 cycles) instead of cc65's pusha marshalling (~40/arg) plus
         // (sp),y parameter reads in the callee: a 9-arg particle spawner
         // drops ~450 cycles per call. Gates: no return value (retKind
-        // defaults to "int" — use hasReturnValue), no own locals (the
+        // defaults to "int" - use hasReturnValue), no own locals (the
         // emitter hoists local decls to the prologue, a pasted body would
         // reference undeclared names), tiny body, capture-safe.
         const c = s.call;
@@ -1224,7 +1224,7 @@ export function emit(chunk, symbols, file, opts = {}) {
         // stepping +1, whose variable is never assigned in the body, fits an
         // unsigned char. cc65's char ops are roughly half the cost of int
         // (single-register loads, 8-bit compare), and C's integer promotions
-        // make every USE of the variable identical in value — PICO-8
+        // make every USE of the variable identical in value - PICO-8
         // semantics are untouched because the value provably stays in range.
         let cty = ctype(kind);
         if (kind === "int" && step === 1) {
@@ -1310,7 +1310,7 @@ export function emit(chunk, symbols, file, opts = {}) {
 
   let currentFn = null;
 
-  out.push(`/* generated by gtlua from ${file} — edit the .lua, not this file */`);
+  out.push(`/* generated by gtlua from ${file} - edit the .lua, not this file */`);
   out.push(`#include "gt_api.h"`);
   out.push("");
 
@@ -1334,7 +1334,7 @@ export function emit(chunk, symbols, file, opts = {}) {
   if (banked) {
     // a stub prototype for every banked function: the INLINER can graft a
     // callee's body (with its calls) into any caller, creating cross-bank
-    // edges the AST call graph never had — so the superset is simply every
+    // edges the AST call graph never had - so the superset is simply every
     // non-fixed function (unreferenced externs cost nothing)
     const candidates = new Set();
     for (const name of functions.keys()) {
@@ -1347,7 +1347,7 @@ export function emit(chunk, symbols, file, opts = {}) {
   }
   out.push("");
 
-  // module variables — non-static so they land in the symbol table for
+  // module variables - non-static so they land in the symbol table for
   // RAM-level assertions in tests and debuggers
   for (const [name, g] of globals) {
     if (g.kind === "pool") {
@@ -1376,7 +1376,7 @@ export function emit(chunk, symbols, file, opts = {}) {
       if (g.hexdata) {
         // compile-time byte blob: RODATA, not BSS. On banked builds the blob
         // must live in THE SAME BANK as the functions that read it (a read
-        // from another bank silently sees that bank's bytes) — find the
+        // from another bank silently sees that bank's bytes) - find the
         // readers in the AST and follow the placement.
         const readers = [];
         for (const [fname, fn] of functions) {
@@ -1391,7 +1391,7 @@ export function emit(chunk, symbols, file, opts = {}) {
           if (found) readers.push(fname);
         }
         // a blob handed to sfx_bank()/music_bank() is consumed by the music
-        // sequencer, which executes in the firmware's bank — home it there
+        // sequencer, which executes in the firmware's bank - home it there
         // (fixed RODATA is scarce; a 1-2KB sfx bank would blow it)
         let sfxConsumed = false;
         for (const [, fn] of functions) {
@@ -1410,7 +1410,7 @@ export function emit(chunk, symbols, file, opts = {}) {
         const rbanks = new Set(readers.map((r) => bankOf(r)));
         if (sfxConsumed && banked) rbanks.add("b3");
         if (banked && rbanks.size > 1 && [...rbanks].filter((b) => b !== "fixed").length > 1) {
-          throw new Error(`hexdata '${name}' is read from functions in different banks (${[...rbanks].join(", ")}) — banked blobs need a single home; wrap the reads in one function`);
+          throw new Error(`hexdata '${name}' is read from functions in different banks (${[...rbanks].join(", ")}) - banked blobs need a single home; wrap the reads in one function`);
         }
         const home = banked ? ([...rbanks].find((b) => b !== "fixed") ?? "fixed") : "fixed";
         const seg = { b0: "B0RODATA", b1: "B1RODATA", b2: "B2RODATA", b3: "B3RODATA" }[home];
@@ -1522,12 +1522,12 @@ export function emit(chunk, symbols, file, opts = {}) {
   // far-call stubs (assembled separately, linked into the FIXED bank).
   // A stub forwards the cc65 fastcall registers blindly: A/X carry the last
   // argument (sreg its high word for longs) and the return value comes back
-  // the same way — the stub saves A/X around the bank switches and never
+  // the same way - the stub saves A/X around the bank switches and never
   // touches sreg, so it works for every signature.
   let stubs = null;
   if (banked && stubbed.size) {
     const st = [];
-    st.push("; generated by gtlua — FLASH2M cross-bank far-call stubs");
+    st.push("; generated by gtlua - FLASH2M cross-bank far-call stubs");
     st.push(".PC02");
     st.push(".import gt_bank_raw, gt_cur_bank");
     for (const cn of stubbed) st.push(`.import _${mangle(cn)}`);
@@ -1563,8 +1563,8 @@ export function emit(chunk, symbols, file, opts = {}) {
   }
 
   // Banked builds: cc65 emits the string-literal pool at END-OF-UNIT under
-  // whatever rodata-name is active THEN — after every scoped pragma has
-  // popped — so print() literals would land in the near-full fixed bank.
+  // whatever rodata-name is active THEN - after every scoped pragma has
+  // popped - so print() literals would land in the near-full fixed bank.
   // A tail pragma routes the pool into bank 1 with the draw-path code.
   if (banked) out.push(`#pragma rodata-name ("B1RODATA")`, "");
 

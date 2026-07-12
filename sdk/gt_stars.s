@@ -1,7 +1,7 @@
 ; ---------------------------------------------------------------------------
-; gt_stars — the starfield's two per-frame loops in 65C02.
+; gt_stars - the starfield's two per-frame loops in 65C02.
 ;
-; The C loops in gt_api.c cost ~86 cycles/star (advance) + ~69 (draw) —
+; The C loops in gt_api.c cost ~86 cycles/star (advance) + ~69 (draw) -
 ; 15.5k/frame on cherry-bomb's 100-star field, the single biggest SDK item
 ; in its profile. These do the same byte math at ~30 and ~24: 5.4k total.
 ;
@@ -58,7 +58,7 @@ _gt_sf_adv_z:
         bne     @loop
 @done:  rts
 
-; void gt_sf_draw_z(void) — CPU-mode pokes; vram = $4000 | (row<<7) | x
+; void gt_sf_draw_z(void) - CPU-mode pokes; vram = $4000 | (row<<7) | x
 ; X walks the stars so Y stays free for the (zp),y poke.
 _gt_sf_draw_z:
         ldx     _star_n

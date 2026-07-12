@@ -162,6 +162,6 @@ if (src) {
   writeFileSync(path.join(outdir, "source.p8.lua"), src);
   console.log(`wrote source.p8.lua (${src.length} bytes)`);
 } else {
-  console.log("code section: old ':c:' format — not handled yet");
+  console.log("code section: old ':c:' format - not handled yet");
 }
 console.log("wrote cart.bin, gfx.bin, gfx.pgm, code.bin");

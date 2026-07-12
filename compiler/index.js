@@ -1,4 +1,4 @@
-// gtlua compiler entry — source text in, C text (or diagnostics) out.
+// gtlua compiler entry - source text in, C text (or diagnostics) out.
 
 import { lex } from "./lexer.js";
 import { parse } from "./parser.js";
@@ -13,7 +13,7 @@ import { emit } from "./emit.js";
  * Compile gtlua source to C.
  * @param {string} source
  * @param {string} file name used in diagnostics
- * @param {object} [opts] — {banked:true, placement:{fnName:"fixed"|"b0"|"b1"|"b2"}}
+ * @param {object} [opts] - {banked:true, placement:{fnName:"fixed"|"b0"|"b1"|"b2"}}
  *   enables the FLASH2M banked build: functions land in per-bank segments and
  *   cross-bank calls are routed through generated far-call stubs.
  * @returns {{ok: boolean, c: string|null, diagnostics: Diagnostic[],
@@ -24,7 +24,7 @@ export function compile(source, file = "main.lua", opts = {}) {
   const { chunk, diagnostics: parseDiags } = parse(tokens, file);
   const diagnostics = [...lexDiags, ...parseDiags];
 
-  // Don't typecheck a broken parse — the errors would be noise.
+  // Don't typecheck a broken parse - the errors would be noise.
   if (diagnostics.some((d) => d.severity === "error")) {
     return { ok: false, c: null, diagnostics };
   }

@@ -1,6 +1,6 @@
 -- jelpi (adapted port)
 -- A run-and-stomp platformer inspired by "Jelpi", zep's PICO-8 demo cart
--- (ships with PICO-8; no formal license — this is a from-scratch gtlua
+-- (ships with PICO-8; no formal license - this is a from-scratch gtlua
 -- implementation of the run/jump/stomp design, drawn with primitives, not
 -- affiliated with Lexaloffle).
 --
@@ -147,7 +147,7 @@ function make_disc(cell, c, r)
   local bs = 8
   if (r > 3) bs = 16
   -- clear the whole cell block first: GRAM boots random, and spr() only
-  -- colorkeys value 0 — un-cleared neighbors render as noise squares
+  -- colorkeys value 0 - un-cleared neighbors render as noise squares
   local yy = 0
   while yy < bs do
     local xx = 0

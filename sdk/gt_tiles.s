@@ -1,11 +1,11 @@
 ; ---------------------------------------------------------------------------
-; gt.tiles_draw — the visible-window tile scan in 65C02.
+; gt.tiles_draw - the visible-window tile scan in 65C02.
 ;
 ; The compiled scan (celeste2 draw_tiles: 17x17 cells x bget + flag checks +
 ; spr calls) measured ~38k/frame; this is ~8-10k: byte map walked with a
 ; zp pointer, flags via (ptr),y, QF_SPR ring entries staged in place with
 ; incremental screen coordinates (one 16-bit camera subtract per frame,
-; +8 per cell/row after that). Cells with flag bit0 clear are SKIPPED —
+; +8 per cell/row after that). Cells with flag bit0 clear are SKIPPED -
 ; the port draws its special tiles (animated checkpoints, edge variants)
 ; from a small precomputed list on top.
 ;
