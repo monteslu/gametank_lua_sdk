@@ -1,29 +1,40 @@
 # ports/ — PICO-8 games adapted for the GameTank
 
-Playable gtlua adaptations of well-loved PICO-8 games. These are
-**from-scratch reimplementations of each game's design** — no original cart
-code or assets are used; graphics are gtlua primitives. Sprites/tiles/sound
-arrive as the SDK grows (see ../docs/PICO8.md); these will get closer to their
-inspirations with each release.
+gtlua adaptations of well-loved PICO-8 games — used to exercise and showcase the
+SDK. Each derives from an existing cart, so it carries the original's license and
+attribution (per-directory `LICENSE`).
 
-Build any of them with:
+## Featured ports live in their own repos
+
+The polished, playable ports have moved to standalone repositories for clear
+attribution (each is a derivative work under its own license, kept separate from
+the MIT-licensed SDK):
+
+| Port | Inspired by | Repo |
+|---|---|---|
+| Combo Pool | NuSan (PICO-8, p8jam2) | `gtlua-ports/combo-pool` |
+| newleste | Celeste Classic / CelesteClassic community | `gtlua-ports/newleste` |
+| Cherry Bomb | Krystman / Lazy Devs Academy | `gtlua-ports/cherry-bomb` |
+
+Build each from its own directory against a gt-lua checkout — see the repo's
+`README.md`.
+
+## In-development ports (here)
+
+Work-in-progress adaptations and demos still living in the SDK tree. Build any of
+them with (some need `--num8` or extra flags — see each `PORT_NOTES.md`):
 
 ```sh
-node bin/gtlua.js build ports/<name>/main.lua
+node bin/gtlua.js build ports/<name>/main.lua --sheet ports/<name>/gfx.gtg
 ```
 
-| Port | Inspired by | Original license | Controls |
-|---|---|---|---|
-| `cherry-bomb` | Cherry Bomb — Krystman / Lazy Devs (BBS 48986) | CC4-BY-NC-SA | d-pad move, 🅾️ shoot |
-| `combo-pool` | Combo Pool — NuSan (BBS 3467) | CC4-BY-NC-SA | ⬅️➡️ aim, 🅾️ drop |
-| `celeste-like` (summit) | Celeste Classic — Maddy Thorson & Noel Berry (BBS 2145) | none published; movement design reimplemented | ⬅️➡️ run, 🅾️ jump, ❎ dash |
-| `ufo-swamp` | UFO Swamp Odyssey — Paranoid Cactus (BBS 38153) | CC4-BY-NC-SA | 🅾️ thrust, ⬅️➡️ steer |
-| `jelpi` | Jelpi — zep's PICO-8 demo cart | none published; run/stomp design reimplemented | ⬅️➡️ run, 🅾️ jump |
+`driftmania` · `celeste2` · `just-one-boss` · `ufo-swamp` · `jelpi` ·
+`celeste-like` · `celeste`
 
-GameTank buttons: 🅾️ = GT A, ❎ = GT B (libretro `b` / `y` in RetroArch-style
-frontends; `start` works on the title-less games' restart screens via 🅾️).
+GameTank buttons: 🅾️ = GT A, ❎ = GT B, and GT C is a bonus button PICO-8 has no
+equivalent for (`btn(6)`).
 
-Adaptations of CC4-BY-NC-SA games are themselves CC-BY-NC-SA 4.0
-(attribution above; non-commercial; share-alike). They are showcase ROMs —
-don't sell them or bundle them with anything paid. The SDK itself stays MIT;
-these directories are license-firewalled.
+Adaptations of licensed games inherit the original's terms (attribution;
+CC-BY-NC-SA where applicable — non-commercial, share-alike). They are showcase
+ROMs, not products. The SDK itself stays MIT; these directories are
+license-firewalled.
