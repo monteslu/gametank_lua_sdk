@@ -56,26 +56,23 @@ static char frame_dl_init;
 /* draw state (PICO-8 sticky globals; camera lives in zp - gt_blitq.s) */
 unsigned char draw_color;          /* resolved GameTank byte (asm fast paths read/write) */
 
-/* PICO-8 color 0-15 -> GameTank byte; pal() remaps this live table */
-static const unsigned char p8pal_rom[16] = {
+/* The 16 GameTank bytes the PICO-8 palette maps to. Colors are raw GT bytes
+ * everywhere now (the compiler bakes 0-15 draw-color literals to these bytes at
+ * build time), so this is NOT a live draw palette. It survives only as the
+ * fixed lookup the compose/chunk flat-fill uses: ckdt overloads its low byte as
+ * 0=skip / 1-15=flat color / 16+=tile, so those flats stay 0-15 indices and
+ * resolve through this const table (gt_bg.c / gt_chunks.s). Immutable - no pal(). */
+const unsigned char gt_flat16[16] = {
     0x00, 0xA9, 0x5A, 0xDB, 0x33, 0x03, 0x06, 0x07,
     0x5B, 0x3E, 0x1F, 0xFE, 0xBE, 0x8C, 0x5E, 0x2F,
 };
-unsigned char p8pal[16];           /* non-static: asm rectfill fast path indexes it */
 
-/* resolve a color argument: -1 = current; 0x100|b = raw byte; else p8 index.
+/* resolve a color argument: -1 = keep current; else the value IS the GT byte.
  * Giving a color also SETS the current color (P8 trailing-color rule). */
 unsigned char resolve_color(int c) {
     if (c < 0) return draw_color;
-    if (c & 0x100) draw_color = (unsigned char)c;
-    else draw_color = p8pal[c & 15];
+    draw_color = (unsigned char)c;
     return draw_color;
-}
-
-/* p8 index (0-15) -> current hardware color byte (honors pal() remaps).
- * Exposed for the background compositor (gt_bg.c decodes 4bpp sheet tiles). */
-unsigned char gt_p8pal(unsigned char idx) {
-    return p8pal[idx & 15];
 }
 
 /* ---- mode tracking: CPU->VRAM / GRAM writes vs queued blits ----
@@ -514,76 +511,12 @@ int gt_p8_print_int(int v, int x, int y, int c) {
 }
 #endif
 
-/* The packed sheet pointer, stashed by gt_sheet_load so the background
- * compositor (gt_bg.c) can re-read tile pixels from it. In FLASH2M builds the
- * sheet lives in bank 2, mapped in by gt_sheet_init before gt_sheet_load runs;
- * gt_bg_compose re-maps that bank the same way before reading. NULL until a
- * sheet is loaded (bg_compose is a no-op then). Native .gtg builds (GT_GSHEET)
- * use gt_gsheet_ptr instead and don't allocate this - reclaims 2 BSS bytes. */
-#ifndef GT_GSHEET
-const unsigned char *gt_sheet_ptr;
-#endif
-
 /* The RAW uncompressed 8bpp .gtg quadrant (128x128, 1 byte/pixel), or NULL. The
  * GRAM-compose engine (bg_compose / bg_tile / bg_coln / the track cache) re-reads
- * the sheet's tile pixels each compose; the native .gtg loader only unpacks into
- * GRAM (no readable copy), so a composing native build ALSO emits the raw bytes
- * in ROM and gt_sheet_init points this at them. gt_bg.c reads it (under
- * GT_GSHEET_COMPOSE) instead of the 4bpp gt_sheet_ptr. NULL for non-composing
- * or 4bpp builds. */
+ * the sheet's tile pixels each compose; the .gtg loader unpacks into GRAM (no
+ * readable copy), so a composing build ALSO emits the raw bytes in ROM and
+ * gt_sheet_init points this at them. NULL for non-composing builds. */
 const unsigned char *gt_gsheet_ptr;
-
-/* Load a packed 4bpp PICO-8 sheet (8192 bytes, two pixels per byte, low
- * nibble first) into GRAM through the palette map. Called by the generated
- * gt_sheet_init() before _init() when the build links a --sheet. */
-/* Not compiled for native .gtg builds (GT_GSHEET) - those load via
- * gt_gsheet_load_packed/split; keeping this 4bpp loader out of B2CODE frees the
- * bank-2 room a full native sheet needs. */
-#ifndef GT_GSHEET
-#ifdef GT_BANKED
-#pragma code-name ("B2CODE")
-#endif
-void gt_sheet_load(const unsigned char *packed) {
-    unsigned int i;
-    unsigned char b;
-    gt_sheet_ptr = packed;
-    enter_gram_mode();
-    for (i = 0; i < 8192; ++i) {
-        b = packed[i];
-        vram[i << 1] = p8pal[b & 15];
-        vram[(i << 1) | 1] = p8pal[b >> 4];
-    }
-}
-#endif /* !GT_GSHEET */
-/* packbits variant: [n,b0..bn-1] literal (n 1..127), [n|0x80,v] repeat
- * (n 3..127). Emitted by the builder when the game never re-reads the raw
- * sheet; typically halves the sheet's ROM cost. NOTE: gt_sheet_ptr stays
- * NULL - bg_compose needs the raw form and the builder keeps them apart. */
-#ifdef GT_SHEET_PACKED
-void gt_sheet_load_packed(const unsigned char *p, unsigned int plen) {
-    const unsigned char *end = p + plen;
-    unsigned int vi = 0;
-    unsigned char n, b;
-    enter_gram_mode();
-    while (p < end) {
-        n = *p++;
-        if (n & 0x80) {
-            n &= 0x7F;
-            b = *p++;
-            while (n--) {
-                vram[vi++] = p8pal[b & 15];
-                vram[vi++] = p8pal[b >> 4];
-            }
-        } else {
-            while (n--) {
-                b = *p++;
-                vram[vi++] = p8pal[b & 15];
-                vram[vi++] = p8pal[b >> 4];
-            }
-        }
-    }
-}
-#endif /* GT_SHEET_PACKED */
 
 #ifdef GT_GSHEET
 /* Load a NATIVE .gtg quadrant into GRAM. A .gtg is the official GameTank sprite
@@ -969,7 +902,7 @@ void GT_CLS(int c) {
     /* Edge slivers first, the big 127x127 blit LAST: the caller returns
      * while the big DMA is still in flight, so a cls() at the top of
      * _update() overlaps the whole frame's game logic. */
-    unsigned char col = (c < 0) ? p8pal[0] : resolve_color(c);
+    unsigned char col = (c < 0) ? 0x00 : resolve_color(c);   /* cls() default = black */
     box_raw(127, 0, 1, 127, col);
     box_raw(0, 127, 127, 1, col);
     box_raw(127, 127, 1, 1, col);
@@ -988,41 +921,11 @@ void gt_p8_cls(int c) {
 void gt_p8_camera(int x, int y) { gt_cam_x = x; gt_cam_y = y; }
 /* color() sets the current draw color. Inlined (not resolve_color(c)) so the hot
  * path is a couple of zp stores instead of a cdecl call: c<0 keeps the current
- * color, 0x100|byte is a raw hw color, else it's a p8 index through the palette. */
+ * color, else the value IS the GameTank byte. */
 void __fastcall__ gt_p8_color(int c) {
     if (c < 0) return;
-    if (c & 0x100) draw_color = (unsigned char)c;
-    else draw_color = p8pal[c & 15];
+    draw_color = (unsigned char)c;
 }
-
-#ifdef GT_BANKED
-#pragma code-name ("B0CODE")
-#define GT_PAL gt_p8_pal_impl
-static void gt_p8_pal_impl(int c0, int c1);
-#else
-#define GT_PAL gt_p8_pal
-#endif
-#ifdef GT_BANKED
-static
-#endif
-void GT_PAL(int c0, int c1) {
-    unsigned char i;
-    if (c0 < 0) {                     /* pal() - reset */
-        for (i = 0; i < 16; ++i) p8pal[i] = p8pal_rom[i];
-        return;
-    }
-    if (c1 < 0) return;
-    p8pal[c0 & 15] = (c1 & 0x100) ? (unsigned char)c1 : p8pal_rom[c1 & 15];
-}
-#ifdef GT_BANKED
-#pragma code-name ("CODE")
-void gt_p8_pal(int c0, int c1) {
-    unsigned char saved_bank = gt_cur_bank;
-    gt_bank(0);
-    gt_p8_pal_impl(c0, c1);
-    gt_bank(saved_bank);
-}
-#endif
 
 /* Fallback for the asm fast path in gt_blitq.s (_gt_p8_rectfill_z): handles
  * offscreen/reversed/128-span rects. resolve_color is idempotent, so the asm
@@ -1177,8 +1080,9 @@ void GT_SF_INIT(int n) {
         s = (unsigned char)(8 + (gt_p8_rnd(24L << 16) >> 16));
 #endif
         star_s[i]    = s;
-        /* colour by speed tier, baked once (pset colour never changes) */
-        star_col[i]  = (s < 16) ? p8pal[1] : (s < 24) ? p8pal[13] : p8pal[6];
+        /* colour by speed tier, baked once (pset colour never changes):
+         * GT bytes for the old p8 indices 1 (dark-blue), 13 (lavender), 6 (grey) */
+        star_col[i]  = (s < 16) ? 0xA9 : (s < 24) ? 0x8C : 0x06;
     }
 }
 
@@ -1279,7 +1183,8 @@ void GT_FL_INIT(int n) {
         /* reference pas = flr(rnd(1.25)): 0 four times in five, else 1;
          * the ring W/H field wants size+1 */
         fl_w[i] = fl_h[i] = (unsigned char)((gt_p8_rnd_int(5) == 4) ? 2 : 1);
-        fl_ci[i]  = (unsigned char)(p8pal[6 + gt_p8_rnd_int(2)] ^ 0xFF);
+        /* GT bytes for old p8 indices 6 (grey) / 7 (white), colorkey-inverted */
+        fl_ci[i]  = (unsigned char)(gt_flat16[6 + gt_p8_rnd_int(2)] ^ 0xFF);
         fl_rxl[i] = 0xFF; fl_rxh[i] = 0x7F;   /* snow re-enters from the right */
         fl_ry[i]  = 1;                        /* and rerolls its row */
     }
@@ -1309,7 +1214,7 @@ void GT_FL_SET(int i, int x, int y, int w, int h, int spd8, int col) {
     fl_adv[i] = 0;
     fl_w[i] = (unsigned char)w;
     fl_h[i] = (unsigned char)h;
-    fl_ci[i] = (unsigned char)(p8pal[col & 15] ^ 0xFF);
+    fl_ci[i] = (unsigned char)(col ^ 0xFF);   /* col is a raw GT byte, colorkey-inverted */
     v = (-w) << 8;
     fl_rxl[i] = (unsigned char)v;
     fl_rxh[i] = (unsigned char)((unsigned int)v >> 8);
@@ -1367,7 +1272,7 @@ void gt_flakes_draw2_cpu(int first, int count, int cdx8, int cdy8) {
 void gt_chain_step_draw(int x, int y, int col) {
     gt_a0 = x;
     gt_a1 = y;
-    gt_a2 = col & 15;
+    gt_a2 = col & 0xFF;   /* col is a raw GameTank color byte */
     gt_chain_z();
 }
 #endif /* GT_FLAKES */
@@ -2218,8 +2123,7 @@ void gt_init(void) {
     gt_qbank = bankflip | BANK_CLIP_X | BANK_CLIP_Y;
     gt_pad0 = 0; gt_pad1 = 0; gt_rpt0 = 0; gt_rpt1 = 0;
     gt_draw_mode = MODE_NONE;
-    for (i = 0; i < 16; ++i) p8pal[i] = p8pal_rom[i];
-    draw_color = p8pal[6];             /* P8 default draw color: 6 */
+    draw_color = 0x06;                 /* default draw color = GT byte for p8 index 6 */
     flags_mirror = DMA_NMI | DMA_ENABLE | DMA_IRQ;
     *dma_flags = flags_mirror;
     banks_mirror = bankflip;

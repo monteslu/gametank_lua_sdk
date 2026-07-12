@@ -94,16 +94,23 @@ test("array8 cannot be passed where the runtime wants int pairs", () => {
   assert.ok(errs.some((m) => /must be a 16-bit array/.test(m)), errs.join("\n"));
 });
 
-test("gt.rgb(r,g,b) resolves to a palette byte at compile time", () => {
+test("gt.rgb(r,g,b) resolves to a raw palette byte at compile time", () => {
   const c = cOf("function _update60()\nend\nfunction _draw()\n  rectfill(0,0,9,9, gt.rgb(255,128,0))\nend\n");
-  // constant RGB -> a 0x1xx literal (0x100 | nearest byte), no runtime lookup
-  assert.match(c, /0x1[0-9a-f][0-9a-f]/);
-  assert.doesNotMatch(c, /nearestColorByte|gt_rgb/);
+  // constant RGB -> a plain 0x00-0xff byte literal, no runtime lookup, no 0x100 flag
+  assert.match(c, /0x[0-9a-f]{1,2}\b/);
+  assert.doesNotMatch(c, /nearestColorByte|gt_rgb|0x1[0-9a-f][0-9a-f]/);
 });
 
-test("gt.rgb(byte) still passes a raw byte through", () => {
+test("gt.rgb(byte) passes a raw byte through (no 0x100 flag)", () => {
   const c = cOf("function _update60()\nend\nfunction _draw()\n  rectfill(0,0,9,9, gt.rgb(0x2f))\nend\n");
-  assert.match(c, /0x100 \| \(47 & 0xFF\)/);
+  assert.match(c, /47 & 0xFF/);
+  assert.doesNotMatch(c, /0x100/);
+});
+
+test("a static 0-15 color literal bakes to its GameTank byte", () => {
+  // cls(1) is PICO-8 dark-blue; P8_PALETTE[1] = 0xA9 = 169. No runtime index.
+  const c = cOf("function _update60()\nend\nfunction _draw()\n  cls(1)\nend\n");
+  assert.match(c, /gt_p8_cls\(169\)/);
 });
 
 test("gt.rgb(r,g,b) with a non-constant is a loud error", () => {

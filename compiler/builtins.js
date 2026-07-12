@@ -5,7 +5,9 @@
 //   coord - pixel coordinate/radius: C int; fixed args are floored (>>16)
 //   num   - 16.16 number: C long; int args are promoted (<<16)
 //   int   - small integer (button index, player): C int; fixed args floored
-//   color - PICO-8 color 0-15 or gt.rgb() raw; optional -> -1 sentinel
+//   color - a GameTank palette byte 0-255. A static 0-15 literal is baked from
+//           the PICO-8 palette at compile time; gt.rgb() gives any byte;
+//           optional -> -1 sentinel (keep current draw color)
 // Ret kinds: fixed | int | bool | void | same (polymorphic with args)
 
 export const BUILTINS = {
@@ -19,7 +21,6 @@ export const BUILTINS = {
   circ:     { params: [["coord", false], ["coord", false], ["coord", false], ["color", true]], ret: "void", c: "gt_p8_circ" },
   circfill: { params: [["coord", false], ["coord", false], ["coord", false], ["color", true]], ret: "void", c: "gt_p8_circfill" },
   line:     { params: [["coord", false], ["coord", false], ["coord", false], ["coord", false], ["color", true]], ret: "void", c: "gt_p8_line" },
-  pal:      { params: [["int", true], ["color", true]], ret: "void", c: "gt_p8_pal" },
   sset:     { params: [["coord", false], ["coord", false], ["color", true]], ret: "void", c: "gt_p8_sset" },
   spr:      { params: [["int", false], ["coord", false], ["coord", false], ["int", true], ["int", true], ["flip", true], ["flip", true]], ret: "void", c: "gt_p8_spr" },
   // native frame-table sprite: sprf(frame, x, y, [flipx], [flipy]) draws frame

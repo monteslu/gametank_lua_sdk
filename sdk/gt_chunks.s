@@ -16,13 +16,13 @@
 ;   ck_w/ck_h: window cells;  ck_x0/ck_y0: world px of the window origin
 ;             (24*cx0 - cam_x etc, precomputed screen-space by the caller)
 ;   ck_props: byte list out - triples (propidx, cellx, celly), 0-terminated
-;   gt_qbank in entry+7 for atlas blits; fills pre-invert via p8pal.
+;   gt_qbank in entry+7 for atlas blits; fills pre-invert via gt_flat16 (the 16-color flat table).
 ; ---------------------------------------------------------------------------
 .export _gt_chunks_z
 .export _ck_grid, _ck_lut, _ck_lut2, _ck_w, _ck_h, _ck_stride
 .export _ck_x0, _ck_y0, _ck_props
 .import _gt_q, _gt_qhead, _gt_qtail, _gt_q_pump, _gt_qbank, _gt_draw_mode
-.import _p8pal
+.import _gt_flat16
 .PC02
 
 QF_RECT = $CD
@@ -196,14 +196,14 @@ cell:   ldy     #0
         and     #%11100000
         bne     flatsolo
         ; pure flat: extend or start the run
-        lda     _p8pal,y
+        lda     _gt_flat16,y
         eor     #$FF
         cmp     ck_runc
         beq     extend
         phy
         jsr     flushrun        ; different color: flush, start new
         ply
-        lda     _p8pal,y
+        lda     _gt_flat16,y
         eor     #$FF
         sta     ck_runc
         lda     ck_sx
@@ -219,7 +219,7 @@ flatsolo:
         jsr     flushrun
         ply
         ; single flat fill for this cell (has decal/prop on top)
-        lda     _p8pal,y
+        lda     _gt_flat16,y
         eor     #$FF
         sta     ck_runc
         lda     ck_sx
@@ -253,7 +253,7 @@ roaddone2:
 decalflat:
         ; flat decal: full-cell fill in color k2
         tay
-        lda     _p8pal,y
+        lda     _gt_flat16,y
         eor     #$FF
         pha
         lda     ck_runc         ; (no open run can exist here - flushed)

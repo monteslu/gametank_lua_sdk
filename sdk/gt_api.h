@@ -68,7 +68,6 @@ unsigned char gt_p8_btnp(int i, int pl);
 void gt_p8_cls(int c);
 void gt_p8_camera(int x, int y);
 void __fastcall__ gt_p8_color(int c);
-void gt_p8_pal(int c0, int c1);              /* (-1,-1) = reset */
 
 /* zp-ABI entry points: args in gt_a0..gt_a5 (see the block above).
  * The cdecl versions above remain as thin wrappers for call sites whose
@@ -157,8 +156,8 @@ void gt_gflush(void);                        /* drain blit queue + restore draw 
 void gt_bg_clear(void);                      /* clear the 256x256 canvas */
 void gt_bg_tile(int t, int px, int py);      /* stamp one sheet tile (8px grid) */
 void gt_gspr(int gx, int gy, int w, int h, int x, int y);  /* blit FROM canvas */
-unsigned char gt_p8pal(unsigned char idx);   /* p8 index -> hw color (pal-aware) */
-extern const unsigned char *gt_sheet_ptr;
+/* the 16 GT bytes the PICO-8 palette maps to; the compose flat-fill index table */
+extern const unsigned char gt_flat16[16];
 extern const unsigned char *gt_gsheet_ptr;   /* raw 8bpp .gtg quadrant for compose, or NULL */
 void gt_p8_rect(int x0, int y0, int x1, int y1, int c);
 void gt_p8_border(int c);
@@ -172,8 +171,6 @@ int gt_p8_print_num(long v, int x, int y, int c);
 #endif
 int gt_p8_print_int(int v, int x, int y, int c);
 int gt_p8_print_buf(unsigned char *buf, int off, int x, int y, int c);
-void gt_sheet_load(const unsigned char *packed);
-void gt_sheet_load_packed(const unsigned char *p, unsigned int plen); /* packbits */
 /* native .gtg quadrant loader: 128x128 8bpp raw CAPTURE bytes, packbits in ROM,
  * into GRAM quadrant `quad` (0=NW 1=NE 2=SW 3=SE). See gt_api.c / docs/GRAPHICS.md. */
 void gt_gsheet_load_packed(const unsigned char *p, unsigned int plen, unsigned char quad);

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // gtlua CLI - compile a .lua game to a GameTank .gtr cartridge.
 //
-//   gtlua build <main.lua> [--sheet gfx.bin] [-o game.gtr]
+//   gtlua build <main.lua> [--sheet sheet.gtg] [-o game.gtr]
 //   gtlua c <main.lua>                     print the generated C (debugging)
 //
 // Cart tiers: the build first targets a flat 32 KB EEPROM cart. If the game
@@ -211,9 +211,8 @@ const GTG_BYTES = 16384;   // one native .gtg quadrant = 128x128 8bpp
 // So a composing native game stores just this top slice raw for compose re-reads.
 const GTG_COMPOSE_BYTES = 8192;
 
-// A native .gtg sheet is 16384 bytes (one 128x128 quadrant). The old PICO-8
-// path is an 8192-byte 4bpp gfx.bin. Detect by size - the extension is not
-// authoritative (a .gtg IS a real GameTank file; a .bin may be either).
+// A native .gtg sheet is 16384 bytes (one 128x128 8bpp quadrant). This is the
+// only sheet format; makeSheetC rejects any other size.
 function isGtgSheet(sheetPath) {
   return !!sheetPath && statSync(sheetPath).size === GTG_BYTES;
 }
@@ -332,31 +331,12 @@ function makeGSheetC(sheetPath, banked, framesPath, composes) {
     `void gt_sheet_init(void) { gt_bank(2); ${calls.join(" ")} ${b1} }\n`;
 }
 
-function makeSheetC(sheetPath, banked, packed, framesPath, composes) {
+function makeSheetC(sheetPath, banked, framesPath, composes) {
   if (!sheetPath) return `void gt_sheet_init(void) {}\n`;
   if (isGtgSheet(sheetPath)) return makeGSheetC(sheetPath, banked, framesPath, composes);
-  const raw = readFileSync(sheetPath);
-  if (raw.length !== 8192) {
-    fail(`--sheet expects a 16384-byte native .gtg or an 8192-byte 4bpp gfx.bin (got ${raw.length})`);
-  }
-  let decl, call;
-  if (packed) {
-    const pk = packbits(Array.from(raw));
-    decl = `static const unsigned char sheet_data[${pk.length}] = {${pk.join(",")}};\n`;
-    call = `gt_sheet_load_packed(sheet_data, ${pk.length}U)`;
-  } else {
-    decl = `static const unsigned char sheet_data[8192] = {${Array.from(raw).join(",")}};\n`;
-    call = `gt_sheet_load(sheet_data)`;
-  }
-  if (banked) {
-    // sheet data lives in bank 2; the loader (fixed bank) maps it in first
-    return `#include "gt_api.h"\n` +
-      `#pragma rodata-name ("SHEET")\n` + decl +
-      `#pragma rodata-name ("RODATA")\n` +
-      `void gt_sheet_init(void) { gt_bank(2); ${call}; }\n`;
-  }
-  return `#include "gt_api.h"\n` + decl +
-    `void gt_sheet_init(void) { ${call}; }\n`;
+  const n = statSync(sheetPath).size;
+  fail(`--sheet expects a native .gtg sprite sheet (16384 bytes/quadrant; got ${n}). ` +
+    `Convert a PICO-8 cart or a PNG with: gtlua gfx import <in> -o sheet.gtg`);
 }
 
 // ---- FLASH2M bank placement -------------------------------------------------
@@ -674,11 +654,9 @@ function build(entry, outPath, sheetPath, num8 = false, framesPath = undefined) 
   const usesTrack = result.c.includes("gt_track_grid(") || result.c.includes("gt_track_col(") ||
     result.c.includes("gt_track_row2(") || result.c.includes("gt_track_view(") ||
     result.c.includes("gt_track_props(") || result.c.includes("gt_track_compose(");
-  // a native .gtg sheet is 8bpp (loaded raw, no palette expansion) - the 4bpp
-  // packbits path (GT_SHEET_PACKED) doesn't apply; it uses GT_GSHEET instead.
-  const gtgSheet = isGtgSheet(sheetPath);
-  const usesPackedSheet = !!sheetPath && !gtgSheet &&
-    !(result.c.includes("gt_bg_compose(") || result.c.includes("gt_gspr("));
+  // The only sheet format is the native 8bpp .gtg (loaded raw into GRAM, no
+  // palette expansion). makeSheetC rejects anything else.
+  const gtgSheet = !!sheetPath && isGtgSheet(sheetPath);
   const apiDefs = [
     ...(gtgSheet ? ["-DGT_GSHEET"] : []),
     ...(usesStarfield ? ["-DGT_STARFIELD"] : []),
@@ -696,7 +674,6 @@ function build(entry, outPath, sheetPath, num8 = false, framesPath = undefined) 
     ...(usesTrack ? ["-DGT_TRACK_CACHE"] : []),
     ...((result.c.includes("gt_bg_compose") || usesTrack) ? ["-DGT_BG_COMPOSE_ON"] : []),
     ...(usesAutocls ? ["-DGT_AUTOCLS"] : []),
-    ...(usesPackedSheet ? ["-DGT_SHEET_PACKED"] : []),
   ];
   // sfx()/music() pull in the tracker (gt_music.c). Its data + per-frame
   // sequencer are small and read across arbitrary game banks every frame, so
@@ -715,13 +692,12 @@ function build(entry, outPath, sheetPath, num8 = false, framesPath = undefined) 
   // gt.bg_compose / bg_tile / bg_coln and the track cache (gt.track_*) RE-READ
   // the raw sheet pixels each compose to paint into a GRAM page. With a native
   // .gtg sheet the build also emits the raw 8bpp bytes in ROM (gt_gsheet_ptr)
-  // and compiles the 8bpp decode path (GT_GSHEET_COMPOSE); with the 4bpp gfx.bin
-  // it uses the nibble/p8pal path via gt_sheet_ptr.
+  // and compiles the 8bpp decode path (GT_GSHEET_COMPOSE).
   const readsRawSheet = result.c.includes("gt_bg_compose(") ||
     result.c.includes("gt_bg_tile(") || result.c.includes("gt_bg_coln(") || usesTrack;
   const gsheetCompose = gtgSheet && readsRawSheet;   // native .gtg + composes
   writeFileSync(B(`${name}.c`), result.c);
-  writeFileSync(B("sheet.c"), makeSheetC(sheetPath, false, false, framesPath, gsheetCompose));
+  writeFileSync(B("sheet.c"), makeSheetC(sheetPath, false, framesPath, gsheetCompose));
 
   // 2. compile + assemble everything
   cc(B(`${name}.c`), B(`${name}.s`));
@@ -833,14 +809,11 @@ function build(entry, outPath, sheetPath, num8 = false, framesPath = undefined) 
     }
   };
   foldRodataSizes(result.c, sizes);
-  const sheetBytes = !sheetPath ? 0
-    : gtgSheet ? gtgSheetRomBytes(sheetPath, gsheetCompose)
-    : usesBg ? 8192                                     // 4bpp sheet re-read raw by bg
-    : packbits(Array.from(readFileSync(sheetPath))).length;
+  const sheetBytes = sheetPath ? gtgSheetRomBytes(sheetPath, gsheetCompose) : 0;
   const placement = initialPlacement(result.callGraph);
 
   as(path.join(SDK, "gt_bank.s"), B("gt_bank.o"));
-  writeFileSync(B("sheet.c"), makeSheetC(sheetPath, true, !usesBg, framesPath, gsheetCompose));
+  writeFileSync(B("sheet.c"), makeSheetC(sheetPath, true, framesPath, gsheetCompose));
   cc(B("sheet.c"), B("sheet.s"));
   as(B("sheet.s"), B("sheet.o"));
 

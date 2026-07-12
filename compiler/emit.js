@@ -7,7 +7,7 @@
 // Fixed multiply/divide/mod go through the gt_f* runtime; power-of-two
 // divisors fold to shifts/masks at compile time (exact for 16.16).
 
-import { BUILTINS, GT_MEMBERS, CALLBACKS } from "./builtins.js";
+import { BUILTINS, GT_MEMBERS, CALLBACKS, P8_PALETTE } from "./builtins.js";
 import { nearestColorByte } from "./gt_palette.js";
 
 // Split an index expression into (base, constant offset): `x + 3` -> [x, 3],
@@ -696,7 +696,19 @@ export function emit(chunk, symbols, file, opts = {}) {
       case "coord": return expr(a, a.tk === "fixed" ? "int" : "int");
       case "int": return expr(a, "int");
       case "num": return expr(a, "fixed");
-      case "color": return expr(a, "int");
+      // A color is a raw GameTank palette byte. A STATIC 0-15 literal is a
+      // PICO-8 color index we bake to its GameTank byte at build time (the last
+      // trace of the p8 palette, resolved here, not at runtime). Any other
+      // expression is passed through as a raw byte - a value computed at runtime
+      // is used as-is (a game that computes a 0-15 index will render wrong; the
+      // GameTank palette differs from PICO-8's, documented best-effort).
+      case "color": {
+        if (a.kind === "number" && Number.isInteger(a.value) &&
+            a.value >= 0 && a.value <= 15) {
+          return String(P8_PALETTE[a.value]);   // bake p8 index -> GT byte
+        }
+        return expr(a, "int");
+      }
       // pass an array global by pointer: the bare mangled name decays to
       // int*/long* (the checker validated it's an array reference).
       case "array":
@@ -714,15 +726,16 @@ export function emit(chunk, symbols, file, opts = {}) {
     if (callee.kind === "member" && callee.object.kind === "name" && callee.object.name === "gt") {
       const sig = GT_MEMBERS[callee.field];
       if (sig.special === "rgb") {
-        // gt.rgb(r,g,b): resolve to the nearest palette byte at COMPILE time
-        // (zero runtime cost) - the checker proved the 3 args constant.
+        // gt.rgb(r,g,b) / gt.rgb(byte): a raw GameTank palette byte (0-255).
+        // (r,g,b) resolves to the nearest byte at COMPILE time (zero runtime
+        // cost - the checker proved the 3 args constant); (byte) masks to 8 bits.
         if (e.args.length === 3) {
           const r = Math.round(constFold(e.args[0]) ?? 0);
           const g = Math.round(constFold(e.args[1]) ?? 0);
           const b = Math.round(constFold(e.args[2]) ?? 0);
-          return `0x${(0x100 | nearestColorByte(r, g, b)).toString(16)}`;
+          return `0x${nearestColorByte(r, g, b).toString(16)}`;
         }
-        return `(0x100 | (${argAt(e, 0, "int", "0")} & 0xFF))`;
+        return `(${argAt(e, 0, "int", "0")} & 0xFF)`;
       }
       if (sig.isValue) return sig.c;
       if (sig.special === "hitscan") {
@@ -734,7 +747,15 @@ export function emit(chunk, symbols, file, opts = {}) {
       }
       if (sig.special === "dbar") {
         const names = ["db_px", "db_py", "db_v", "db_m", "db_c", "db_c2", "db_bg"];
-        const parts = e.args.map((a, i) => `${names[i]} = (unsigned char)(${expr(a, "int")})`);
+        // positions 4,5,6 (db_c, db_c2, db_bg) are colors: bake a static 0-15
+        // literal to its GameTank byte, like a `color` arg; else pass raw.
+        const isColor = (i) => i >= 4;
+        const parts = e.args.map((a, i) => {
+          const v = (isColor(i) && a.kind === "number" && Number.isInteger(a.value) &&
+                     a.value >= 0 && a.value <= 15)
+            ? String(P8_PALETTE[a.value]) : expr(a, "int");
+          return `${names[i]} = (unsigned char)(${v})`;
+        });
         return `(${parts.join(", ")}, gt_dbar_z())`;
       }
       if (sig.special === "partsstep") {

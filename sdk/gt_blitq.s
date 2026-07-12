@@ -28,7 +28,6 @@
 .import   _gt_draw_busy
 .import   _gt_draw_mode
 .import   _frameflip
-.import   _p8pal
 .import   _draw_color
 .import   _gt_p8_rectfill_slow
 .import   _gt_p8_spr_wide
@@ -281,27 +280,20 @@ _gt_rng_next:
 ; ---------------------------------------------------------------------------
 ; gt_p8_rectfill_z: the hot fill call, fast path fully in asm.
 ;   gt_a0=x0 gt_a1=y0 gt_a2=x1 gt_a3=y1 gt_a4=color
-; Resolve the color (p8pal lookup / raw 0x1xx byte / negative = keep current),
-; camera-adjust all four coordinates, and when everything is on-screen,
-; ordered, and under the 7-bit span limit - the overwhelmingly common case -
-; stage the entry and fall into the push (~90 cycles vs ~300 through the C
+; Resolve the color (negative = keep current draw_color; else the value IS the
+; GameTank byte), camera-adjust all four coordinates, and when everything is
+; on-screen, ordered, and under the 7-bit span limit - the overwhelmingly common
+; case - stage the entry and fall into the push (~90 cycles vs ~300 through the C
 ; chain). Anything else jumps to the C fallback, which redoes the resolve
-; (idempotent) and handles swap/clip/128-splits. Clobbers A,X.
+; (idempotent) and handles swap/clip/128-splits. Clobbers A.
 ; ---------------------------------------------------------------------------
 QF_RECT = $CD                   ; NMI|ENABLE|IRQ|COLORFILL|OPAQUE
 
 _gt_p8_rectfill_z:
-        ; ---- color: negative keeps draw_color; 0x1xx is a raw byte ----
+        ; ---- color: negative keeps draw_color; else the low byte IS the color ----
         LDA _gt_a4+1
         BMI @ckeep
-        BNE @craw
-        LDA _gt_a4
-        AND #$0F
-        TAX
-        LDA _p8pal,x
-        BRA @cstore
-@craw:  LDA _gt_a4
-@cstore:
+        LDA _gt_a4               ; the GameTank color byte, straight
         STA _draw_color
 @cinv:  EOR #$FF
         STA _gt_ent+7
@@ -616,7 +608,7 @@ _irq_int:
 ;   fill (px..pe, 3 rows), highlight (px..pe-1, 2 rows), deficit
 ;   (pe+1..pe2, 3 rows, color 6) when m > v.
 ; The compiled version made 4 rectfill() calls (~400 each with glue); this
-; stages the same entries in ~450 total. Colors resolve via p8pal ^ $FF.
+; stages the same entries in ~450 total. Colors are GameTank bytes, colorkey-inverted (^ $FF).
 ;   zp args: db_px db_py db_v db_m db_c db_c2 db_bg (bytes)
 ; ---------------------------------------------------------------------------
 .export _gt_dbar_z
@@ -642,8 +634,7 @@ db_col: .res 1
 
 ; stage one fill: db_x, _db_py, db_w x db_h, db_col (pico index -> resolved)
 .proc dbfill
-        ldy     db_col
-        lda     _p8pal,y
+        lda     db_col          ; db_col is already a GameTank color byte
         eor     #$FF
         sta     db_col
 slot:   lda     _gt_qhead

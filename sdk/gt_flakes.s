@@ -299,7 +299,7 @@ jl:     jmp     loop
 ; ---------------------------------------------------------------------------
 .export _gt_chain_z
 .importzp _gt_a0, _gt_a1, _gt_a2
-.import _p8pal, _gt_draw_mode
+.import _gt_draw_mode
 
 CH_N = 5
 QF_RECTC = $CD
@@ -414,11 +414,10 @@ free:   ldx     _gt_qhead
         rts
 .endproc
 
-; void gt_chain_z(void) - gt_a0/a1 = target, gt_a2 = p8 color
+; void gt_chain_z(void) - gt_a0/a1 = target, gt_a2 = GameTank color byte
 .proc _gt_chain_z
         stz     _gt_draw_mode
-        ldy     _gt_a2
-        lda     _p8pal,y
+        lda     _gt_a2          ; gt_a2 is already a GameTank color byte
         eor     #$FF
         sta     ch_c
         ; ---- update the chain ----
