@@ -1,6 +1,6 @@
 {
   "name": "gametank_lua_sdk",
-  "private": true,
+  "version": "0.1.0",
   "type": "module",
   "bin": { "gtlua": "bin/gtlua.js" },
   "exports": {
