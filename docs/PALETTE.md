@@ -15,12 +15,18 @@ unscaled the default"*, switching from SCALED. So:
 - **CAPTURE is THE official, hardware-accurate GameTank palette.** gtlua follows
   it. Our `compiler/gt_palette.js` is the CAPTURE table, regenerated from the core.
 - The other three (LEGACY/"Flawed Theory", SCALED/"Full Contrast", HDMI) are
-  alternate looks. The GameTank web/store screenshots from **before Dec 2024**
-  used the old default, which is why some colors look different there (e.g.
-  Cubicle Knight's hearts are pink under LEGACY, purple under the accurate
-  CAPTURE). Our libretro core exposes all four via the `gametank_palette` core
-  option (default `capture`); native carts render in CAPTURE like current
+  alternate looks. Our libretro core exposes all four via the `gametank_palette`
+  core option (default `capture`); native carts render in CAPTURE like current
   upstream.
+
+**Settled by Clyde Shaffer directly (Discord, 2026-07-11):** the pink hearts in
+Cubicle Knight on the gametank.zone web emulator are **an OLD ROM with an unfixed
+palette bug** — "I still gotta backport the palette fix from the Cubicle Knight |
+A Very Hard Game combo cartridge." So pink is a stale-build artifact, NOT the
+intended/official look; the accurate CAPTURE color for that index is purple. The
+ROM itself cannot select a palette (no hardware register — a game only writes
+color BYTES 0-255 via `DMA_Color`; the byte→RGB mapping is a viewer-side emulator
+setting). CAPTURE is correct; don't re-litigate this.
 
 **CAPTURE is muted** compared to a vivid modern palette — that's what real
 GameTank hardware looks like, not a bug.
