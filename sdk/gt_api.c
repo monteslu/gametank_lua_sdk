@@ -518,12 +518,28 @@ int gt_p8_print_int(int v, int x, int y, int c) {
  * compositor (gt_bg.c) can re-read tile pixels from it. In FLASH2M builds the
  * sheet lives in bank 2, mapped in by gt_sheet_init before gt_sheet_load runs;
  * gt_bg_compose re-maps that bank the same way before reading. NULL until a
- * sheet is loaded (bg_compose is a no-op then). */
+ * sheet is loaded (bg_compose is a no-op then). Native .gtg builds (GT_GSHEET)
+ * use gt_gsheet_ptr instead and don't allocate this - reclaims 2 BSS bytes. */
+#ifndef GT_GSHEET
 const unsigned char *gt_sheet_ptr;
+#endif
+
+/* The RAW uncompressed 8bpp .gtg quadrant (128x128, 1 byte/pixel), or NULL. The
+ * GRAM-compose engine (bg_compose / bg_tile / bg_coln / the track cache) re-reads
+ * the sheet's tile pixels each compose; the native .gtg loader only unpacks into
+ * GRAM (no readable copy), so a composing native build ALSO emits the raw bytes
+ * in ROM and gt_sheet_init points this at them. gt_bg.c reads it (under
+ * GT_GSHEET_COMPOSE) instead of the 4bpp gt_sheet_ptr. NULL for non-composing
+ * or 4bpp builds. */
+const unsigned char *gt_gsheet_ptr;
 
 /* Load a packed 4bpp PICO-8 sheet (8192 bytes, two pixels per byte, low
  * nibble first) into GRAM through the palette map. Called by the generated
  * gt_sheet_init() before _init() when the build links a --sheet. */
+/* Not compiled for native .gtg builds (GT_GSHEET) - those load via
+ * gt_gsheet_load_packed/split; keeping this 4bpp loader out of B2CODE frees the
+ * bank-2 room a full native sheet needs. */
+#ifndef GT_GSHEET
 #ifdef GT_BANKED
 #pragma code-name ("B2CODE")
 #endif
@@ -538,6 +554,7 @@ void gt_sheet_load(const unsigned char *packed) {
         vram[(i << 1) | 1] = p8pal[b >> 4];
     }
 }
+#endif /* !GT_GSHEET */
 /* packbits variant: [n,b0..bn-1] literal (n 1..127), [n|0x80,v] repeat
  * (n 3..127). Emitted by the builder when the game never re-reads the raw
  * sheet; typically halves the sheet's ROM cost. NOTE: gt_sheet_ptr stays
@@ -592,6 +609,46 @@ void gt_gsheet_load_packed(const unsigned char *p, unsigned int plen, unsigned c
             n &= 0x7F;
             b = *p++;
             while (n--) vram[vi++] = b;          /* raw CAPTURE byte, no palette */
+        } else {
+            while (n--) vram[vi++] = *p++;
+        }
+    }
+}
+
+/* COMPOSING native game: the quadrant is split so it doesn't fight the compose
+ * code for one bank. The top 8 KB (raw, cells 0-127) is what the compose engine
+ * re-reads (gt_gsheet_ptr) AND fills GRAM rows 0-63; it rides bank 2 with the
+ * compose code. The bottom (sprite cells 128-255, packbits'd) rides a DIFFERENT
+ * bank (loaded once at boot, spr()-only). gt_sheet_init maps each bank in turn.
+ *
+ * load the raw top 8 KB into GRAM rows 0-63 (bank 2 mapped). */
+#ifdef GT_BANKED
+#pragma code-name ("B2CODE")
+#endif
+void gt_gsheet_load_top(const unsigned char *raw, unsigned char quad) {
+    unsigned int vi;
+    enter_gram_mode_q(quad);
+    for (vi = 0; vi < 8192U; ++vi) vram[vi] = raw[vi];
+}
+
+/* expand the packbits'd bottom half into GRAM rows 64-127. Reads `p` from a
+ * DIFFERENT bank than the compose code's bank 2, so this must run from the FIXED
+ * bank (always mapped) - it can't ride B2CODE, which would be unmapped once its
+ * caller maps the blob's bank. Assumes the quadrant is already latched (called
+ * right after gt_gsheet_load_top, so GRAM write mode + quadrant persist). */
+#ifdef GT_BANKED
+#pragma code-name ("CODE")
+#endif
+void gt_gsheet_load_bottom(const unsigned char *p, unsigned int plen) {
+    const unsigned char *end = p + plen;
+    unsigned int vi = 8192U;                              /* continue at row 64 */
+    unsigned char n, b;
+    while (p < end) {
+        n = *p++;
+        if (n & 0x80) {
+            n &= 0x7F;
+            b = *p++;
+            while (n--) vram[vi++] = b;
         } else {
             while (n--) vram[vi++] = *p++;
         }

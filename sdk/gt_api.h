@@ -159,6 +159,7 @@ void gt_bg_tile(int t, int px, int py);      /* stamp one sheet tile (8px grid) 
 void gt_gspr(int gx, int gy, int w, int h, int x, int y);  /* blit FROM canvas */
 unsigned char gt_p8pal(unsigned char idx);   /* p8 index -> hw color (pal-aware) */
 extern const unsigned char *gt_sheet_ptr;
+extern const unsigned char *gt_gsheet_ptr;   /* raw 8bpp .gtg quadrant for compose, or NULL */
 void gt_p8_rect(int x0, int y0, int x1, int y1, int c);
 void gt_p8_border(int c);
 void gt_autocls_set(int c);    /* frame clear during the post-flip vsync wait */
@@ -176,6 +177,11 @@ void gt_sheet_load_packed(const unsigned char *p, unsigned int plen); /* packbit
 /* native .gtg quadrant loader: 128x128 8bpp raw CAPTURE bytes, packbits in ROM,
  * into GRAM quadrant `quad` (0=NW 1=NE 2=SW 3=SE). See gt_api.c / docs/GRAPHICS.md. */
 void gt_gsheet_load_packed(const unsigned char *p, unsigned int plen, unsigned char quad);
+/* split load for a COMPOSING game (top raw in bank 2, bottom packbits in another
+ * bank): load the raw top 8 KB, then - after mapping the bottom's bank - expand
+ * the packbits bottom into GRAM rows 64-127. See gt_api.c / makeGSheetC. */
+void gt_gsheet_load_top(const unsigned char *raw, unsigned char quad);
+void gt_gsheet_load_bottom(const unsigned char *p, unsigned int plen);
 /* .gsi frame tables: register a flat ROM array of 6-byte {vxo,vyo,w,h,gx,gy}
  * records (quadrant bit7 baked into gx/gy by the build), then draw by index. */
 void gt_frames_register(const unsigned char *tab, unsigned int nframes);

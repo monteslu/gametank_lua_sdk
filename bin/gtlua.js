@@ -206,6 +206,10 @@ function packbits(raw) {
 }
 
 const GTG_BYTES = 16384;   // one native .gtg quadrant = 128x128 8bpp
+// Composed tiles live in cells 0-127 = the top 8 tile-rows = the first 8 KB of a
+// quadrant (sprite cells 128-255 sit below and are never composed, only spr'd).
+// So a composing native game stores just this top slice raw for compose re-reads.
+const GTG_COMPOSE_BYTES = 8192;
 
 // A native .gtg sheet is 16384 bytes (one 128x128 quadrant). The old PICO-8
 // path is an 8192-byte 4bpp gfx.bin. Detect by size - the extension is not
@@ -235,6 +239,18 @@ function gtgSheetBytes(sheetPath) {
     .reduce((n, q) => n + packbits(Array.from(readFileSync(q))).length, 0);
 }
 
+// Bytes of the native .gtg that land in the SHEET segment (bank 2), for the
+// bank-2 capacity juggler. Non-composing = all quadrants packbits'd. Composing =
+// only quadrant 0's raw top 8 KB (the packbits'd bottom half goes to bank 1, not
+// bank 2), plus any further quadrants packbits'd.
+function gtgSheetRomBytes(sheetPath, composes) {
+  if (!composes) return gtgSheetBytes(sheetPath);
+  const quads = discoverQuadrants(sheetPath);
+  let n = GTG_COMPOSE_BYTES;   // raw top only; bottom half is in bank 1
+  for (const q of quads.slice(1)) n += packbits(Array.from(readFileSync(q))).length;
+  return n;
+}
+
 // Bake a .gsi frame table into a C array for the runtime. .gsi gx/gy are
 // full-sheet pixel coords (0..255); the runtime wants 0..127 within a quadrant
 // with the quadrant selector in bit7 (GX bit7 = right, GY bit7 = bottom). We
@@ -257,30 +273,68 @@ function makeFrameTableC(framesPath, banked) {
 // GRAM the same way regardless of how it was filled, so games keep working with
 // no Lua change - see docs/GRAPHICS.md. `banked` places the blobs in bank 2.
 // A --frames foo.gsi adds a frame table (for sprf) alongside, in the same bank.
-function makeGSheetC(sheetPath, banked, framesPath) {
+const GTG_BOTTOM_BANK = 1;   // composing games park the sheet's bottom half here
+
+function makeGSheetC(sheetPath, banked, framesPath, composes) {
   const quads = discoverQuadrants(sheetPath);
-  const decls = [];
-  const calls = [];
+  // SHEET-segment (bank 2) declarations, and a separate B1RODATA (bank 1) chunk
+  // for a composing game's sheet bottom-half (so a full native sheet doesn't have
+  // to share bank 2 with the compose code - cart banks are cheap on hardware).
+  const sheetDecls = [];
+  const b1Decls = [];
+  const calls = [];       // run with bank 2 mapped
+  const b1Calls = [];     // run with bank GTG_BOTTOM_BANK mapped
+
   quads.forEach((q, i) => {
-    const pk = packbits(Array.from(readFileSync(q)));
-    decls.push(`static const unsigned char gsheet${i}[${pk.length}] = {${pk.join(",")}};`);
-    calls.push(`gt_gsheet_load_packed(gsheet${i}, ${pk.length}U, ${i});`);
+    const bytes = Array.from(readFileSync(q));
+    // A COMPOSING game (bg_compose / bg_tile / bg_coln / track_*) re-reads the
+    // sheet's TILE pixels from ROM each compose (via gt_gsheet_ptr). Composed
+    // tiles are cells 0-127 = the top 8 tile-rows = the first 8 KB of the
+    // quadrant; sprite cells 128-255 sit below (spr()-only, from GRAM). Split
+    // quadrant 0: the top 8 KB raw rides bank 2 with the compose code (serves
+    // compose AND GRAM rows 0-63); the packbits'd bottom half rides bank 1 and
+    // loads GRAM rows 64-127 at boot. A full 16 KB sheet + the compose code
+    // won't fit ONE 16 KB bank, so we spend a second bank (size is free as long
+    // as the whole cart fits the 2 MB FLASH2M).
+    if (composes && i === 0) {
+      const top = bytes.slice(0, GTG_COMPOSE_BYTES);
+      const bot = packbits(bytes.slice(GTG_COMPOSE_BYTES));
+      sheetDecls.push(`static const unsigned char gsheet_raw[${top.length}] = {${top.join(",")}};`);
+      b1Decls.push(`static const unsigned char gsheet0b[${bot.length}] = {${bot.join(",")}};`);
+      calls.push(`gt_gsheet_load_top(gsheet_raw, 0);`);
+      calls.push(`gt_gsheet_ptr = gsheet_raw;`);
+      b1Calls.push(`gt_gsheet_load_bottom(gsheet0b, ${bot.length}U);`);
+    } else {
+      const pk = packbits(bytes);
+      sheetDecls.push(`static const unsigned char gsheet${i}[${pk.length}] = {${pk.join(",")}};`);
+      calls.push(`gt_gsheet_load_packed(gsheet${i}, ${pk.length}U, ${i});`);
+    }
   });
   if (framesPath) {
     const ft = makeFrameTableC(framesPath, banked);
-    decls.push(ft.decl);
+    sheetDecls.push(ft.decl);
     calls.push(ft.reg);
   }
-  const body = banked ? `gt_bank(2); ${calls.join(" ")}` : calls.join(" ");
-  const rodata = banked
-    ? `#pragma rodata-name ("SHEET")\n${decls.join("\n")}\n#pragma rodata-name ("RODATA")\n`
-    : `${decls.join("\n")}\n`;
-  return `#include "gt_api.h"\n${rodata}void gt_sheet_init(void) { ${body} }\n`;
+
+  if (!banked) {
+    return `#include "gt_api.h"\n${sheetDecls.join("\n")}\n${b1Decls.join("\n")}\n` +
+      `void gt_sheet_init(void) { ${calls.join(" ")} ${b1Calls.join(" ")} }\n`;
+  }
+  // banked: bank-2 data in SHEET, bank-1 bottom-half in B1RODATA; init maps bank
+  // 2 (top + tables), then bank 1 (bottom-half GRAM load), then back to bank 2.
+  const b1 = b1Calls.length
+    ? `gt_bank(${GTG_BOTTOM_BANK}); ${b1Calls.join(" ")} gt_bank(2);`
+    : "";
+  return `#include "gt_api.h"\n` +
+    `#pragma rodata-name ("SHEET")\n${sheetDecls.join("\n")}\n` +
+    (b1Decls.length ? `#pragma rodata-name ("B1RODATA")\n${b1Decls.join("\n")}\n` : "") +
+    `#pragma rodata-name ("RODATA")\n` +
+    `void gt_sheet_init(void) { gt_bank(2); ${calls.join(" ")} ${b1} }\n`;
 }
 
-function makeSheetC(sheetPath, banked, packed, framesPath) {
+function makeSheetC(sheetPath, banked, packed, framesPath, composes) {
   if (!sheetPath) return `void gt_sheet_init(void) {}\n`;
-  if (isGtgSheet(sheetPath)) return makeGSheetC(sheetPath, banked, framesPath);
+  if (isGtgSheet(sheetPath)) return makeGSheetC(sheetPath, banked, framesPath, composes);
   const raw = readFileSync(sheetPath);
   if (raw.length !== 8192) {
     fail(`--sheet expects a 16384-byte native .gtg or an 8192-byte 4bpp gfx.bin (got ${raw.length})`);
@@ -659,20 +713,15 @@ function build(entry, outPath, sheetPath, num8 = false, framesPath = undefined) 
   const usesAtlas = result.c.includes("gt_bg_clear(") || result.c.includes("gt_bg_tile(") ||
     result.c.includes("gt_bg_coln(");
   // gt.bg_compose / bg_tile / bg_coln and the track cache (gt.track_*) RE-READ
-  // the raw sheet pixels each compose (via gt_sheet_ptr) to paint into a GRAM
-  // page. The native .gtg loader copies straight into GRAM and leaves
-  // gt_sheet_ptr NULL, so those composers silently draw garbage. Fail loudly:
-  // a game that composes from the sheet needs the 4bpp gfx.bin, not a .gtg.
+  // the raw sheet pixels each compose to paint into a GRAM page. With a native
+  // .gtg sheet the build also emits the raw 8bpp bytes in ROM (gt_gsheet_ptr)
+  // and compiles the 8bpp decode path (GT_GSHEET_COMPOSE); with the 4bpp gfx.bin
+  // it uses the nibble/p8pal path via gt_sheet_ptr.
   const readsRawSheet = result.c.includes("gt_bg_compose(") ||
     result.c.includes("gt_bg_tile(") || result.c.includes("gt_bg_coln(") || usesTrack;
-  if (gtgSheet && readsRawSheet) {
-    fail(`this game composes from the sheet (bg_compose / bg_tile / track_*), ` +
-      `which re-reads the raw sheet pixels - that path needs the 4bpp gfx.bin, ` +
-      `not a native .gtg (the .gtg loader copies into GRAM and doesn't keep a ` +
-      `readable copy). Build with --sheet <your>.bin instead of --sheet <your>.gtg.`);
-  }
+  const gsheetCompose = gtgSheet && readsRawSheet;   // native .gtg + composes
   writeFileSync(B(`${name}.c`), result.c);
-  writeFileSync(B("sheet.c"), makeSheetC(sheetPath, false, false, framesPath));
+  writeFileSync(B("sheet.c"), makeSheetC(sheetPath, false, false, framesPath, gsheetCompose));
 
   // 2. compile + assemble everything
   cc(B(`${name}.c`), B(`${name}.s`));
@@ -683,6 +732,7 @@ function build(entry, outPath, sheetPath, num8 = false, framesPath = undefined) 
     ...(usesAtlas ? ["-DGT_BG_ATLAS"] : []),
     ...((result.c.includes("gt_bg_compose(") || usesTrack) ? ["-DGT_BG_COMPOSE_ON"] : []),
     ...(usesTrack ? ["-DGT_TRACK_CACHE"] : []),
+    ...(gsheetCompose ? ["-DGT_GSHEET_COMPOSE"] : []),
   ]);
   if (usesAudio) cc(path.join(SDK, "gt_audio.c"), B("gt_audio.s"));
   if (usesMusic) cc(path.join(SDK, "gt_music.c"), B("gt_music.s"));
@@ -707,7 +757,9 @@ function build(entry, outPath, sheetPath, num8 = false, framesPath = undefined) 
   if (usesBalls) as(path.join(SDK, "gt_balls.s"), B("gt_balls.o"), num8 ? ["-D", "GT_NUM8"] : []);
   const usesPoolmv = (result.c.includes("gt_pool_move") || (result.c.includes("gt_cost_decay") || result.c.includes("gt_trail_stamp")) || result.c.includes("gt_pool_anim") || result.c.includes("gt_pool_edraw") || result.c.includes("gt_pool_sprs"));
   if (usesPoolmv) as(path.join(SDK, "gt_poolmv.s"), B("gt_poolmv.o"));
-  const usesChunks = result.c.includes("gt_chunks_draw");
+  // gt_chunks.s defines the ck_* zp state that gt_chunks_draw AND gt_track_props
+  // (both under GT_CHUNKS) use, so assemble it for either.
+  const usesChunks = result.c.includes("gt_chunks_draw") || result.c.includes("gt_track_props(");
   if (usesChunks) as(path.join(SDK, "gt_chunks.s"), B("gt_chunks.o"));
   const usesHits = result.c.includes("gt_hit_scan");
   if (usesHits) as(path.join(SDK, "gt_hits.s"), B("gt_hits.o"));
@@ -782,13 +834,13 @@ function build(entry, outPath, sheetPath, num8 = false, framesPath = undefined) 
   };
   foldRodataSizes(result.c, sizes);
   const sheetBytes = !sheetPath ? 0
-    : gtgSheet ? gtgSheetBytes(sheetPath)               // sum of packbits'd quadrants
+    : gtgSheet ? gtgSheetRomBytes(sheetPath, gsheetCompose)
     : usesBg ? 8192                                     // 4bpp sheet re-read raw by bg
     : packbits(Array.from(readFileSync(sheetPath))).length;
   const placement = initialPlacement(result.callGraph);
 
   as(path.join(SDK, "gt_bank.s"), B("gt_bank.o"));
-  writeFileSync(B("sheet.c"), makeSheetC(sheetPath, true, !usesBg, framesPath));
+  writeFileSync(B("sheet.c"), makeSheetC(sheetPath, true, !usesBg, framesPath, gsheetCompose));
   cc(B("sheet.c"), B("sheet.s"));
   as(B("sheet.s"), B("sheet.o"));
 
@@ -813,6 +865,7 @@ function build(entry, outPath, sheetPath, num8 = false, framesPath = undefined) 
                   ...(usesAtlas ? ["-DGT_BG_ATLAS"] : []),
                   ...((result.c.includes("gt_bg_compose(") || usesTrack) ? ["-DGT_BG_COMPOSE_ON"] : []),
                   ...(usesTrack ? ["-DGT_TRACK_CACHE"] : []),
+                  ...(gsheetCompose ? ["-DGT_GSHEET_COMPOSE"] : []),
                   "-o", B("gt_bg.s"), path.join(SDK, "gt_bg.c")]);
     as(B("gt_bg.s"), B("gt_bg.o"));
   }

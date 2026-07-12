@@ -44,7 +44,20 @@ extern char flags_mirror;
 extern char banks_mirror;
 extern char frameflip;              /* DMA_PAGE_OUT bit (vid-out page this frame) */
 extern char bankflip;               /* BANK_SECOND_FRAMEBUFFER bit (bg-write page) */
-extern const unsigned char *gt_sheet_ptr;   /* packed 4bpp sheet, or NULL */
+extern const unsigned char *gt_sheet_ptr;   /* raw 4bpp sheet, or NULL */
+extern const unsigned char *gt_gsheet_ptr;  /* raw 8bpp .gtg quadrant, or NULL */
+
+/* The GRAM-compose engine re-reads the sheet's tile pixels each compose. Under
+ * GT_GSHEET_COMPOSE the sheet is a native 8bpp .gtg (1 byte/pixel = the color,
+ * gt_gsheet_ptr); otherwise it's the 4bpp gfx.bin (2 nibbles/byte through
+ * gt_p8pal, gt_sheet_ptr). GT_COMPOSE_SHEET picks the active raw pointer. Only
+ * SHEET-PIXEL reads differ by format; flat road/grass/decal fills stay p8-index
+ * -mapped (game data, not sheet pixels) in both. */
+#ifdef GT_GSHEET_COMPOSE
+#define GT_COMPOSE_SHEET gt_gsheet_ptr
+#else
+#define GT_COMPOSE_SHEET gt_sheet_ptr
+#endif
 #ifdef GT_BANKED
 extern unsigned char gt_cur_bank;           /* current $8000 bank (gt_bank.s) */
 /* the decode bodies, exiled to bank 2 (B2CODE) with the sheet; see below */
@@ -146,7 +159,7 @@ void GT_BG_COMPOSE(int *map, int cols, int cx, int cy, int cw, int ch) {
     int i, j;
     unsigned char py, t, sy0, b, quad, cur_quad, lx;
     unsigned char lut[16];
-    const unsigned char *sheet = gt_sheet_ptr;
+    const unsigned char *sheet = GT_COMPOSE_SHEET;
     if (!sheet) return;
     /* Hoist the p8 palette into a 16-byte LUT ONCE. The old inner loop called
      * gt_p8pal() (a cdecl function call) PER PIXEL - 16 K calls for a full
@@ -183,24 +196,29 @@ void GT_BG_COMPOSE(int *map, int cols, int cx, int cy, int cw, int ch) {
                 cur_quad = quad;
             }
             lx = (unsigned char)((i << 3) & 0x7F);   /* local x within quadrant */
-            /* sheet cell origin: sx0 = (t&15)<<3 (always even -> the row's 8
-             * source pixels are 4 whole packed bytes), sy0 = (t>>4)<<3 */
             sy0 = (unsigned char)((t >> 4) << 3);
             for (py = 0; py < 8; ++py) {
-                /* src row byte cursor: (sy*128 + sx0) >> 1 = (sy<<6) | (sx0>>1)
-                 * = ((sy0+py)<<6) | ((t&15)<<2). 4 bytes = 8 pixels, low
-                 * nibble first (matches the old (src&1)? hi : lo decode). */
-                const unsigned char *sp =
-                    sheet + (((unsigned int)(sy0 + py) << 6) | (unsigned int)((t & 15) << 2));
                 /* dest cursor: local (lx, (j*8+py)&127) within the quadrant */
                 unsigned char *dp =
                     vram + (((unsigned int)(((j << 3) + py) & 0x7F) << 7) | lx);
                 unsigned char k;
+#ifdef GT_GSHEET_COMPOSE
+                /* 8bpp .gtg: 128 bytes/row, 8 bytes/tile-row, byte = the color */
+                const unsigned char *sp =
+                    sheet + (((unsigned int)(sy0 + py) << 7) | (unsigned int)((t & 15) << 3));
+                for (k = 0; k < 8; ++k) *dp++ = *sp++;
+#else
+                /* 4bpp gfx.bin: src row byte cursor (sy*128+sx0)>>1 = (sy<<6) |
+                 * (sx0>>1) = ((sy0+py)<<6) | ((t&15)<<2). 4 bytes = 8 pixels,
+                 * low nibble first, through the p8pal lut. */
+                const unsigned char *sp =
+                    sheet + (((unsigned int)(sy0 + py) << 6) | (unsigned int)((t & 15) << 2));
                 for (k = 0; k < 4; ++k) {
                     b = *sp++;
                     *dp++ = lut[b & 15];
                     *dp++ = lut[b >> 4];
                 }
+#endif
             }
         }
     }
@@ -216,7 +234,7 @@ void GT_BG_COMPOSE(int *map, int cols, int cx, int cy, int cw, int ch) {
  * the args on the C-stack (RAM) and A/X/sreg survive the switch. */
 void gt_bg_compose(int *map, int cols, int cx, int cy, int cw, int ch) {
     unsigned char saved_bank = gt_cur_bank;
-    if (!gt_sheet_ptr) return;
+    if (!GT_COMPOSE_SHEET) return;
     gt_bank(GT_SHEET_BANK);
     gt_bg_compose_impl(map, cols, cx, cy, cw, ch);
     gt_bank(saved_bank);
@@ -287,7 +305,7 @@ void GT_TRACK_COMPOSE(unsigned char *map, int cols, int cx, int cy,
     int i, j;
     unsigned char py, t, sy0, b, quad, cur_quad, lx;
     unsigned char lut[16];
-    const unsigned char *sheet = gt_sheet_ptr;
+    const unsigned char *sheet = GT_COMPOSE_SHEET;
     if (!sheet) return;
     for (b = 0; b < 16; ++b) lut[b] = gt_p8pal(b);
     bg_grp = TRACK_GROUP;
@@ -317,16 +335,22 @@ void GT_TRACK_COMPOSE(unsigned char *map, int cols, int cx, int cy,
             }
             sy0 = (unsigned char)((t >> 4) << 3);
             for (py = 0; py < 8; ++py) {
-                const unsigned char *sp =
-                    sheet + (((unsigned int)(sy0 + py) << 6) | (unsigned int)((t & 15) << 2));
                 unsigned char *dp =
                     vram + (((unsigned int)(((j << 3) + py) & 0x7F) << 7) | lx);
                 unsigned char k;
+#ifdef GT_GSHEET_COMPOSE
+                const unsigned char *sp =
+                    sheet + (((unsigned int)(sy0 + py) << 7) | (unsigned int)((t & 15) << 3));
+                for (k = 0; k < 8; ++k) *dp++ = *sp++;
+#else
+                const unsigned char *sp =
+                    sheet + (((unsigned int)(sy0 + py) << 6) | (unsigned int)((t & 15) << 2));
                 for (k = 0; k < 4; ++k) {
                     b = *sp++;
                     *dp++ = lut[b & 15];
                     *dp++ = lut[b >> 4];
                 }
+#endif
             }
         }
     }
@@ -339,7 +363,7 @@ void GT_TRACK_COMPOSE(unsigned char *map, int cols, int cx, int cy,
 void gt_track_compose(unsigned char *map, int cols, int cx, int cy,
                       int cw, int ch) {
     unsigned char saved_bank = gt_cur_bank;
-    if (!gt_sheet_ptr) return;
+    if (!GT_COMPOSE_SHEET) return;
     gt_bank(GT_SHEET_BANK);
     gt_track_compose_impl(map, cols, cx, cy, cw, ch);
     gt_bank(saved_bank);
@@ -363,11 +387,25 @@ void gt_track_compose(unsigned char *map, int cols, int cx, int cy,
  * decb: the decal ckdt offset (driftmania's DECB). */
 #if defined(GT_TRACK_CACHE)
 /* decode ONE 8px sub-tile from sheet tile `t` at canvas (lx, py0..+7). If
- * colorkey, source nibble 0 is skipped (leaves the road underneath). */
+ * colorkey, transparent source pixels are skipped (leaving the road underneath):
+ * 4bpp = nibble 0, 8bpp = byte 0. */
 static void tgrid_tile(const unsigned char *sheet, const unsigned char *lut,
                        unsigned char t, unsigned char lx, unsigned char py0,
                        unsigned char colorkey) {
     unsigned char py, k, b, sy0 = (unsigned char)((t >> 4) << 3);
+#ifdef GT_GSHEET_COMPOSE
+    (void)lut;                                  /* 8bpp: pixels are raw color bytes */
+    for (py = 0; py < 8; ++py) {
+        const unsigned char *sp =               /* 128 bytes/row, 8 bytes/tile-row */
+            sheet + (((unsigned int)(sy0 + py) << 7) | (unsigned int)((t & 15) << 3));
+        unsigned char *dp = vram + (((unsigned int)((py0 + py) & 0x7F) << 7) | lx);
+        for (k = 0; k < 8; ++k) {
+            b = *sp++;
+            if (!colorkey || b) *dp = b;        /* colorkey: skip color 0 */
+            dp++;
+        }
+    }
+#else
     for (py = 0; py < 8; ++py) {
         const unsigned char *sp =
             sheet + (((unsigned int)(sy0 + py) << 6) | (unsigned int)((t & 15) << 2));
@@ -380,6 +418,7 @@ static void tgrid_tile(const unsigned char *sheet, const unsigned char *lut,
             dp++;
         }
     }
+#endif
 }
 
 /* Resolve + paint ONE world sub-tile into the current quadrant at local
@@ -464,7 +503,7 @@ void GT_TRACK_GRID(int *grid, int *ckdt, int *ctiles, int stride,
                    int tx0, int ty0, int grassCol, int decb) {
     unsigned char lut[16];
     unsigned char b, quad;
-    const unsigned char *sheet = gt_sheet_ptr;
+    const unsigned char *sheet = GT_COMPOSE_SHEET;
     if (!sheet) return;
     for (b = 0; b < 16; ++b) lut[b] = gt_p8pal(b);
     bg_grp = TRACK_GROUP;
@@ -513,7 +552,7 @@ void GT_TRACK_GRID(int *grid, int *ckdt, int *ctiles, int stride,
 void GT_TRACK_COL(int *grid, int *ckdt, int *ctiles, int stride,
                   int wtx, int wty0, int grassCol, int decb) {
     unsigned char lut[16], b, cvx, quad, jj;
-    const unsigned char *sheet = gt_sheet_ptr;
+    const unsigned char *sheet = GT_COMPOSE_SHEET;
     if (!sheet) return;
     for (b = 0; b < 16; ++b) lut[b] = gt_p8pal(b);
     bg_grp = TRACK_GROUP;
@@ -549,7 +588,7 @@ void GT_TRACK_COL(int *grid, int *ckdt, int *ctiles, int stride,
 void GT_TRACK_ROW2(int *grid, int *ckdt, int *ctiles, int stride,
                    int wty, int wtx0, int grassCol, int decb) {
     unsigned char lut[16], b, cvy, quad, ii;
-    const unsigned char *sheet = gt_sheet_ptr;
+    const unsigned char *sheet = GT_COMPOSE_SHEET;
     if (!sheet) return;
     for (b = 0; b < 16; ++b) lut[b] = gt_p8pal(b);
     bg_grp = TRACK_GROUP;
@@ -578,7 +617,7 @@ void GT_TRACK_ROW2(int *grid, int *ckdt, int *ctiles, int stride,
 void gt_track_grid(int *grid, int *ckdt, int *ctiles, int stride,
                    int tx0, int ty0, int grassCol, int decb) {
     unsigned char saved_bank = gt_cur_bank;
-    if (!gt_sheet_ptr) return;
+    if (!GT_COMPOSE_SHEET) return;
     gt_bank(GT_SHEET_BANK);
     gt_track_grid_impl(grid, ckdt, ctiles, stride, tx0, ty0, grassCol, decb);
     gt_bank(saved_bank);
@@ -586,7 +625,7 @@ void gt_track_grid(int *grid, int *ckdt, int *ctiles, int stride,
 void gt_track_col(int *grid, int *ckdt, int *ctiles, int stride,
                   int wtx, int wty0, int grassCol, int decb) {
     unsigned char saved_bank = gt_cur_bank;
-    if (!gt_sheet_ptr) return;
+    if (!GT_COMPOSE_SHEET) return;
     gt_bank(GT_SHEET_BANK);
     gt_track_col_impl(grid, ckdt, ctiles, stride, wtx, wty0, grassCol, decb);
     gt_bank(saved_bank);
@@ -594,7 +633,7 @@ void gt_track_col(int *grid, int *ckdt, int *ctiles, int stride,
 void gt_track_row2(int *grid, int *ckdt, int *ctiles, int stride,
                    int wty, int wtx0, int grassCol, int decb) {
     unsigned char saved_bank = gt_cur_bank;
-    if (!gt_sheet_ptr) return;
+    if (!GT_COMPOSE_SHEET) return;
     gt_bank(GT_SHEET_BANK);
     gt_track_row2_impl(grid, ckdt, ctiles, stride, wty, wtx0, grassCol, decb);
     gt_bank(saved_bank);
@@ -640,7 +679,7 @@ extern unsigned char p8pal[16];
 void GT_BG_TILE(int t, int px, int py) {
     unsigned char py2, b, k, quad, lx, sy0;
     const unsigned char *lut = p8pal;   /* pal-aware, no per-stamp rebuild */
-    const unsigned char *sheet = gt_sheet_ptr;
+    const unsigned char *sheet = GT_COMPOSE_SHEET;
     if (!sheet) return;
     if (t < 0 || t > 255) return;
     quad = (unsigned char)((((py >> 7) & 1) << 1) | ((px >> 7) & 1));
@@ -660,15 +699,21 @@ void GT_BG_TILE(int t, int px, int py) {
     }
     sy0 = (unsigned char)(((t >> 4) & 15) << 3);
     for (py2 = 0; py2 < 8; ++py2) {
-        const unsigned char *sp =
-            sheet + (((unsigned int)(sy0 + py2) << 6) | (unsigned int)((t & 15) << 2));
         unsigned char *dp =
             vram + (((unsigned int)((py + py2) & 0x7F) << 7) | lx);
+#ifdef GT_GSHEET_COMPOSE
+        const unsigned char *sp =
+            sheet + (((unsigned int)(sy0 + py2) << 7) | (unsigned int)((t & 15) << 3));
+        for (k = 0; k < 8; ++k) *dp++ = *sp++;
+#else
+        const unsigned char *sp =
+            sheet + (((unsigned int)(sy0 + py2) << 6) | (unsigned int)((t & 15) << 2));
         for (k = 0; k < 4; ++k) {
             b = *sp++;
             *dp++ = lut[b & 15];
             *dp++ = lut[b >> 4];
         }
+#endif
     }
     bg_restore_draw_state();
 }
@@ -688,7 +733,7 @@ static
 void GT_BG_COLN(unsigned char *cells, int px, int py, int n) {
     unsigned char py2, b, k, quad, lx, sy0, t, i;
     const unsigned char *lut = p8pal;
-    const unsigned char *sheet = gt_sheet_ptr;
+    const unsigned char *sheet = GT_COMPOSE_SHEET;
     if (!sheet) return;
     quad = (unsigned char)((((py >> 7) & 1) << 1) | ((px >> 7) & 1));
     bg_enter_write_q(quad);
@@ -706,15 +751,21 @@ void GT_BG_COLN(unsigned char *cells, int px, int py, int n) {
         }
         sy0 = (unsigned char)(((t >> 4) & 15) << 3);
         for (py2 = 0; py2 < 8; ++py2) {
-            const unsigned char *sp =
-                sheet + (((unsigned int)(sy0 + py2) << 6) | (unsigned int)((t & 15) << 2));
             unsigned char *dp =
                 vram + (((unsigned int)((py + py2) & 0x7F) << 7) | lx);
+#ifdef GT_GSHEET_COMPOSE
+            const unsigned char *sp =
+                sheet + (((unsigned int)(sy0 + py2) << 7) | (unsigned int)((t & 15) << 3));
+            for (k = 0; k < 8; ++k) *dp++ = *sp++;
+#else
+            const unsigned char *sp =
+                sheet + (((unsigned int)(sy0 + py2) << 6) | (unsigned int)((t & 15) << 2));
             for (k = 0; k < 4; ++k) {
                 b = *sp++;
                 *dp++ = lut[b & 15];
                 *dp++ = lut[b >> 4];
             }
+#endif
         }
     }
     bg_restore_draw_state();
@@ -724,7 +775,7 @@ void GT_BG_COLN(unsigned char *cells, int px, int py, int n) {
 #pragma code-name ("CODE")
 void gt_bg_coln(unsigned char *cells, int px, int py, int n) {
     unsigned char saved_bank = gt_cur_bank;
-    if (!gt_sheet_ptr) return;
+    if (!GT_COMPOSE_SHEET) return;
     gt_bank(GT_SHEET_BANK);
     gt_bg_coln_impl(cells, px, py, n);
     gt_bank(saved_bank);
@@ -735,7 +786,7 @@ void gt_bg_coln(unsigned char *cells, int px, int py, int n) {
 /* fixed-bank stub, same pattern as gt_bg_compose */
 void gt_bg_tile(int t, int px, int py) {
     unsigned char saved_bank = gt_cur_bank;
-    if (!gt_sheet_ptr) return;
+    if (!GT_COMPOSE_SHEET) return;
     /* (t==0 clears the cell; the impl handles it) */
     gt_bank(GT_SHEET_BANK);
     gt_bg_tile_impl(t, px, py);
