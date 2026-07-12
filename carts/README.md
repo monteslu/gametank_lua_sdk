@@ -1,6 +1,6 @@
 # carts/ — the 8-game port roster (source material)
 
-Licensed carts + extractions for the real ports (REAL_PORTS_PLAN.md).
+Licensed carts + extractions for the real ports.
 Each port ships under the original's license with attribution.
 
 | Cart | Author | License | Source |

@@ -3,7 +3,7 @@
 Playable gtlua adaptations of well-loved PICO-8 games. These are
 **from-scratch reimplementations of each game's design** — no original cart
 code or assets are used; graphics are gtlua primitives. Sprites/tiles/sound
-arrive as the SDK grows (see PICO8.md); these will get closer to their
+arrive as the SDK grows (see ../docs/PICO8.md); these will get closer to their
 inspirations with each release.
 
 Build any of them with:

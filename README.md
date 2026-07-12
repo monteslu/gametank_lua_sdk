@@ -2,8 +2,9 @@
 
 Write [GameTank](https://gametank.zone/) games in **PICO-8-flavored Lua**.
 This SDK compiles a statically-typed Lua dialect to C, builds it with cc65
-against a bundled GameTank runtime, and produces a flat 32 KB `.gtr`
-cartridge that runs in the
+against a bundled GameTank runtime, and produces a `.gtr` cartridge (a flat
+32 KB EEPROM, or a 2 MB FLASH2M banked cart for bigger games — chosen
+automatically) that runs in the
 [emulator](https://github.com/clydeshaffer/GameTankEmulator), on
 [gametank.zone](https://gametank.zone/), and on real hardware via
 [GTFO](https://github.com/clydeshaffer/gtfo).
@@ -39,14 +40,34 @@ end
 
 ## Quickstart
 
+This is a **clone-and-build SDK** (like the official GameTank C SDK) — not an
+npm package. Clone it, write your game as a `.lua` file, and build:
+
 ```sh
+git clone <this repo> && cd gametank_lua_sdk
+scripts/install_tools.sh                 # builds cc65 into tools/ (once)
+
+# build one of the examples to confirm your setup:
 node bin/gtlua.js build examples/orbit/main.lua
-# add --num8 for the 8.8 number mode (faster math; see docs/performance.md)
+# -> examples/orbit/main.gtr, in under 100 ms
 ```
 
-That produces `examples/orbit/main.gtr` in under 100 ms. Run it in the
-GameTank emulator or flash it to a cartridge. `node bin/gtlua.js c
-<file.lua>` prints the generated C.
+Run the `.gtr` in the [emulator](https://github.com/clydeshaffer/GameTankEmulator),
+on [gametank.zone](https://gametank.zone/), or flash it to a cartridge.
+
+### Start your own game
+
+Copy an example as a starting point and build your `main.lua`:
+
+```sh
+cp -r examples/orbit mygame
+node bin/gtlua.js build mygame/main.lua -o mygame/game.gtr
+# --sheet mygame/gfx.gtg     add a sprite sheet (see docs/GRAPHICS.md)
+# --frames mygame/gfx.gsi    add a frame table for sprf (docs/SPRITES.md)
+# --num8                     8.8 number mode, faster math (docs/performance.md)
+```
+
+`node bin/gtlua.js c <file.lua>` prints the generated C (for debugging).
 
 ## The PICO-8 contract
 
@@ -77,10 +98,11 @@ per-function compatibility map is
 |---|---|
 | lifecycle | `_init` `_update` `_update60` `_draw` |
 | graphics | `cls` `camera` `color` `pal` `pset` `rect` `rectfill` `circ` `circfill` `line` `sset` `spr(n,x,y,[w,h],[flip_x,flip_y])` — flips are free (hardware blitter mirror) |
+| sprites | 8×8-grid `spr(n)` off a `.gtg` sheet (`--sheet`, [docs/GRAPHICS.md](docs/GRAPHICS.md)); `sprf(frame,x,y,[fx],[fy])` for arbitrary-size / animated frames off a `.gsi` table ([docs/SPRITES.md](docs/SPRITES.md)) |
 | input | `btn(i,[pl])` `btnp(i,[pl])` — indices 0-3 d-pad, 4=🅾️(GT A), 5=❎(GT B), **6=GT C**, 7=START; `btnp` has PICO-8 auto-repeat |
 | math | `flr` `ceil` `abs` `sgn` `sqrt` `min` `max` `mid` `sin` `cos` `atan2` `rnd` `srand` `t`/`time` |
 | data | `array(n,[v])` — 16-bit elements · `array8(n,[v])` — byte elements 0-255, half the RAM and ~2× faster in counting loops |
-| sound | `sfx(n,[ch])` `music(n,[loop])` (built-in FM effects/tunes — see below); low-level `gt.note(ch,note,vol)`/`gt.noteoff(ch)` |
+| sound | `sfx(n,[ch])` `music(n,[loop])` (built-in FM effects/tunes — see below); `song(data,[loop])` plays a native `.gtm2` FM song ([docs/MUSIC.md](docs/MUSIC.md)); low-level `gt.note`/`gt.noteoff` |
 | gametank extras | `gt.rgb(b)` — raw palette byte (the GameTank has 256 colors; 0-15 are mapped to the PICO-8 palette), `gt.border(c)`, `gt.ticks()`, `gt.starfield_*`, `gt.bg_compose`/`gt.bg_draw` (see below) |
 
 Colors are PICO-8 indices (0 black, 7 white, 8 red, 12 blue, …), mapped to
@@ -149,10 +171,10 @@ GameTank tracker) advances envelopes + steps the song automatically — it costs
 almost nothing when nothing is playing. For a single raw tone, the low-level
 `gt.note(ch,note,vol)` / `gt.noteoff(ch)` primitives are still there.
 
-Coming next (see [PICO8.md](PICO8.md) for the full roadmap): tables as
-capacity-bounded sequences with `add/del/all/foreach`, `spr`/`sspr` sprites
-on GRAM sheets, `map`/`mget`/`fget`, then `print` and strings, and a converter
-to import a PICO-8 cart's own SFX/music data.
+Shipped since: native `.gtg` sprite sheets + `.gsi`/`sprf` frame tables, native
+`.gtm2` FM songs, a `gtlua gfx` converter, and a PICO-8 art/sound importer.
+Coming next (see [docs/PICO8.md](docs/PICO8.md) for the full roadmap): `map`/
+`mget`/`fget` tile APIs, `print`-time string building, and `cartdata` saves.
 
 ## Not-Lua walls (loud, never silent)
 
@@ -165,9 +187,23 @@ that says what to write instead.
 
 `compiler/` Lua→C compiler (plain JS ESM) · `sdk/` the C/asm runtime
 (register protocols, fixed-point core, math tables, interrupt handlers,
-cc65 startup/linker files) · `bin/gtlua.js` CLI · `examples/` ·
-`test/` (`npm test`) · [SPEC.md](SPEC.md) language reference ·
-[PICO8.md](PICO8.md) design doc · [PROVENANCE.md](PROVENANCE.md).
+cc65 startup/linker files) · `bin/gtlua.js` CLI · `tools/` cc65 (built by
+`scripts/install_tools.sh`) · `examples/` · `test/` (`node --test`).
+
+## Docs
+
+| doc | what |
+|---|---|
+| [docs/CHEATSHEET.md](docs/CHEATSHEET.md) | the full gt-lua API reference |
+| [docs/CHEATSHEET_FOR_PICO8_USERS.md](docs/CHEATSHEET_FOR_PICO8_USERS.md) | per-function PICO-8 compatibility map |
+| [docs/PORTING.md](docs/PORTING.md) | bringing a PICO-8 cart over, step by step |
+| [docs/GRAPHICS.md](docs/GRAPHICS.md) | the `.gtg` sprite-sheet format + `gtlua gfx` converter |
+| [docs/SPRITES.md](docs/SPRITES.md) | frame tables (`.gsi`) + `sprf` |
+| [docs/MUSIC.md](docs/MUSIC.md) · [docs/sfx.md](docs/sfx.md) | native `.gtm2` FM songs · PICO-8 sfx import |
+| [docs/PALETTE.md](docs/PALETTE.md) | the GameTank color palette |
+| [docs/performance.md](docs/performance.md) | making it fast (`--num8`, blit budget, the `gt.*` engines) |
+| [docs/SPEC.md](docs/SPEC.md) · [docs/PICO8.md](docs/PICO8.md) | language spec · design doc + roadmap |
+| [PROVENANCE.md](PROVENANCE.md) | attribution (Clyde Shaffer's GameTank SDK) |
 
 ## Making it fast
 
