@@ -5,10 +5,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  encodePng, decodePng, rgbaToGtg, gtgToPng, p8GfxToGtg, toGtg, gtgNames,
+  encodePng, decodePng, rgbaToGtg, gtgToPng, p8GfxToGtg, gfxBinToGtg, toGtg, gtgNames,
   QUADRANT, QUADRANT_BYTES,
 } from "../compiler/gfx.mjs";
 import { GT_CAPTURE_PALETTE, nearestColorByte } from "../compiler/gt_palette.js";
+import { P8_PALETTE } from "../compiler/builtins.js";
 
 // build an RGBA buffer from a (x,y)->[r,g,b,a] function
 function makeRgba(w, h, fn) {
@@ -114,11 +115,28 @@ test("PICO-8 __gfx__ imports to a single quadrant via P8_PALETTE", () => {
   assert.notEqual(q[1], 0, "index 8 -> a color");
 });
 
-test("toGtg dispatches by content: PNG, p8, raw .gtg", () => {
+test("legacy 4bpp gfx.bin migrates to .gtg via P8_PALETTE (byte-identical to runtime)", () => {
+  // two pixels per byte: low nibble = even x, high nibble = odd x.
+  const bin = Buffer.alloc(8192);
+  bin[0] = 0x30;                 // even-x = index 0 (transparent), odd-x = index 3
+  bin[1] = 0x8a;                 // even-x = index 10, odd-x = index 8
+  const { quadrants, width, height } = gfxBinToGtg(bin);
+  assert.equal(width, 128); assert.equal(height, 128);
+  const q = quadrants[0];
+  assert.equal(q[0], P8_PALETTE[0], "byte0 low nibble -> even pixel");
+  assert.equal(q[1], P8_PALETTE[3], "byte0 high nibble -> odd pixel");
+  assert.equal(q[2], P8_PALETTE[10]);
+  assert.equal(q[3], P8_PALETTE[8]);
+  assert.equal(q[0], 0, "index 0 stays transparent (color 0)");
+});
+
+test("toGtg dispatches by content: PNG, p8, 4bpp gfx.bin, raw .gtg", () => {
   const png = encodePng(8, 8, Buffer.alloc(8 * 8 * 3, 100));
   assert.equal(toGtg(png, "x.png").quadrants[0].length, QUADRANT_BYTES);
   const p8 = Buffer.from("__gfx__\n11111111\n");
   assert.equal(toGtg(p8, "x.p8").quadrants.length, 1);
+  const gfxbin = Buffer.alloc(8192, 0x11);          // 4bpp legacy sheet
+  assert.equal(toGtg(gfxbin, "x.bin").quadrants[0].length, QUADRANT_BYTES);
   const raw = Buffer.alloc(QUADRANT_BYTES, 7);
   assert.equal(toGtg(raw, "x.gtg").quadrants[0], raw);
 });

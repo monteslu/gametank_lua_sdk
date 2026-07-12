@@ -284,6 +284,25 @@ export function p8GfxToGtg(p8text) {
 }
 
 // ---------------------------------------------------------------------------
+// legacy 4bpp gfx.bin -> .gtg quadrant (MIGRATION)
+// ---------------------------------------------------------------------------
+// gtlua's older sheet was an 8192-byte 4bpp PICO-8 gfx.bin: 128x128, two pixels
+// per byte, low nibble = even-x pixel, high nibble = odd-x, each a 0-15 index
+// through P8_PALETTE. Upconvert it to a native .gtg by expanding exactly the way
+// the 4bpp runtime loader did (P8_PALETTE[nibble]) — so a migrated .gtg renders
+// byte-identical to the game's current 4bpp sheet. Color 0 stays transparent.
+export function gfxBinToGtg(bin) {
+  if (bin.length !== 8192) throw new Error(`4bpp gfx.bin must be 8192 bytes (got ${bin.length})`);
+  const q = Buffer.alloc(QUADRANT_BYTES);
+  for (let i = 0; i < 8192; i++) {
+    const b = bin[i];
+    q[i * 2] = P8_PALETTE[b & 15];        // even x (low nibble)
+    q[i * 2 + 1] = P8_PALETTE[b >> 4];    // odd x  (high nibble)
+  }
+  return { quadrants: [q], width: QUADRANT, height: QUADRANT };
+}
+
+// ---------------------------------------------------------------------------
 // dispatch: any supported input file -> .gtg quadrants
 // ---------------------------------------------------------------------------
 export function toGtg(inputBuf, inputName) {
@@ -296,10 +315,13 @@ export function toGtg(inputBuf, inputName) {
     const { width, height, rgba } = decodePng(inputBuf);
     return rgbaToGtg(width, height, rgba);
   }
+  if (inputBuf.length === 8192) {                   // legacy 4bpp gfx.bin
+    return gfxBinToGtg(inputBuf);
+  }
   if (inputBuf.length === QUADRANT_BYTES) {         // already a raw .gtg quadrant
     return { quadrants: [inputBuf], width: QUADRANT, height: QUADRANT };
   }
-  throw new Error(`unrecognized sheet input '${inputName}' (want .png, .p8, or a 16384-byte .gtg)`);
+  throw new Error(`unrecognized sheet input '${inputName}' (want .png, .p8, a 4bpp gfx.bin, or a 16384-byte .gtg)`);
 }
 
 // The official file names for a split: name.gtg, name_1.gtg, name_2.gtg, name_3.gtg.
