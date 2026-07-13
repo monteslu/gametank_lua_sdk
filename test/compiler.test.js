@@ -264,14 +264,14 @@ test("del() pushes the free chain and snaps hi + chain on empty", () => {
 
 // ---- gt.* extras -------------------------------------------------------------------
 
-test("gt.starfield_* map to the SDK batch primitives", () => {
+test("gt.parallax_* map to the SDK batch primitives", () => {
   const c = cOf(
-    "function _update()\n gt.starfield_move(1)\nend\n" +
-    "function _draw()\n gt.starfield_draw()\nend\n" +
-    "function _init()\n gt.starfield_init(100)\nend\n");
-  assert.match(c, /gt_starfield_init\(100, -1, -1, -1\)/);
-  assert.match(c, /gt_starfield_move\(1\)/);
-  assert.match(c, /gt_starfield_draw\(\)/);
+    "function _update()\n gt.parallax_move(1)\nend\n" +
+    "function _draw()\n gt.parallax_draw()\nend\n" +
+    "function _init()\n gt.parallax_init(100)\nend\n");
+  assert.match(c, /gt_parallax_init\(100, -1, -1, -1\)/);
+  assert.match(c, /gt_parallax_move\(1\)/);
+  assert.match(c, /gt_parallax_draw\(\)/);
 });
 
 // ---- sound: sfx() / music() --------------------------------------------------------

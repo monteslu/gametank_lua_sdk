@@ -18,7 +18,7 @@
 ; State is byte-split and owned here; gt_api.c's GT_FLAKES init fills it
 ; through the exports. Colors are stored PRE-INVERTED (ring format).
 ; ---------------------------------------------------------------------------
-.export _gt_flakes_draw, _gt_flakes_draw2
+.export _gt_drift_draw, _gt_drift_draw_range
 .export _fl_n, _fl_xl, _fl_xh, _fl_yl, _fl_yh, _fl_ph
 .export _fl_spdl, _fl_spdh, _fl_adv, _fl_w, _fl_h, _fl_ci
 .export _fl_rxl, _fl_rxh, _fl_ry
@@ -65,7 +65,7 @@ fd_ptr:  .res 2               ; CPU-poke pointer                 ; range draw: f
 ; camdy8 in A/X; stack (top first): camdx8, count, first. Draws flakes
 ; [first, first+count) - layered fields (clouds behind the map, snow in
 ; front) share the one state.
-_gt_flakes_draw2:
+_gt_drift_draw_range:
         stz     fd_cpu
         sta     fd_cdyl
         stx     fd_cdyh
@@ -272,7 +272,7 @@ _gt_flakes_draw2c:
 :       rts
 
 ; void __fastcall__ gt_flakes_draw(int camdx8, int camdy8) - all flakes
-_gt_flakes_draw:
+_gt_drift_draw:
         stz     fd_cpu
         sta     fd_cdyl
         stx     fd_cdyh

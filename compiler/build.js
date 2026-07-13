@@ -684,7 +684,7 @@ export async function build(entry, opts, env) {
   let result = compileLua(env, entry, { num8 });
   result.c = injectSongs(result.c, songsBytes, false);
   const usesAudio = result.c.includes("gt_audio_init(");
-  const usesStarfield = result.c.includes("gt_starfield");
+  const usesStarfield = result.c.includes("gt_parallax");
   const usesAutocls = result.c.includes("gt_autocls_set(");
   // torus track cache (gt_track_grid/col/row2/view/props/compose): a racing-track
   // scroll engine in gt_bg.c + gt_api.c, gated on GT_TRACK_CACHE.
@@ -697,7 +697,7 @@ export async function build(entry, opts, env) {
   const apiDefs = [
     ...(gtgSheet ? ["-DGT_GSHEET"] : []),
     ...(usesStarfield ? ["-DGT_STARFIELD"] : []),
-    ...(result.c.includes("gt_flakes") || result.c.includes("gt_chain") ? ["-DGT_FLAKES"] : []),
+    ...(result.c.includes("gt_drift") || result.c.includes("gt_chain") ? ["-DGT_FLAKES"] : []),
     ...(result.c.includes("gt_canvas_view(") ? ["-DGT_CANVAS"] : []),
     ...(result.c.includes("gt_tiles_draw") ? ["-DGT_TILES"] : []),
     ...((result.c.includes("gt_phys_step") || result.c.includes("gt_phys_drag") || result.c.includes("gt_phys_draw") || result.c.includes("gt_phys_bounds") || result.c.includes("gt_phys_sprite") || result.c.includes("gt_parts_step")) ? ["-DGT_BALLS"] : []),
@@ -765,7 +765,7 @@ export async function build(entry, opts, env) {
   as(env.sdkFile("gt_blitq.s"), B("gt_blitq.o"),
      result.c.includes("gt_dbar_z") ? ["-D", "GT_DBAR"] : []);
   as(env.sdkFile(num8 ? "gt_fixed8_asm.s" : "gt_fixed_asm.s"), B("gt_fixed_asm.o"));
-  const usesFlakes = result.c.includes("gt_flakes") || result.c.includes("gt_chain");
+  const usesFlakes = result.c.includes("gt_drift") || result.c.includes("gt_chain");
   const usesCanvas = result.c.includes("gt_canvas_view(");
   if (usesFlakes) as(env.sdkFile("gt_flakes.s"), B("gt_flakes.o"));
   if (usesStarfield) as(env.sdkFile("gt_stars.s"), B("gt_stars.o"));

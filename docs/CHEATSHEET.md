@@ -378,8 +378,8 @@ blitter can chew through fast.
 
 | Call | Does |
 |---|---|
-| `gt.starfield_init(n)` / `gt.starfield_move(mode)` / `gt.starfield_draw()` | parallax starfield |
-| `gt.flakes_init(n)` / `gt.flakes_set(...)` / `gt.flakes_draw(dx,dy)` | drifting flakes/snow |
+| `gt.parallax_init(n)` / `gt.parallax_move(mode)` / `gt.parallax_draw()` | parallax starfield |
+| `gt.drift_init(n)` / `gt.drift_set(...)` / `gt.drift_draw(dx,dy)` | drifting flakes/snow |
 | `gt.chunks_draw(grid, lut, lut2, props, stride, cx0,cy0,cx1,cy1)` | 24×24-chunk world renderer |
 | `gt.dbar(px, py, v, m, c, c2, bg)` | fast segmented bar (HUD meters); v of max m, bg >= 16 skips the strip |
 | `gt.dbar_style(scale, strip_w, h, defc)` | bar look: px-per-unit scale (/256), strip width, height, deficit color |
@@ -403,8 +403,8 @@ blitter can chew through fast.
 - `gt.hit_scan` caches at most 16 live B-side boxes per scan.
 - the chunk/track renderers use 24px chunks of 3x3 8px tiles, cells packed
   as `road | decal<<5 | prop<<10`, and a 45-byte prop list per window.
-- `gt.flakes_init` seeds newleste-style snow (speed/size/color presets);
-  `gt.flakes_set` re-styles any slot for non-snow fields.
+- `gt.drift_init` seeds snow-style drift (speed/size/color presets);
+  `gt.drift_set` re-styles any slot for non-snow fields.
 - `gt.chain_step_draw` is a fixed 5-segment follower chain (ease 5/8,
   dot radii 2,2,1,1,1).
 | `gt.ticks()` | frame counter |

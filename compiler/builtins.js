@@ -96,25 +96,25 @@ export const GT_MEMBERS = {
   noteoff: { kind: "fn", params: [["int", false]], ret: "void", c: "gt_noteoff", audio: true },
   // parallax starfield: the whole field moves/draws in one tight C loop each,
   // instead of ~1000 cycles of cc65 call overhead per star from the game loop.
-  starfield_init: { kind: "fn", params: [["int", false], ["color", true], ["color", true], ["color", true]], ret: "void", c: "gt_starfield_init" },
-  starfield_move: { kind: "fn", params: [["int", false]], ret: "void", c: "gt_starfield_move" },
-  starfield_draw: { kind: "fn", params: [], ret: "void", c: "gt_starfield_draw" },
+  parallax_init: { kind: "fn", params: [["int", false], ["color", true], ["color", true], ["color", true]], ret: "void", c: "gt_parallax_init" },
+  parallax_move: { kind: "fn", params: [["int", false]], ret: "void", c: "gt_parallax_move" },
+  parallax_draw: { kind: "fn", params: [], ret: "void", c: "gt_parallax_draw" },
   // ambient flake field (snow/motes/slow clouds): SDK-owned state, CPU-mode
   // pokes - ~60 cycles per flake vs ~350 for the Lua-loop + rectfill shape
-  flakes_init: { kind: "fn", params: [["int", false]], ret: "void", c: "gt_flakes_init" },
-  flakes_draw: { kind: "fn", params: [["int", false], ["int", false]], ret: "void", c: "gt_flakes_draw" },
+  drift_init: { kind: "fn", params: [["int", false]], ret: "void", c: "gt_drift_init" },
+  drift_draw: { kind: "fn", params: [["int", false], ["int", false]], ret: "void", c: "gt_drift_draw" },
   // layered range draw: (first, count, camdx8, camdy8) - clouds behind the
   // map and snow in front share one engine
-  flakes_draw2: { kind: "fn", params: [["int", false], ["int", false], ["int", false], ["int", false]], ret: "void", c: "gt_flakes_draw2" },
+  drift_draw_range: { kind: "fn", params: [["int", false], ["int", false], ["int", false], ["int", false]], ret: "void", c: "gt_drift_draw_range" },
   // manual slot setup for the non-snow layer: (i, x, y, w, h, spd8, col)
-  flakes_set: { kind: "fn", params: [["int", false], ["int", false], ["int", false], ["int", false], ["int", false], ["int", false], ["int", false]], ret: "void", c: "gt_flakes_set" },
+  drift_set: { kind: "fn", params: [["int", false], ["int", false], ["int", false], ["int", false], ["int", false], ["int", false], ["int", false]], ret: "void", c: "gt_drift_set" },
   // follower chain (hair/tails): eases 5 segments toward (x,y), draws p8
   // round dots r=2,2,1,1,1 in the given color - all in asm (gt_flakes.s)
-  flakes_mode: { kind: "fn", params: [["int", false], ["int", false]], ret: "void", c: "gt_flakes_mode" },
+  drift_mode: { kind: "fn", params: [["int", false], ["int", false]], ret: "void", c: "gt_drift_mode" },
   chain_step_draw: { kind: "fn", params: [["int", false], ["int", false], ["int", false]], ret: "void", c: "gt_chain_step_draw" },
   // the 4-piece 128x128 canvas window blit (scrolling composed maps)
   // flakes draw through CPU pokes (1x1 fields, frame-tail only)
-  flakes_draw2_cpu: { kind: "fn", params: [["int", false], ["int", false], ["int", false], ["int", false]], ret: "void", c: "gt_flakes_draw2_cpu" },
+  drift_draw_range_cpu: { kind: "fn", params: [["int", false], ["int", false], ["int", false], ["int", false]], ret: "void", c: "gt_drift_draw_range_cpu" },
   canvas_view: { kind: "fn", params: [["int", false], ["int", false], ["int", true], ["int", true]], ret: "void", c: "gt_canvas_view" },
   // visible-window tile scan in asm: draws every flag&1 tile of
   // map[j0..j1][i0..i1] (byte tiles, row-major, lvlw wide) as an 8x8 sprite

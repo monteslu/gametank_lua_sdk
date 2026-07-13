@@ -1070,8 +1070,8 @@ void gt_sf_draw_z(void);
 #define GT_SF_INIT gt_starfield_init_impl
 #define GT_SF_MOVE gt_starfield_move_impl
 #else
-#define GT_SF_INIT gt_starfield_init
-#define GT_SF_MOVE gt_starfield_move
+#define GT_SF_INIT gt_parallax_init
+#define GT_SF_MOVE gt_parallax_move
 #endif
 void GT_SF_INIT(int n, int cfar, int cmid, int cnear) {
     unsigned char i, s;
@@ -1105,13 +1105,13 @@ void GT_SF_MOVE(int mode) {
 }
 #ifdef GT_BANKED
 #pragma code-name ("CODE")
-void gt_starfield_init(int n, int cfar, int cmid, int cnear) {
+void gt_parallax_init(int n, int cfar, int cmid, int cnear) {
     unsigned char saved_bank = gt_cur_bank;
     gt_bank(2);
     gt_starfield_init_impl(n, cfar, cmid, cnear);
     gt_bank(saved_bank);
 }
-void gt_starfield_move(int mode) {
+void gt_parallax_move(int mode) {
     unsigned char saved_bank = gt_cur_bank;
     gt_bank(2);
     gt_starfield_move_impl(mode);
@@ -1124,7 +1124,7 @@ void gt_starfield_move(int mode) {
 #define GT_SF_DRAW gt_starfield_draw_impl
 static void gt_starfield_draw_impl(void);
 #else
-#define GT_SF_DRAW gt_starfield_draw
+#define GT_SF_DRAW gt_parallax_draw
 #endif
 #ifdef GT_BANKED
 static
@@ -1135,7 +1135,7 @@ void GT_SF_DRAW(void) {
 }
 #ifdef GT_BANKED
 #pragma code-name ("CODE")
-void gt_starfield_draw(void) {
+void gt_parallax_draw(void) {
     unsigned char saved_bank = gt_cur_bank;
     gt_bank(0);
     gt_starfield_draw_impl();
@@ -1163,7 +1163,7 @@ extern unsigned char fl_sinh[];
 #pragma code-name ("B2CODE")
 #define GT_FL_INIT gt_flakes_init_impl
 #else
-#define GT_FL_INIT gt_flakes_init
+#define GT_FL_INIT gt_drift_init
 #endif
 void GT_FL_INIT(int n) {
     unsigned char i;
@@ -1210,7 +1210,7 @@ void GT_FL_INIT(int n) {
 #pragma code-name ("B2CODE")
 #define GT_FL_SET gt_flakes_set_impl
 #else
-#define GT_FL_SET gt_flakes_set
+#define GT_FL_SET gt_drift_set
 #endif
 void GT_FL_SET(int i, int x, int y, int w, int h, int spd8, int col) {
     int v;
@@ -1235,13 +1235,13 @@ void GT_FL_SET(int i, int x, int y, int w, int h, int spd8, int col) {
 }
 #ifdef GT_BANKED
 #pragma code-name ("CODE")
-void gt_flakes_init(int n) {
+void gt_drift_init(int n) {
     unsigned char saved_bank = gt_cur_bank;
     gt_bank(2);
     gt_flakes_init_impl(n);
     gt_bank(saved_bank);
 }
-void gt_flakes_set(int i, int x, int y, int w, int h, int spd8, int col) {
+void gt_drift_set(int i, int x, int y, int w, int h, int spd8, int col) {
     unsigned char saved_bank = gt_cur_bank;
     gt_bank(2);
     gt_flakes_set_impl(i, x, y, w, h, spd8, col);
@@ -1251,7 +1251,7 @@ void gt_flakes_set(int i, int x, int y, int w, int h, int spd8, int col) {
 /* per-flake mode: 0 = respawn+reroll (snow), 1 = respawn keep-row
  * (clouds, set by flakes_set), 2 = wrap at the screen edge (ambient
  * parallax snow that drifts both directions) */
-void gt_flakes_mode(int i, int m) {
+void gt_drift_mode(int i, int m) {
     if (i >= 0 && i < GT_FLAKES_MAX) fl_ry[i] = (unsigned char)m;
 }
 
@@ -1275,7 +1275,7 @@ void gt_dbar_z(void);
  * mode drain (cheap there: the blitter has had the whole frame), then
  * ~35 cycles a flake instead of ~130 through the ring + per-blit IRQ. */
 void gt_flakes_draw2c(int first, int count, int cdx8, int cdy8);
-void gt_flakes_draw2_cpu(int first, int count, int cdx8, int cdy8) {
+void gt_drift_draw_range_cpu(int first, int count, int cdx8, int cdy8) {
     enter_cpu_mode();
     gt_flakes_draw2c(first, count, cdx8, cdy8);
 }

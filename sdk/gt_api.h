@@ -82,15 +82,15 @@ void gt_p8_line_z(void);       /* a0=x0 a1=y0 a2=x1 a3=y1 a4=c */
 void gt_p8_spr_z(void);
 void gt_p8_spr_wide(void);  /* 128px-span splitter (asm punts here) */        /* a0=n a1=x a2=y a3=w a4=h */
 void gt_p8_sset_z(void);       /* a0=x a1=y a2=c */
-void gt_starfield_init(int n, int cfar, int cmid, int cnear); /* seed n stars; colors -1 = classic tiers */
-void gt_starfield_move(int mode);   /* scroll: 0=drift 1=1x 2=2x */
-void gt_starfield_draw(void);
-void gt_flakes_init(int n);
-void gt_flakes_draw(int camdx8, int camdy8);
-void gt_flakes_draw2(int first, int count, int camdx8, int camdy8);
-void gt_flakes_set(int i, int x, int y, int w, int h, int spd8, int col);
-void gt_flakes_mode(int i, int m);
-void gt_flakes_draw2_cpu(int first, int count, int cdx8, int cdy8);
+void gt_parallax_init(int n, int cfar, int cmid, int cnear); /* seed n stars; colors -1 = classic tiers */
+void gt_parallax_move(int mode);   /* scroll: 0=drift 1=1x 2=2x */
+void gt_parallax_draw(void);
+void gt_drift_init(int n);
+void gt_drift_draw(int camdx8, int camdy8);
+void gt_drift_draw_range(int first, int count, int camdx8, int camdy8);
+void gt_drift_set(int i, int x, int y, int w, int h, int spd8, int col);
+void gt_drift_mode(int i, int m);
+void gt_drift_draw_range_cpu(int first, int count, int cdx8, int cdy8);
 void gt_canvas_view(int dx, int dy, int opaque, int height);
 void gt_bg_coln(unsigned char *cells, int px, int py, int n);
 extern unsigned char db_px, db_py, db_v, db_m, db_c, db_c2, db_bg;

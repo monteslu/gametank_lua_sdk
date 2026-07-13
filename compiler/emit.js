@@ -986,7 +986,7 @@ export function emit(chunk, symbols, file, opts = {}) {
     if (name === "song") return "1";          // song(data) -> loop by default
     if (name === "spr") return i >= 5 ? "0" : "1";  // w,h default 1 cell; flips default off
     if (name === "sprf") return "0";          // flipx/flipy default off
-    if (name === "starfield_init") return "-1";   // colors default to the classic tiers
+    if (name === "parallax_init") return "-1";   // colors default to the classic tiers
     return "-1";                              // optional color -> current
   }
 

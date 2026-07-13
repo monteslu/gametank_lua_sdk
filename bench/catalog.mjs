@@ -200,16 +200,16 @@ const special = [
 // ---------------------------------------------------------------------------
 const engine = [
   // --- starfield ---
-  { name: "starfield_init", category: "engine", statement: true, reps: 1, call: "gt.starfield_init(60)", signal: "low", note: "seed 60 parallax stars (one-time in real use)" },
-  { name: "starfield_move", category: "engine", statement: true, reps: 8, setup: "gt.starfield_init(60)", call: "gt.starfield_move(1)", signal: "low", note: "scroll the starfield one step" },
-  { name: "starfield_draw", category: "engine", statement: true, reps: 4, setup: "gt.starfield_init(60)", call: "gt.starfield_draw()", signal: "low", note: "plot all stars (CPU pokes)" },
+  { name: "parallax_init", category: "engine", statement: true, reps: 1, call: "gt.parallax_init(60)", signal: "low", note: "seed 60 parallax stars (one-time in real use)" },
+  { name: "parallax_move", category: "engine", statement: true, reps: 8, setup: "gt.parallax_init(60)", call: "gt.parallax_move(1)", signal: "low", note: "scroll the starfield one step" },
+  { name: "parallax_draw", category: "engine", statement: true, reps: 4, setup: "gt.parallax_init(60)", call: "gt.parallax_draw()", signal: "low", note: "plot all stars (CPU pokes)" },
   // --- flakes (parallax snow/particles) ---
-  { name: "flakes_init", category: "engine", statement: true, reps: 1, call: "gt.flakes_init(26)", signal: "low", note: "seed 26 flakes" },
-  { name: "flakes_set", category: "engine", statement: true, reps: 8, setup: "gt.flakes_init(26)", call: "gt.flakes_set(0, 10, 10, 1, 1, 256, 7)", signal: "low", note: "configure one flake" },
-  { name: "flakes_mode", category: "engine", statement: true, reps: 16, setup: "gt.flakes_init(26)", call: "gt.flakes_mode(0, 2)", signal: "low", note: "set one flake's scroll mode" },
-  { name: "flakes_draw", category: "engine", statement: true, reps: 4, setup: "gt.flakes_init(26)", call: "gt.flakes_draw(0, 0)", signal: "low", note: "draw all flakes (blit path)" },
-  { name: "flakes_draw2", category: "engine", statement: true, reps: 4, setup: "gt.flakes_init(26)", call: "gt.flakes_draw2(0, 26, 0, 0)", signal: "low", note: "draw a flake range (blit)" },
-  { name: "flakes_draw2_cpu", category: "engine", statement: true, reps: 2, setup: "gt.flakes_init(26)", call: "gt.flakes_draw2_cpu(0, 26, 0, 0)", signal: "low", note: "draw a flake range (CPU poke path)" },
+  { name: "drift_init", category: "engine", statement: true, reps: 1, call: "gt.drift_init(26)", signal: "low", note: "seed 26 flakes" },
+  { name: "drift_set", category: "engine", statement: true, reps: 8, setup: "gt.drift_init(26)", call: "gt.drift_set(0, 10, 10, 1, 1, 256, 7)", signal: "low", note: "configure one flake" },
+  { name: "drift_mode", category: "engine", statement: true, reps: 16, setup: "gt.drift_init(26)", call: "gt.drift_mode(0, 2)", signal: "low", note: "set one flake's scroll mode" },
+  { name: "drift_draw", category: "engine", statement: true, reps: 4, setup: "gt.drift_init(26)", call: "gt.drift_draw(0, 0)", signal: "low", note: "draw all flakes (blit path)" },
+  { name: "drift_draw_range", category: "engine", statement: true, reps: 4, setup: "gt.drift_init(26)", call: "gt.drift_draw_range(0, 26, 0, 0)", signal: "low", note: "draw a flake range (blit)" },
+  { name: "drift_draw_range_cpu", category: "engine", statement: true, reps: 2, setup: "gt.drift_init(26)", call: "gt.drift_draw_range_cpu(0, 26, 0, 0)", signal: "low", note: "draw a flake range (CPU poke path)" },
   // --- offscreen canvas / bg (256x256 GRAM canvas) ---
   { name: "bg_clear", category: "bg", statement: true, reps: 1, frames: 220, call: "gt.bg_clear()", signal: "low", note: "clear the 256x256 canvas (big GRAM fill)" },
   { name: "bg_tile", category: "bg", statement: true, reps: 8, call: "gt.bg_tile(1, 16, 16)", signal: "low", note: "stamp one sheet tile into the canvas" },
