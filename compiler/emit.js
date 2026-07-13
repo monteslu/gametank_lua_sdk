@@ -777,7 +777,8 @@ export function emit(chunk, symbols, file, opts = {}) {
       if (sig.special === "poolanim") {
         const pl = e.args[0].sym;
         const f = e.args[1].value, sp = e.args[2].value, mx = e.args[3].value;
-        return `gt_pool_anim(${pl.cname}_${f}, ${pl.cname}_${sp}, ${pl.cname}_${mx}, ${pl.cname}_used, ${pl.cname}_hi)`;
+        const rst = e.args[4] ? expr(e.args[4], "int") : "16";   // reset frame (16ths; 16 = first)
+        return `gt_pool_anim(${pl.cname}_${f}, ${pl.cname}_${sp}, ${pl.cname}_${mx}, ${pl.cname}_used, ${pl.cname}_hi, ${rst})`;
       }
       if (sig.special === "pooledraw") {
         const pl = e.args[0].sym;
@@ -985,6 +986,7 @@ export function emit(chunk, symbols, file, opts = {}) {
     if (name === "song") return "1";          // song(data) -> loop by default
     if (name === "spr") return i >= 5 ? "0" : "1";  // w,h default 1 cell; flips default off
     if (name === "sprf") return "0";          // flipx/flipy default off
+    if (name === "starfield_init") return "-1";   // colors default to the classic tiers
     return "-1";                              // optional color -> current
   }
 

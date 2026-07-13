@@ -37,6 +37,7 @@
 .export _gt_phys_z
 .export _bp_x, _bp_y, _bp_vx, _bp_vy, _bp_act, _bp_fl, _bp_pairs, _bp_n
 .export _bp_x0, _bp_y0, _bp_x1, _bp_y1, _bp_vymin
+.export _bp_dw, _bp_dox, _bp_doy, _bp_dtrim
 .import _gt_rng_next
 .PC02
 
@@ -63,6 +64,11 @@ _bp_y0:    .res 1
 _bp_x1:    .res 1
 _bp_y1:    .res 1
 _bp_vymin: .res 1
+; draw sprite: size, center offsets, right/bottom clip threshold (129-size)
+_bp_dw:    .res 1
+_bp_dox:   .res 1
+_bp_doy:   .res 1
+_bp_dtrim: .res 1
 ; engine-owned spatial grid: 8x8 cells, 8 members each
 bg_cnt:  .res 64
 bg_mem:  .res 512
@@ -850,9 +856,10 @@ next:   inx
 .endproc
 
 ; ---------------------------------------------------------------------------
-; gt_balls_draw - one 16x16 QF_SPR per nonzero cell byte, positions from the
-; 16.16 fixed arrays' integer bytes, centered at (-8, -7) like the port's
-; draw_ball_spr. ~80 cycles per ball vs ~700 through flr + the spr() C path.
+; gt_phys_draw - one WxW QF_SPR per nonzero cell byte, positions from the
+; fixed arrays' integer bytes. Sprite size + center anchor are parameters
+; (gt.phys_sprite; default 16x16 at (-8,-7)). ~80 cycles per ball vs ~700
+; through flr + the spr() C path.
 ;   bp_x/bp_y: fixed arrays; bp_fl reused as the cells byte array; bp_n count
 ; ---------------------------------------------------------------------------
 .export _gt_phys_draw_z
@@ -897,8 +904,8 @@ slot:   lda     _gt_qhead
 free:   ldx     _gt_qhead
         lda     #QF_SPRB
         sta     _gt_q+0,x
-        ; defaults: full 16x16 cell, no clip
-        lda     #16
+        ; defaults: full WxW, no clip
+        lda     _bp_dw
         sta     _gt_q+5,x
         sta     _gt_q+6,x
         lda     bq_c
@@ -917,7 +924,7 @@ free:   ldx     _gt_qhead
         ldy     bz_o
         lda     (_bp_x),y
         sec
-        sbc     #8              ; vx = int(x) - 8
+        sbc     _bp_dox         ; vx = int(x) - ox
         cmp     #128
         bcc     bxin            ; 0..127: maybe right-trim
         ; negative (byte 248..255 for balls clamped >= 4): left overhang
@@ -930,13 +937,13 @@ free:   ldx     _gt_qhead
         pla
         eor     #$FF
         sec
-        adc     #16             ; W = 16 - ov  (A = 16 - ov)
+        adc     _bp_dw          ; W = size - ov
         sta     _gt_q+5,x
         stz     _gt_q+1,x       ; VX = 0
         bra     bxdone
 bxin:   sta     _gt_q+1,x
         ; right trim: if vx > 112, W = 128 - vx
-        cmp     #113
+        cmp     _bp_dtrim
         bcc     bxdone
         eor     #$FF
         sec
@@ -946,7 +953,7 @@ bxdone: ; ---- y: same treatment ----
         ldy     bz_o
         lda     (_bp_y),y
         sec
-        sbc     #7              ; vy = int(y) - 7
+        sbc     _bp_doy         ; vy = int(y) - oy
         cmp     #128
         bcc     byin
         eor     #$FF
@@ -958,12 +965,12 @@ bxdone: ; ---- y: same treatment ----
         pla
         eor     #$FF
         sec
-        adc     #16
-        sta     _gt_q+6,x       ; H = 16 - ov
+        adc     _bp_dw
+        sta     _gt_q+6,x       ; H = size - ov
         stz     _gt_q+2,x
         bra     bydone
 byin:   sta     _gt_q+2,x
-        cmp     #113
+        cmp     _bp_dtrim
         bcc     bydone
         eor     #$FF
         sec

@@ -93,7 +93,7 @@ export const GT_MEMBERS = {
   noteoff: { kind: "fn", params: [["int", false]], ret: "void", c: "gt_noteoff", audio: true },
   // parallax starfield: the whole field moves/draws in one tight C loop each,
   // instead of ~1000 cycles of cc65 call overhead per star from the game loop.
-  starfield_init: { kind: "fn", params: [["int", false]], ret: "void", c: "gt_starfield_init" },
+  starfield_init: { kind: "fn", params: [["int", false], ["color", true], ["color", true], ["color", true]], ret: "void", c: "gt_starfield_init" },
   starfield_move: { kind: "fn", params: [["int", false]], ret: "void", c: "gt_starfield_move" },
   starfield_draw: { kind: "fn", params: [], ret: "void", c: "gt_starfield_draw" },
   // ambient flake field (snow/motes/slow clouds): SDK-owned state, CPU-mode
@@ -119,6 +119,7 @@ export const GT_MEMBERS = {
   // one ball-table physics substep in asm: fixed x/y/vx/vy arrays (16.16,
   // engine drives the embedded 8.8 core), int active array, byte bounce
   // flags, byte pair list out (i,j 1-based, 0-terminated)
+  phys_sprite: { kind: "fn", params: [["int", false], ["int", false], ["int", false]], ret: "void", c: "gt_phys_sprite" },
   phys_bounds: { kind: "fn", params: [["int", false], ["int", false], ["int", false], ["int", false], ["num", false]], ret: "void", c: "gt_phys_bounds" },
   phys_step: { kind: "fn", params: [["array", false], ["array", false], ["array", false], ["array", false], ["array", false], ["array8", false], ["array8", false], ["int", false]], ret: "void", c: "gt_phys_step" },
   // drag pass on the same fixed arrays: v -= (v>>6)+(v>>8) per active ball
@@ -127,6 +128,7 @@ export const GT_MEMBERS = {
   phys_draw: { kind: "fn", params: [["array", false], ["array", false], ["array8", false], ["int", false]], ret: "void", c: "gt_phys_draw" },
   // HUD meter bar: bg strip + value fill + highlight + deficit, staged in
   // one asm call (px, py, v, m, c, c2, bg; v/m 0..100; bg >= 16 skips)
+  dbar_style: { kind: "fn", params: [["int", false], ["int", false], ["int", false], ["color", false]], ret: "void", c: "gt_dbar_style" },
   dbar: { kind: "fn", params: [["int", false], ["int", false], ["int", false], ["int", false], ["int", false], ["int", false], ["int", false]], ret: "void", c: "gt_dbar", special: "dbar" },
   // print a cached ASCII byte buffer (NUL-terminated) in one call
   print_buf: { kind: "fn", params: [["array8", false], ["int", false], ["int", false], ["int", false], ["int", false]], ret: "int", c: "gt_p8_print_buf" },
@@ -141,9 +143,8 @@ export const GT_MEMBERS = {
   // spd per used slot, reset to 16 when frame > maxf (16ths-frames)
   // life-cost sum + cooldown decay: sum(cost[act[i]-1]) + lm[i]=max(0,lm[i]-5)
   // ball motion trails: stamp sprs[act[i]-1] at (tx-3,ty-3) when moved >= 2px
-  trail_stamp: { kind: "fn", params: [["array", false], ["array", false], ["array", false], ["array8", false], ["array8", false], ["array8", false], ["int", false], ["int", false]], ret: "void", c: "gt_trail_stamp" },
-  cost_decay: { kind: "fn", params: [["array", false], ["array8", false], ["array8", false], ["int", false]], ret: "int", c: "gt_cost_decay" },
-  pool_anim: { kind: "fn", params: [["pool", false], ["str", false], ["str", false], ["str", false]], ret: "void", c: "gt_pool_anim", special: "poolanim" },
+  pool_decay: { kind: "fn", params: [["array", false], ["array8", false], ["array8", false], ["int", false], ["int", false]], ret: "int", c: "gt_pool_decay" },
+  pool_anim: { kind: "fn", params: [["pool", false], ["str", false], ["str", false], ["str", false], ["int", true]], ret: "void", c: "gt_pool_anim", special: "poolanim" },
   // full enemy sprite pass: cell from per-type desc + anim frame + flash,
   // shake nudge, edge clip. gt.pool_edraw(pool, "ani","type","flash","shake",
   // desc_bytes, nudge)
@@ -157,6 +158,7 @@ export const GT_MEMBERS = {
   // canvas column/row for incremental scroll; track_props collects the prop
   // (idx, screenx, screeny) triples for sprites layered over the cached track.
   // grid/ckdt/ctiles are array (16-bit); props is array8. See gt_bg.c / gt_api.c.
+  track_dims: { kind: "fn", params: [["int", false]], ret: "void", c: "gt_track_dims" },
   track_grid:  { kind: "fn", params: [["array", false], ["array", false], ["array", false], ["int", false], ["int", false], ["int", false], ["int", false], ["int", false]], ret: "void", c: "gt_track_grid" },
   track_col:   { kind: "fn", params: [["array", false], ["array", false], ["array", false], ["int", false], ["int", false], ["int", false], ["int", false], ["int", false]], ret: "void", c: "gt_track_col" },
   track_row2:  { kind: "fn", params: [["array", false], ["array", false], ["array", false], ["int", false], ["int", false], ["int", false], ["int", false], ["int", false]], ret: "void", c: "gt_track_row2" },

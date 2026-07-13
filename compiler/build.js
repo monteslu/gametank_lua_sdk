@@ -701,7 +701,7 @@ export async function build(entry, opts, env) {
     ...(result.c.includes("gt_canvas_view(") ? ["-DGT_CANVAS"] : []),
     ...(result.c.includes("gt_tiles_draw") ? ["-DGT_TILES"] : []),
     ...(result.c.includes("gt_phys_step") ? ["-DGT_BALLS"] : []),
-    ...((result.c.includes("gt_pool_move") || (result.c.includes("gt_cost_decay") || result.c.includes("gt_trail_stamp")) || result.c.includes("gt_pool_anim") || result.c.includes("gt_pool_edraw") || result.c.includes("gt_pool_sprs")) ? ["-DGT_POOLMV"] : []),
+    ...((result.c.includes("gt_pool_move") || result.c.includes("gt_pool_decay") || result.c.includes("gt_pool_anim") || result.c.includes("gt_pool_edraw") || result.c.includes("gt_pool_sprs")) ? ["-DGT_POOLMV"] : []),
     // gt_track_props lives in gt_api.c behind GT_CHUNKS (shares the chunk decode);
     // gt_chunks_draw or gt_track_props both need it.
     ...((result.c.includes("gt_chunks_draw") || result.c.includes("gt_track_props(")) ? ["-DGT_CHUNKS"] : []),
@@ -775,7 +775,7 @@ export async function build(entry, opts, env) {
   if (usesTiles) as(env.sdkFile("gt_tiles.s"), B("gt_tiles.o"));
   const usesBalls = result.c.includes("gt_phys_step");
   if (usesBalls) as(env.sdkFile("gt_balls.s"), B("gt_balls.o"), num8 ? ["-D", "GT_NUM8"] : []);
-  const usesPoolmv = (result.c.includes("gt_pool_move") || (result.c.includes("gt_cost_decay") || result.c.includes("gt_trail_stamp")) || result.c.includes("gt_pool_anim") || result.c.includes("gt_pool_edraw") || result.c.includes("gt_pool_sprs"));
+  const usesPoolmv = (result.c.includes("gt_pool_move") || result.c.includes("gt_pool_decay") || result.c.includes("gt_pool_anim") || result.c.includes("gt_pool_edraw") || result.c.includes("gt_pool_sprs"));
   if (usesPoolmv) as(env.sdkFile("gt_poolmv.s"), B("gt_poolmv.o"));
   // gt_chunks.s defines the ck_* zp state that gt_chunks_draw AND gt_track_props
   // (both under GT_CHUNKS) use, so assemble it for either.

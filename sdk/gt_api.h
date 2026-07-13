@@ -82,7 +82,7 @@ void gt_p8_line_z(void);       /* a0=x0 a1=y0 a2=x1 a3=y1 a4=c */
 void gt_p8_spr_z(void);
 void gt_p8_spr_wide(void);  /* 128px-span splitter (asm punts here) */        /* a0=n a1=x a2=y a3=w a4=h */
 void gt_p8_sset_z(void);       /* a0=x a1=y a2=c */
-void gt_starfield_init(int n);      /* seed n parallax stars (n<=128) */
+void gt_starfield_init(int n, int cfar, int cmid, int cnear); /* seed n stars; colors -1 = classic tiers */
 void gt_starfield_move(int mode);   /* scroll: 0=drift 1=1x 2=2x */
 void gt_starfield_draw(void);
 void gt_flakes_init(int n);
@@ -104,13 +104,13 @@ void gt_tiles_draw(unsigned char *map, unsigned char *flags, int lvlw,
 #else
 #define GTFIX long
 #endif
+void gt_phys_sprite(int size, int ox, int oy);
 void gt_phys_bounds(int x0, int y0, int x1, int y1, GTFIX vymin);
 void gt_phys_step(GTFIX *x, GTFIX *y, GTFIX *vx, GTFIX *vy, int *act,
                    unsigned char *flags, unsigned char *pairs, int n);
-void gt_trail_stamp(int *act, GTFIX *x, GTFIX *y, unsigned char *tx,
-                    unsigned char *ty, const unsigned char *sprs, int n, int upd);
-int gt_cost_decay(int *act, unsigned char *lm, const unsigned char *cost, int n);
-void gt_pool_anim(unsigned char *frame, unsigned char *spd, unsigned char *maxf, unsigned char *used, int n);
+void gt_dbar_style(int scale, int stripw, int h, int defc);
+int gt_pool_decay(int *act, unsigned char *lm, const unsigned char *table, int n, int step);
+void gt_pool_anim(unsigned char *frame, unsigned char *spd, unsigned char *maxf, unsigned char *used, int n, int reset);
 void gt_pool_edraw(int *x, int *y, unsigned char *ani, unsigned char *type,
                    unsigned char *flash, unsigned char *shake,
                    unsigned char *used, int n,
@@ -151,6 +151,7 @@ void gt_track_row2(int *grid, int *ckdt, int *ctiles, int stride,
                    int wty, int wtx0, int grassCol, int decb);
 /* props-only walk: fills `props` with (idx,sx,sy) triples for cg>>10 cells in
  * the visible window, no track paint (the cache holds the track). */
+void gt_track_dims(int wtiles);
 void gt_track_props(int *grid, unsigned char *props, int stride,
                     int cx0, int cy0, int cx1, int cy1);
 void gt_gflush(void);                        /* drain blit queue + restore draw state */

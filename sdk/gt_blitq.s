@@ -600,6 +600,18 @@ _irq_int:
         STZ _gt_draw_busy
         RTI
 
+; dbar style (gt.dbar_style) - OUTSIDE the GT_DBAR guard: the C setter is
+; compiled unconditionally, so these must always exist (4 bytes of BSS).
+; Zeroed BSS = "unset"; the proc entry loads the classic defaults
+; (77 = ~30px per 100 units, strip 29, height 3, grey deficit).
+.export _db_scale, _db_stripw, _db_hh, _db_defc
+.segment "BSS"
+_db_scale:  .res 1
+_db_stripw: .res 1
+_db_hh:     .res 1
+_db_defc:   .res 1
+.segment "CODE"
+
 .ifdef GT_DBAR
 ; ---------------------------------------------------------------------------
 ; gt_dbar_z - the HUD stamina/life bar: up to four small fills staged raw.
@@ -629,6 +641,8 @@ db_x:   .res 1
 db_w:   .res 1
 db_h:   .res 1
 db_col: .res 1
+
+.segment "CODE" 
 
 .segment "CODE"
 
@@ -669,10 +683,22 @@ free:   ldx     _gt_qhead
 
 .proc _gt_dbar_z
         stz     _gt_draw_mode
+        ; defaults on first use (BSS zero = unset; scale 0 is meaningless)
+        lda     _db_scale
+        bne     styled
+        lda     #77
+        sta     _db_scale
+        lda     #29
+        sta     _db_stripw
+        lda     #3
+        sta     _db_hh
+        lda     #6
+        sta     _db_defc
+styled:
         ; pe = px + (v*77 >> 8); pe2 = px + (m*77 >> 8)
         lda     _db_v
         sta     mx
-        lda     #77
+        lda     _db_scale
         sta     my
         jsr     mul8
         lda     m16+1
@@ -681,7 +707,7 @@ free:   ldx     _gt_qhead
         sta     db_pe
         lda     _db_m
         sta     mx
-        lda     #77
+        lda     _db_scale
         sta     my
         jsr     mul8
         lda     m16+1
@@ -695,9 +721,9 @@ free:   ldx     _gt_qhead
         sta     db_col
         lda     _db_px
         sta     db_x
-        lda     #29
+        lda     _db_stripw
         sta     db_w
-        lda     #3
+        lda     _db_hh
         sta     db_h
         jsr     dbfill
 nobg:   ; value fill: px..pe (w = pe-px+1), 3 tall, c2
@@ -710,10 +736,10 @@ nobg:   ; value fill: px..pe (w = pe-px+1), 3 tall, c2
         sbc     _db_px
         inc     a
         sta     db_w
-        lda     #3
+        lda     _db_hh
         sta     db_h
         jsr     dbfill
-        ; highlight: px..max(px, pe-1), 2 tall, c
+        ; highlight: px..max(px, pe-1), height-1 tall, c
         lda     _db_c
         sta     db_col
         lda     db_pe
@@ -724,14 +750,15 @@ nobg:   ; value fill: px..pe (w = pe-px+1), 3 tall, c2
         bra     :++
 :       lda     #1
 :       sta     db_w
-        lda     #2
+        lda     _db_hh
+        dec     a
         sta     db_h
         jsr     dbfill
-        ; deficit: m > v -> (pe+1 .. pe2), 3 tall, color 6
+        ; deficit: m > v -> (pe+1 .. pe2), style deficit color
         lda     _db_v
         cmp     _db_m
         bcs     done
-        lda     #6
+        lda     _db_defc
         sta     db_col
         lda     db_pe
         inc     a
@@ -741,7 +768,7 @@ nobg:   ; value fill: px..pe (w = pe-px+1), 3 tall, c2
         sbc     db_pe           ; pe2 - (pe+1) + 1 = pe2 - pe
         beq     done            ; zero width: skip
         sta     db_w
-        lda     #3
+        lda     _db_hh
         sta     db_h
         jsr     dbfill
 done:   rts

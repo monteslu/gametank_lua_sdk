@@ -357,11 +357,11 @@ blitter can chew through fast.
 | Call | Does |
 |---|---|
 | `gt.pool_move(ps, mode)` | integrate positions for the pool |
-| `gt.pool_anim(ps, frame, spd, maxf)` | advance animation frames |
+| `gt.pool_anim(ps, frame, spd, maxf, [reset])` | advance animation frames (16ths; past maxf snaps to reset, default 16 = first frame) |
 | `gt.pool_sprs(ps, cells, ox, oy)` | draw the pool as sprites |
 | `gt.pool_edraw(ps, ani, type, flash, desc, nudge)` | rich pool draw (flash/shake) |
 | `gt.hit_scan(a, …, b, …, pairs)` | broad-phase collision → contact pairs |
-| `gt.cost_decay(act, lm, cost, n)` | per-entity lifetime/cost decay |
+| `gt.pool_decay(act, lm, table, n, step)` | per-slot sum += table[act-1]; lm[i] -= step (floor 0); returns the sum |
 
 **Physics & particles**
 
@@ -370,9 +370,9 @@ blitter can chew through fast.
 | `gt.phys_bounds(x0,y0,x1,y1,vymin)` | set the walls balls bounce in (default: the whole screen); `vymin` = how fast a falling ball must move to bounce off the floor (0 = always) |
 | `gt.phys_step(x,y,vx,vy,act,flags,pairs,n)` | integrate + wall-bounce + collision pairs |
 | `gt.phys_drag(vx,vy,act,n)` | apply drag |
-| `gt.phys_draw(x,y,cells,n)` | draw the ball table |
+| `gt.phys_draw(x,y,cells,n)` | draw the body table (bulk asm blits; size from phys_sprite) |
+| `gt.phys_sprite(size, ox, oy)` | body sprite size + center anchor (default 16, 8, 7) |
 | `gt.parts_step(ps)` | step a particle pool |
-| `gt.trail_stamp(act,x,y,tx,ty,sprs,n,upd)` | stamp motion trails |
 
 **Staged-blit visual FX**
 
@@ -381,13 +381,32 @@ blitter can chew through fast.
 | `gt.starfield_init(n)` / `gt.starfield_move(mode)` / `gt.starfield_draw()` | parallax starfield |
 | `gt.flakes_init(n)` / `gt.flakes_set(...)` / `gt.flakes_draw(dx,dy)` | drifting flakes/snow |
 | `gt.chunks_draw(grid, lut, lut2, props, stride, cx0,cy0,cx1,cy1)` | 24×24-chunk world renderer |
-| `gt.dbar(...)` | fast segmented bar (HUD meters) |
+| `gt.dbar(px, py, v, m, c, c2, bg)` | fast segmented bar (HUD meters); v of max m, bg >= 16 skips the strip |
+| `gt.dbar_style(scale, strip_w, h, defc)` | bar look: px-per-unit scale (/256), strip width, height, deficit color |
 
 **Utilities**
 
 | Call | Does |
 |---|---|
 | `gt.print_buf(buf, off, x, y, c)` | fast HUD text from a byte buffer |
+| `gt.track_dims(wtiles)` | track world size in tiles per side (default 90 = 30x30 chunks) |
+
+**Engine contracts** (fixed constants the asm engines are built around):
+
+- `gt.phys_step` runs a HALF-velocity substep: call it twice per frame. Its
+  spatial grid uses 16px cells - bodies up to 16px, at most 32 of them.
+- `gt.phys_drag` damping is fixed at ~0.977/frame; `gt.pool_move` mode 1
+  damps at 0.84375/frame; `gt.parts_step` damps at ~0.953/frame.
+- `gt.pool_anim` / `gt.pool_edraw` count animation frames in 16ths
+  (frame 1 = 16); edraw's per-type descriptors are 3 bytes {base,
+  flashbase, mode} with 16x16 frames stored 2 cells apart.
+- `gt.hit_scan` caches at most 16 live B-side boxes per scan.
+- the chunk/track renderers use 24px chunks of 3x3 8px tiles, cells packed
+  as `road | decal<<5 | prop<<10`, and a 45-byte prop list per window.
+- `gt.flakes_init` seeds newleste-style snow (speed/size/color presets);
+  `gt.flakes_set` re-styles any slot for non-snow fields.
+- `gt.chain_step_draw` is a fixed 5-segment follower chain (ease 5/8,
+  dot radii 2,2,1,1,1).
 | `gt.ticks()` | frame counter |
 
 `hexdata("…")` (global, unprefixed) turns a compile-time hex string into ROM

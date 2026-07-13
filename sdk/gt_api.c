@@ -1063,7 +1063,7 @@ void gt_sf_draw_z(void);
 #define GT_SF_INIT gt_starfield_init
 #define GT_SF_MOVE gt_starfield_move
 #endif
-void GT_SF_INIT(int n) {
+void GT_SF_INIT(int n, int cfar, int cmid, int cnear) {
     unsigned char i, s;
     if (n > GT_STARS_MAX) n = GT_STARS_MAX;
     star_n = (unsigned char)n;
@@ -1080,9 +1080,12 @@ void GT_SF_INIT(int n) {
         s = (unsigned char)(8 + (gt_p8_rnd(24L << 16) >> 16));
 #endif
         star_s[i]    = s;
-        /* colour by speed tier, baked once (pset colour never changes):
-         * GT bytes for the old p8 indices 1 (dark-blue), 13 (lavender), 6 (grey) */
-        star_col[i]  = (s < 16) ? 0xA9 : (s < 24) ? 0x8C : 0x06;
+        /* colour by speed tier, baked once (pset colour never changes).
+         * Defaults (-1) = the classic far/mid/near tiers: dark-blue,
+         * lavender, grey. Pass three colors to restyle the field. */
+        star_col[i]  = (s < 16) ? (cfar  >= 0 ? (unsigned char)cfar  : 0xA9)
+                     : (s < 24) ? (cmid  >= 0 ? (unsigned char)cmid  : 0x8C)
+                                : (cnear >= 0 ? (unsigned char)cnear : 0x06);
     }
 }
 
@@ -1092,10 +1095,10 @@ void GT_SF_MOVE(int mode) {
 }
 #ifdef GT_BANKED
 #pragma code-name ("CODE")
-void gt_starfield_init(int n) {
+void gt_starfield_init(int n, int cfar, int cmid, int cnear) {
     unsigned char saved_bank = gt_cur_bank;
     gt_bank(2);
-    gt_starfield_init_impl(n);
+    gt_starfield_init_impl(n, cfar, cmid, cnear);
     gt_bank(saved_bank);
 }
 void gt_starfield_move(int mode) {
@@ -1421,10 +1424,21 @@ void gt_phys_drag(GTFIX *vx, GTFIX *vy, int *act, int n) {
     bp_n = (unsigned char)n;
     gt_phys_drag_z();
 }
-/* one 16x16 sprite per nonzero cell byte, positions from the fixed
- * arrays' int bytes (gt_balls.s). */
+/* one sprite per nonzero cell byte, positions from the fixed arrays'
+ * int bytes (gt_balls.s). Size + anchor come from gt_phys_sprite
+ * (default 16x16 centered at -8,-7). */
+extern unsigned char bp_dw, bp_dox, bp_doy, bp_dtrim;
+static unsigned char bp_dinit;
+void gt_phys_sprite(int size, int ox, int oy) {
+    bp_dw = (unsigned char)size;
+    bp_dox = (unsigned char)ox;
+    bp_doy = (unsigned char)oy;
+    bp_dtrim = (unsigned char)(129 - size);
+    bp_dinit = 1;
+}
 void gt_phys_draw_z(void);
 void gt_phys_draw(GTFIX *x, GTFIX *y, unsigned char *cells, int n) {
+    if (!bp_dinit) gt_phys_sprite(16, 8, 7);
     bp_x = (unsigned char *)x;
     bp_y = (unsigned char *)y;
     bp_fl = cells;
@@ -1490,42 +1504,42 @@ extern unsigned char pe_nudge;
 #pragma zpsym ("pe_desc")
 #pragma zpsym ("pe_nudge")
 
-/* ball motion trails in one walk (gt_poolmv.s). */
-void gt_trail_z(void);
-void gt_trail_stamp(int *act, GTFIX *x, GTFIX *y, unsigned char *tx,
-                    unsigned char *ty, const unsigned char *sprs,
-                    int n, int upd) {
-    pe_type = (unsigned char *)act;
-    pm_x = (unsigned char *)x;
-    pm_y = (unsigned char *)y;
-    pm_sx = tx;
-    pm_sy = ty;
-    pe_desc = sprs;
-    pm_n = (unsigned char)n;
-    pe_nudge = (unsigned char)upd;
-    gt_trail_z();
+/* gt.dbar style: px-per-unit scale (numerator over 256; 77 = the classic
+ * ~30px per 100 units), bg strip width, bar height (highlight = h-1), and
+ * the deficit color. All persist until changed. */
+extern unsigned char db_scale, db_stripw, db_hh, db_defc;
+void gt_dbar_style(int scale, int stripw, int h, int defc) {
+    db_scale = (unsigned char)scale;
+    db_stripw = (unsigned char)stripw;
+    db_hh = (unsigned char)h;
+    db_defc = (unsigned char)defc;
 }
 
-/* life-cost sum + cooldown decay in one walk (gt_poolmv.s). */
-int gt_cost_decay_z(void);
-int gt_cost_decay(int *act, unsigned char *lm, const unsigned char *cost, int n) {
+/* per-slot table accumulate + saturating decrement in one walk
+ * (gt_poolmv.s): sum += table[act[i]-1]; lm[i] = max(0, lm[i]-step). */
+int gt_pool_decay_z(void);
+extern unsigned char pd_step;
+int gt_pool_decay(int *act, unsigned char *lm, const unsigned char *table, int n, int step) {
     pm_x = (unsigned char *)act;
     pm_sx = lm;
-    pm_sy = (unsigned char *)cost;
+    pm_sy = (unsigned char *)table;
     pm_n = (unsigned char)n;
-    return gt_cost_decay_z();
+    pd_step = (unsigned char)step;
+    return gt_pool_decay_z();
 }
 
 /* bulk animation pass (gt_poolmv.s): frame += spd, reset past max.
  * BYTE fields only (the pool narrows small fields to bytes). */
 void gt_poolan_z(void);
+extern unsigned char pa_reset;
 void gt_pool_anim(unsigned char *frame, unsigned char *spd,
-                  unsigned char *maxf, unsigned char *used, int n) {
+                  unsigned char *maxf, unsigned char *used, int n, int reset) {
     pm_x = frame;
     pm_sx = spd;
     pm_sy = maxf;
     pm_used = used;
     pm_n = (unsigned char)n;
+    pa_reset = (unsigned char)reset;
     gt_poolan_z();
 }
 
@@ -1647,18 +1661,26 @@ void gt_chunks_draw(int *grid, unsigned char *lut, unsigned char *lut2,
  * live sprites drawn over the car each frame - this feeds cprops[] so that pass
  * still runs. Mirrors gt_chunks_z's prop emission (byte triples, 45-byte cap,
  * 0-terminated); sparse cells make it far cheaper than a full chunks_draw. */
+/* track world size: wtiles x wtiles tiles (wchunks = wtiles/3 chunks).
+ * Default 90x90; gt_track_dims resizes for a different map. */
+unsigned char gt_tk_wt = 90;
+unsigned char gt_tk_wc = 30;
+void gt_track_dims(int wtiles) {
+    gt_tk_wt = (unsigned char)wtiles;
+    gt_tk_wc = (unsigned char)(wtiles / 3);
+}
 void gt_track_props(int *grid, unsigned char *props, int stride,
                     int cx0, int cy0, int cx1, int cy1) {
     int r, c, p;
     unsigned char sy, sx, pi = 0;
     int *row;
     if (cx1 < cx0 || cy1 < cy0) { props[0] = 0; return; }
-    /* clamp to the 30x30 chunk grid: div3[] can index cell 30/31 at the world
-     * edge, which would walk past cgrid[900] (OOB read of an adjacent BSS var
+    /* clamp to the chunk grid: div3[] can index one cell past the world
+     * edge, which would walk past the grid (OOB read of an adjacent BSS var
      * that can carry a bogus prop id -> a wild gspr that never completes). */
-    if (cx1 > 29) cx1 = 29;
-    if (cy1 > 29) cy1 = 29;
-    if (cx0 > 29 || cy0 > 29) { props[0] = 0; return; }
+    if (cx1 > gt_tk_wc - 1) cx1 = gt_tk_wc - 1;
+    if (cy1 > gt_tk_wc - 1) cy1 = gt_tk_wc - 1;
+    if (cx0 > gt_tk_wc - 1 || cy0 > gt_tk_wc - 1) { props[0] = 0; return; }
     sy = (unsigned char)(cy0 * 24 - gt_cam_y);
     for (r = cy0; r <= cy1; ++r) {
         row = grid + r * stride + cx0;

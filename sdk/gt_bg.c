@@ -385,12 +385,13 @@ static void tgrid_tile(const unsigned char *sheet, const unsigned char *lut,
  * The chunk cell (cxc,cyr) + sub-tile (srx,sry) come in PRE-DIVIDED: the caller
  * tracks them incrementally (srx cycles 0,1,2; cxc bumps on wrap) so the hot
  * loop never runs the 6502 software divide (udiv16by8a was ~3.5k cyc/column in
- * the profile - no /3 in here now). oob=1 forces grass (off the 90x90 grid). */
-/* world tile t -> chunk cell *cc, sub *sr (0..2), *oob if off the 90x90 grid.
+ * the profile - no /3 in here now). oob=1 forces grass (off the world grid). */
+/* world tile t -> chunk cell *cc, sub *sr (0..2), *oob if off the world grid (gt_track_dims, default 90x90).
  * The ONE /3 site; callers hoist it out of the sub-tile loop (per row/column,
  * or once for a constant-tile column). */
+extern unsigned char gt_tk_wt;   /* world tiles per side (gt_track_dims) */
 static void tdiv(int t, int *cc, int *sr, int *oob) {
-    if (t < 0 || t >= 90) { *oob = 1; *cc = 0; *sr = 0; return; }
+    if (t < 0 || t >= gt_tk_wt) { *oob = 1; *cc = 0; *sr = 0; return; }
     *oob = 0;
     { int c = t / 3; *cc = c; *sr = t - c * 3; }
 }
