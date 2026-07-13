@@ -1378,14 +1378,14 @@ extern unsigned char bp_n;
 #pragma zpsym ("bp_fl")
 #pragma zpsym ("bp_pairs")
 #pragma zpsym ("bp_n")
-void gt_balls_z(void);
+void gt_phys_z(void);
 /* wall bounds live in plain BSS (zp is scarce); vymin is the 8.8 magnitude a
  * falling ball needs to bounce off the floor - below it the ball comes to
  * rest (0 = always bounce). Never calling this = the full screen for a 16x16
  * ball. */
 extern unsigned char bp_x0, bp_y0, bp_x1, bp_y1, bp_vymin;
 static unsigned char bp_binit;
-void gt_balls_bounds(int x0, int y0, int x1, int y1, GTFIX vymin) {
+void gt_phys_bounds(int x0, int y0, int x1, int y1, GTFIX vymin) {
     bp_x0 = (unsigned char)x0;
     bp_y0 = (unsigned char)y0;
     bp_x1 = (unsigned char)x1;
@@ -1397,9 +1397,9 @@ void gt_balls_bounds(int x0, int y0, int x1, int y1, GTFIX vymin) {
 #endif
     bp_binit = 1;
 }
-void gt_balls_step(GTFIX *x, GTFIX *y, GTFIX *vx, GTFIX *vy, int *act,
+void gt_phys_step(GTFIX *x, GTFIX *y, GTFIX *vx, GTFIX *vy, int *act,
                    unsigned char *flags, unsigned char *pairs, int n) {
-    if (!bp_binit) gt_balls_bounds(0, 0, 120, 120, 0);
+    if (!bp_binit) gt_phys_bounds(0, 0, 120, 120, 0);
     bp_x = (unsigned char *)x;
     bp_y = (unsigned char *)y;
     bp_vx = (unsigned char *)vx;
@@ -1408,28 +1408,28 @@ void gt_balls_step(GTFIX *x, GTFIX *y, GTFIX *vx, GTFIX *vy, int *act,
     bp_fl = flags;
     bp_pairs = pairs;
     bp_n = (unsigned char)n;
-    gt_balls_z();
+    gt_phys_z();
 }
 /* per-frame drag on the full 16.16 velocities: v -= (v>>8)*5, which is
  * (v>>6)+(v>>8) to within 3/65536 - the compiled long shifts cost ~500
  * per ball, this ~130. */
-void gt_balls_drag_z(void);
-void gt_balls_drag(GTFIX *vx, GTFIX *vy, int *act, int n) {
+void gt_phys_drag_z(void);
+void gt_phys_drag(GTFIX *vx, GTFIX *vy, int *act, int n) {
     bp_vx = (unsigned char *)vx;
     bp_vy = (unsigned char *)vy;
     bp_act = (unsigned char *)act;
     bp_n = (unsigned char)n;
-    gt_balls_drag_z();
+    gt_phys_drag_z();
 }
 /* one 16x16 sprite per nonzero cell byte, positions from the fixed
  * arrays' int bytes (gt_balls.s). */
-void gt_balls_draw_z(void);
-void gt_balls_draw(GTFIX *x, GTFIX *y, unsigned char *cells, int n) {
+void gt_phys_draw_z(void);
+void gt_phys_draw(GTFIX *x, GTFIX *y, unsigned char *cells, int n) {
     bp_x = (unsigned char *)x;
     bp_y = (unsigned char *)y;
     bp_fl = cells;
     bp_n = (unsigned char)n;
-    gt_balls_draw_z();
+    gt_phys_draw_z();
 }
 
 /* particle pool integrator (gt_balls.s): x += v and the 31/32-ish damp on

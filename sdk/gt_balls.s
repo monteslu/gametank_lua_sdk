@@ -34,7 +34,7 @@
 ; Defaults (set by the C wrapper on first use) are the full 128px screen for
 ; a 16x16 ball: 0,0,120,120, vymin 0.
 ; ---------------------------------------------------------------------------
-.export _gt_balls_z
+.export _gt_phys_z
 .export _bp_x, _bp_y, _bp_vx, _bp_vy, _bp_act, _bp_fl, _bp_pairs, _bp_n
 .export _bp_x0, _bp_y0, _bp_x1, _bp_y1, _bp_vymin
 .import _gt_rng_next
@@ -71,7 +71,7 @@ bg_gy:   .res 32
 
 .segment "CODE"
 
-.proc _gt_balls_z
+.proc _gt_phys_z
         stz     bz_pi
         ; ---- clear the grid counts ----
         ldx     #63
@@ -493,7 +493,7 @@ full:   sty     bz_pi
 ; the byte-shift form runs ~130 cycles/ball vs ~500 through cc65's long
 ; helpers). Uses bp_vx/bp_vy/bp_act/bp_n from the step contract.
 ; ---------------------------------------------------------------------------
-.export _gt_balls_drag_z
+.export _gt_phys_drag_z
 
 .segment "ZEROPAGE" : zeropage
 bd_d:   .res 4                  ; v >> 8 (sign-extended)
@@ -625,7 +625,7 @@ sub:    ; v -= d5   (d5 = bz_t, bd_d+1, bd_d+2, bd_d+3)
 .endmacro
 .endif
 
-.proc _gt_balls_drag_z
+.proc _gt_phys_drag_z
         stz     bz_i
 loop:   lda     bz_i
         cmp     _bp_n
@@ -855,7 +855,7 @@ next:   inx
 ; draw_ball_spr. ~80 cycles per ball vs ~700 through flr + the spr() C path.
 ;   bp_x/bp_y: fixed arrays; bp_fl reused as the cells byte array; bp_n count
 ; ---------------------------------------------------------------------------
-.export _gt_balls_draw_z
+.export _gt_phys_draw_z
 .import _gt_q, _gt_qhead, _gt_qtail, _gt_q_pump, _gt_qbank, _gt_draw_mode
 
 QF_SPRB = $55
@@ -864,7 +864,7 @@ QF_SPRB = $55
 bq_c:   .res 1
 
 .segment "CODE"
-.proc _gt_balls_draw_z
+.proc _gt_phys_draw_z
         stz     _gt_draw_mode
         stz     bz_i
 loop:   lda     bz_i

@@ -367,10 +367,10 @@ blitter can chew through fast.
 
 | Call | Does |
 |---|---|
-| `gt.balls_bounds(x0,y0,x1,y1,vymin)` | set the walls balls bounce in (default: the whole screen); `vymin` = how fast a falling ball must move to bounce off the floor (0 = always) |
-| `gt.balls_step(x,y,vx,vy,act,flags,pairs,n)` | integrate + wall-bounce + collision pairs |
-| `gt.balls_drag(vx,vy,act,n)` | apply drag |
-| `gt.balls_draw(x,y,cells,n)` | draw the ball table |
+| `gt.phys_bounds(x0,y0,x1,y1,vymin)` | set the walls balls bounce in (default: the whole screen); `vymin` = how fast a falling ball must move to bounce off the floor (0 = always) |
+| `gt.phys_step(x,y,vx,vy,act,flags,pairs,n)` | integrate + wall-bounce + collision pairs |
+| `gt.phys_drag(vx,vy,act,n)` | apply drag |
+| `gt.phys_draw(x,y,cells,n)` | draw the ball table |
 | `gt.parts_step(ps)` | step a particle pool |
 | `gt.trail_stamp(act,x,y,tx,ty,sprs,n,upd)` | stamp motion trails |
 

@@ -700,7 +700,7 @@ export async function build(entry, opts, env) {
     ...(result.c.includes("gt_flakes") || result.c.includes("gt_chain") ? ["-DGT_FLAKES"] : []),
     ...(result.c.includes("gt_canvas_view(") ? ["-DGT_CANVAS"] : []),
     ...(result.c.includes("gt_tiles_draw") ? ["-DGT_TILES"] : []),
-    ...(result.c.includes("gt_balls_step") ? ["-DGT_BALLS"] : []),
+    ...(result.c.includes("gt_phys_step") ? ["-DGT_BALLS"] : []),
     ...((result.c.includes("gt_pool_move") || (result.c.includes("gt_cost_decay") || result.c.includes("gt_trail_stamp")) || result.c.includes("gt_pool_anim") || result.c.includes("gt_pool_edraw") || result.c.includes("gt_pool_sprs")) ? ["-DGT_POOLMV"] : []),
     // gt_track_props lives in gt_api.c behind GT_CHUNKS (shares the chunk decode);
     // gt_chunks_draw or gt_track_props both need it.
@@ -773,7 +773,7 @@ export async function build(entry, opts, env) {
   as(env.sdkFile("gt_line.s"), B("gt_line.o"));
   const usesTiles = result.c.includes("gt_tiles_draw");
   if (usesTiles) as(env.sdkFile("gt_tiles.s"), B("gt_tiles.o"));
-  const usesBalls = result.c.includes("gt_balls_step");
+  const usesBalls = result.c.includes("gt_phys_step");
   if (usesBalls) as(env.sdkFile("gt_balls.s"), B("gt_balls.o"), num8 ? ["-D", "GT_NUM8"] : []);
   const usesPoolmv = (result.c.includes("gt_pool_move") || (result.c.includes("gt_cost_decay") || result.c.includes("gt_trail_stamp")) || result.c.includes("gt_pool_anim") || result.c.includes("gt_pool_edraw") || result.c.includes("gt_pool_sprs"));
   if (usesPoolmv) as(env.sdkFile("gt_poolmv.s"), B("gt_poolmv.o"));

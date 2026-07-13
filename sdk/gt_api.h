@@ -104,8 +104,8 @@ void gt_tiles_draw(unsigned char *map, unsigned char *flags, int lvlw,
 #else
 #define GTFIX long
 #endif
-void gt_balls_bounds(int x0, int y0, int x1, int y1, GTFIX vymin);
-void gt_balls_step(GTFIX *x, GTFIX *y, GTFIX *vx, GTFIX *vy, int *act,
+void gt_phys_bounds(int x0, int y0, int x1, int y1, GTFIX vymin);
+void gt_phys_step(GTFIX *x, GTFIX *y, GTFIX *vx, GTFIX *vy, int *act,
                    unsigned char *flags, unsigned char *pairs, int n);
 void gt_trail_stamp(int *act, GTFIX *x, GTFIX *y, unsigned char *tx,
                     unsigned char *ty, const unsigned char *sprs, int n, int upd);
@@ -117,8 +117,8 @@ void gt_pool_edraw(int *x, int *y, unsigned char *ani, unsigned char *type,
                    const unsigned char *desc, int nudge);
 void gt_pool_move(int *x, int *y, int *sx, int *sy, unsigned char *used,
                   int n, int mode);
-void gt_balls_drag(GTFIX *vx, GTFIX *vy, int *act, int n);
-void gt_balls_draw(GTFIX *x, GTFIX *y, unsigned char *cells, int n);
+void gt_phys_drag(GTFIX *vx, GTFIX *vy, int *act, int n);
+void gt_phys_draw(GTFIX *x, GTFIX *y, unsigned char *cells, int n);
 void gt_parts_step(GTFIX *x, GTFIX *y, GTFIX *vx, GTFIX *vy, unsigned char *u,
                    int n);
 void gt_pool_sprs(int *x, int *y, unsigned char *used, unsigned char *cells,
