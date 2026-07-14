@@ -732,9 +732,12 @@ export async function build(entry, opts, env) {
   // the raw sheet pixels each compose to paint into a GRAM page. With a native
   // .gtg sheet the build also emits the raw 8bpp bytes in ROM (gt_gsheet_ptr)
   // and compiles the 8bpp decode path (GT_GSHEET_COMPOSE).
+  // scaled sspr() ALSO re-reads the raw sheet (the software scaler reads source
+  // pixels from gt_gsheet_ptr), so it needs the same readable-ROM-sheet emit.
   const readsRawSheet = result.c.includes("gt_bg_compose(") ||
-    result.c.includes("gt_bg_tile(") || result.c.includes("gt_bg_coln(") || usesTrack;
-  const gsheetCompose = gtgSheet && readsRawSheet;   // native .gtg + composes
+    result.c.includes("gt_bg_tile(") || result.c.includes("gt_bg_coln(") ||
+    result.c.includes("gt_p8_sspr") || usesTrack;
+  const gsheetCompose = gtgSheet && readsRawSheet;   // native .gtg + reads raw
   env.writeFile(B(`${name}.c`), result.c);
   env.writeFile(B("sheet.c"), makeSheetC(env, sheetPath, false, framesPath, gsheetCompose));
 
@@ -775,6 +778,8 @@ export async function build(entry, opts, env) {
   as(env.sdkFile("gt_line.s"), B("gt_line.o"));
   const usesTiles = result.c.includes("gt_tiles_draw");
   if (usesTiles) as(env.sdkFile("gt_tiles.s"), B("gt_tiles.o"));
+  const usesSspr = result.c.includes("gt_p8_sspr");
+  if (usesSspr) as(env.sdkFile("gt_sspr.s"), B("gt_sspr.o"));
   const usesBalls = (result.c.includes("gt_phys_step") || result.c.includes("gt_phys_drag") || result.c.includes("gt_phys_draw") || result.c.includes("gt_phys_bounds") || result.c.includes("gt_phys_sprite") || result.c.includes("gt_parts_step"));
   if (usesBalls) as(env.sdkFile("gt_balls.s"), B("gt_balls.o"), num8 ? ["-D", "GT_NUM8"] : []);
   const usesPoolmv = (result.c.includes("gt_pool_move") || result.c.includes("gt_pool_decay") || result.c.includes("gt_pool_anim") || result.c.includes("gt_pool_edraw") || result.c.includes("gt_pool_sprs"));
@@ -814,6 +819,7 @@ export async function build(entry, opts, env) {
     B("gt_circ.o"),
     B("gt_line.o"),
     ...(usesTiles ? [B("gt_tiles.o")] : []),
+    ...(usesSspr ? [B("gt_sspr.o")] : []),
     ...(usesBalls ? [B("gt_balls.o")] : []),
     ...(usesPoolmv ? [B("gt_poolmv.o")] : []),
     ...(usesChunks ? [B("gt_chunks.o")] : []),
