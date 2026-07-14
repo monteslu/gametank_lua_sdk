@@ -192,6 +192,11 @@ export function check(chunk, file) {
           });
           return;
         }
+        // top-level 'local x = nil': an int global starting at the sentinel.
+        if (init && init.kind === "nil") {
+          globals.set(name, { kind: "int", value: 0, nilInit: true, node: s });
+          return;
+        }
         const cv = init === null ? 0 : constEval(init);
         if (init !== null && cv === null) {
           err(s, `top-level 'local ${name}' must be initialized with a constant expression ` +
@@ -301,7 +306,9 @@ export function check(chunk, file) {
           s.names.forEach((name, idx) => {
             const init = s.inits[idx] ?? null;
             let kind = "int";
-            if (init) {
+            if (init && init.kind === "nil") {
+              init.okSentinel = true;   // local x = nil -> int holding the sentinel
+            } else if (init) {
               const t = typeOf(init);
               if (t === "bool") err(init, "cannot store a boolean in a number variable");
               kind = t === "fixed" ? "fixed" : "int";
@@ -316,6 +323,7 @@ export function check(chunk, file) {
         case "assign": {
           if (s.target.kind === "member") {
             const mt = typeOf(s.target);   // annotates poolField or errors
+            if (s.value.kind === "nil") s.value.okSentinel = true;   // field = nil -> sentinel
             const vt = typeOf(s.value);
             if (vt === "bool") { err(s.value, "pool fields are numbers"); break; }
             if (s.target.poolField) {
@@ -379,6 +387,15 @@ export function check(chunk, file) {
           if (!sym) {
             err(s, `'${s.target.name}' is not declared - gtlua has no implicit globals; ` +
                    `declare it with 'local ${s.target.name} = ...'`);
+            break;
+          }
+          // x = nil: store the reserved sentinel. Only a plain '=' (not +=/etc.)
+          // makes sense; the variable stays a number.
+          if (s.value.kind === "nil") {
+            if (s.op !== "=") err(s, "nil can only be plain-assigned (x = nil), not with a compound operator");
+            s.value.okSentinel = true;
+            s.assignNil = true;
+            s.targetKind = symKind(sym) === "fixed" ? "fixed" : "int";
             break;
           }
           const vt = typeOf(s.value);
@@ -852,6 +869,15 @@ export function check(chunk, file) {
         case "string":
           if (!e.inPrint) err(e, "strings can only be used in print() for now");
           return "str";
+        case "nil":
+          // nil reaching typeOf means it's used as a value somewhere other than
+          // the sentinel positions (x = nil, x ==/~= nil), which are special-
+          // cased in the assignment and comparison checks before typeOf runs.
+          if (!e.okSentinel) {
+            err(e, "nil is only supported as an empty-marker: 'x = nil', 'x == nil', 'x ~= nil'. " +
+                   "It has no value, so it can't be used in arithmetic, returned, or passed as an argument");
+          }
+          return "int";
         case "binop": return binopType(e);
         default: return "int";
       }
@@ -873,6 +899,18 @@ export function check(chunk, file) {
         return "bool";
       }
       if (op === "==" || op === "~=") {
+        // nil comparison: x == nil / x ~= nil -> compare the variable against the
+        // reserved sentinel. Mark the nil operand OK so typeOf doesn't reject it.
+        if (e.left.kind === "nil" || e.right.kind === "nil") {
+          const nilSide = e.left.kind === "nil" ? e.left : e.right;
+          const other = e.left.kind === "nil" ? e.right : e.left;
+          nilSide.okSentinel = true;
+          const ot = typeOf(other);
+          if (ot === "bool" || ot === "str") err(e, "only a number variable can be compared to nil");
+          e.cmpKind = "int";
+          e.nilCompare = true;
+          return "bool";
+        }
         const lt = typeOf(e.left), rt = typeOf(e.right);
         if ((lt === "bool") !== (rt === "bool")) err(e, "cannot compare a number with a boolean");
         e.cmpKind = lt === "bool" ? "bool" : join(lt, rt);

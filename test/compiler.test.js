@@ -124,6 +124,15 @@ test("array table with fractional values is a fixed array", () => {
   assert.match(c, /long gtl_spd\[3\] = \{\s*32768L, 98304L, 131072L\s*\}/);
 });
 
+test("nil-as-sentinel: assign, set, and compare compile to a reserved value", () => {
+  const c = cOf("local target = nil\nlocal g = 0\nfunction _update60()\n" +
+                "  target = nil\n  if target != nil then g = 1 end\n  if target == nil then target = g end\n" +
+                "end\nfunction _draw()\nend\n");
+  assert.match(c, /int gtl_target = -32768;/);          // starts nil
+  assert.match(c, /gtl_target != -32768/);              // != nil
+  assert.match(c, /gtl_target == -32768/);              // == nil
+});
+
 test("array8 declares byte elements and reads back as ints", () => {
   const c = cOf("local a = array8(16)\nlocal r = 0\nfunction _update60()\n  a[1] = 200\n  r = a[1] + 100\nend\nfunction _draw()\nend\n");
   assert.match(c, /unsigned char gtl_a\[16\];/);
@@ -368,7 +377,8 @@ const CASES = [
   ["both _update and _update60", "function _update()\nend\nfunction _update60()\nend\n", /not both/],
   ["calling _draw yourself", "function _update60()\n  _draw()\nend\nfunction _draw()\nend\n", /called by the runtime/],
   ["tables outside add()", LOOP + "local q = 0\nfunction f()\n  q = { x = 1 }\nend\n", /only allowed inside add/],
-  ["nil", LOOP + "local z = nil\n", /nil is not supported/],
+  ["nil used as a value", LOOP + "local a = 0\nfunction f()\n  a = nil + 1\nend\n", /nil is only supported as an empty-marker/],
+  ["nil passed as an argument", "function g(x)\nend\n" + LOOP + "function f()\n  g(nil)\nend\n", /nil is only supported as an empty-marker/],
   ["strings outside print", LOOP + 'local q = 0\nfunction f()\n  q = "hi"\nend\n', /only be used in print/],
   ["closures", "function _update60()\n  function inner() end\nend\nfunction _draw()\nend\n", /no closures/],
   ["array table off top level", LOOP + "local q = 0\nfunction f()\n  q = {1, 2, 3}\nend\n", /only allowed as a top-level constant/],

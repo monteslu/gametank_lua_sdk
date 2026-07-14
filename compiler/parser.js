@@ -462,9 +462,13 @@ export function parse(tokens, file) {
       case "true": next(); return { kind: "bool", value: true, line: tok.line, col: tok.col };
       case "false": next(); return { kind: "bool", value: false, line: tok.line, col: tok.col };
       case "nil":
+        // gtlua has no dynamic typing, but the nil-as-sentinel idiom
+        // (x = nil / x == nil / x != nil, where nil marks "empty/inactive") is
+        // extremely common and DOES compile: nil becomes a reserved sentinel
+        // value. check.js allows it only in those sentinel positions and rejects
+        // nil used as a real value elsewhere.
         next();
-        error("nil is not supported (no dynamic typing); initialize with a value", tok);
-        return { kind: "number", value: 0, fixed: 0, isInt: true, line: tok.line, col: tok.col };
+        return { kind: "nil", line: tok.line, col: tok.col };
       case "string":
         next();
         return { kind: "string", value: tok.value, line: tok.line, col: tok.col };

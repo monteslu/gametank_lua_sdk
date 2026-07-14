@@ -307,6 +307,14 @@ export function emit(chunk, symbols, file, opts = {}) {
   const FSH = N8 ? 8 : 16;             // fraction bits
   const FONE = N8 ? 256 : 65536;       // 1.0
   const FL = N8 ? "" : "L";            // literal suffix
+  // nil-as-sentinel: the reserved value that means "empty" - the most negative
+  // representable number, which a game effectively never stores in a variable it
+  // also nil-checks (indices, handles, flags). Width-matched: a 16-bit int var
+  // uses -32768; a 16.16 fixed (long) var uses the 32-bit min. x = nil -> that
+  // literal; x == nil -> compare against it.
+  const NIL_SENT_INT = "-32768";
+  const NIL_SENT_FIXED = N8 ? "-32768" : "-2147483648L";
+  const nilSent = (kind) => (kind === "fixed" ? NIL_SENT_FIXED : NIL_SENT_INT);
   const stubbed = new Set(); // callee names reached through a far-call stub
   const line = (s) => out.push("    ".repeat(s === "" ? 0 : indent) + s);
   const mangle = (name) => `gtl_${name}`;
@@ -409,6 +417,7 @@ export function emit(chunk, symbols, file, opts = {}) {
         return String(Math.trunc(e.value));
       }
       case "bool": return e.value ? "1" : "0";
+      case "nil": return nilSent(want === "fixed" ? "fixed" : "int");
       case "name":
         if (inlineMap && inlineMap.has(e.name)) return cv(inlineMap.get(e.name), e.tk, want);
         if (zpParamMap && zpParamMap.has(e.name)) return cv(zpParamMap.get(e.name), e.tk, want);
@@ -483,6 +492,14 @@ export function emit(chunk, symbols, file, opts = {}) {
     if (["<", ">", "<=", ">=", "==", "~="].includes(op)) {
       const ck = e.cmpKind ?? "int";
       const c = op === "~=" ? "!=" : op;
+      // nil compare: test the variable against the reserved sentinel directly,
+      // at the variable's own width (never through the byte/subtract fast paths,
+      // whose overflow assumptions don't hold for the extreme sentinel value).
+      if (e.nilCompare) {
+        const v = e.left.kind === "nil" ? e.right : e.left;
+        const vt = v.tk === "fixed" ? "fixed" : "int";
+        return `(${expr(v, vt)} ${c} ${nilSent(vt)})`;
+      }
       // BYTE COMPARES: a var<=var int comparison goes through cc65's
       // tosicmp at ~127 cycles (measured; the constant form is ~15). When
       // both sides are provably 0..255 - narrowed loop counters, byte
@@ -1473,6 +1490,8 @@ export function emit(chunk, symbols, file, opts = {}) {
     } else if (g.kind === "fixed") {
       const bits = (Math.round(g.value * FONE) | 0);
       out.push(`${ctype("fixed")} ${mangle(name)} = ${bits}${FL}; /* ${g.value} */`);
+    } else if (g.nilInit) {
+      out.push(`int ${mangle(name)} = ${nilSent("int")}; /* nil */`);
     } else {
       out.push(`int ${mangle(name)} = ${Math.trunc(g.value)};`);
     }
