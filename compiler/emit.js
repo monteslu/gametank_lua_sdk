@@ -1166,6 +1166,23 @@ export function emit(chunk, symbols, file, opts = {}) {
         break;
       }
       case "multiassign": {
+        if (s.fromCall) {
+          // a, b, c = f(...) : call once, then read result 1 + output slots.
+          // Value 1 is the call's return; values 2..N are the gt_mret_* slots
+          // the callee wrote. Assign into a temp first so a target that also
+          // appears in the args isn't read after being overwritten.
+          const k0 = s.targetKinds[0] ?? "int";
+          const tn = `L_t${tempCounter++}`;
+          line(`{ ${ctype(k0)} ${tn} = ${expr(s.values[0], k0)};`);
+          indent++;
+          if (s.targets[0].kind === "name") line(`${mangle(s.targets[0].name)} = ${tn};`);
+          for (let i = 1; i < s.targets.length; i++) {
+            if (s.targets[i].kind === "name") line(`${mangle(s.targets[i].name)} = gt_mret_${i};`);
+          }
+          indent--;
+          line("}");
+          break;
+        }
         // evaluate all RHS first (Lua semantics), then store
         const temps = s.values.map((v, i) => {
           const k = s.targetKinds[i] ?? "int";
@@ -1296,6 +1313,17 @@ export function emit(chunk, symbols, file, opts = {}) {
       case "return": {
         if (!s.value) { line("return;"); break; }
         const fn = currentFn;
+        // multiple return: write values 2..N to the shared output slots, then
+        // return value 1 normally. The caller (multiassign fromCall) reads the
+        // slots right after the call, before anything else can clobber them.
+        if (s.values && s.values.length > 1) {
+          for (let i = 1; i < s.values.length; i++) {
+            const k = fn?.retKinds?.[i] ?? "int";
+            line(`gt_mret_${i} = ${expr(s.values[i], k)};`);
+          }
+          line(`return ${expr(s.values[0], fn?.retKinds?.[0] ?? fn?.retKind ?? "int")};`);
+          break;
+        }
         line(`return ${expr(s.value, fn?.retKind ?? "int")};`);
         break;
       }
@@ -1497,6 +1525,23 @@ export function emit(chunk, symbols, file, opts = {}) {
     }
   }
   if (globals.size) out.push("");
+
+  // multiple-return output slots: values 2..N of a `return a,b,c` land here for
+  // the caller to read. One slot per extra-return index, typed at the widest
+  // kind any function returns in that position (long if ever fixed).
+  let maxExtra = 0;
+  const slotFixed = [];
+  for (const [, fn] of functions) {
+    const rc = fn.retCount ?? 1;
+    if (rc > maxExtra + 1) maxExtra = rc - 1;
+    for (let i = 1; i < rc; i++) if ((fn.retKinds?.[i]) === "fixed") slotFixed[i] = true;
+  }
+  if (maxExtra > 0) {
+    for (let i = 1; i <= maxExtra; i++) {
+      out.push(`${slotFixed[i] ? ctype("fixed") : "int"} gt_mret_${i};`);
+    }
+    out.push("");
+  }
 
   // function bodies, grouped by bank (fixed first, then each banked group
   // inside #pragma code-name/rodata-name so code AND string literals land

@@ -417,11 +417,25 @@ export function check(chunk, file) {
         }
         case "multiassign": {
           s.targetSyms = [];
-          const kinds = s.values.map((v) => {
-            const t = typeOf(v);
-            if (t === "bool") err(v, "cannot assign a boolean to a number variable");
-            return t;
-          });
+          let kinds;
+          if (s.fromCall) {
+            // a, b, c = f(...) - the call must return at least as many values
+            typeOf(s.values[0]);            // type/annotate the call
+            const callee = s.values[0].callee;
+            const fn2 = callee?.kind === "name" ? functions.get(callee.name) : null;
+            const retCount = fn2?.retCount ?? (fn2?.hasReturnValue ? 1 : 0);
+            if (!fn2) err(s, "multiple assignment from a call needs a user function that returns multiple values");
+            else if (retCount < s.targets.length) {
+              err(s, `'${callee.name}' returns ${retCount} value${retCount === 1 ? "" : "s"} but ${s.targets.length} are assigned`);
+            }
+            kinds = s.targets.map((_, i) => (fn2?.retKinds?.[i]) ?? (i === 0 ? (fn2?.retKind ?? "int") : "int"));
+          } else {
+            kinds = s.values.map((v) => {
+              const t = typeOf(v);
+              if (t === "bool") err(v, "cannot assign a boolean to a number variable");
+              return t;
+            });
+          }
           s.targets.forEach((t2, i) => {
             if (t2.kind !== "name") return;
             const sym = lookup(t2.name);
@@ -481,6 +495,26 @@ export function check(chunk, file) {
           break;
         }
         case "return": {
+          if (s.values && s.values.length > 1) {
+            // multiple return: return a, b, c. The 1st value returns normally;
+            // the rest go through reserved output slots (see emit). Track the
+            // count and per-slot kinds so callers and the emitter agree.
+            fn.hasReturnValue = true;
+            fn.retCount = Math.max(fn.retCount ?? 1, s.values.length);
+            fn.retKinds = fn.retKinds ?? [];
+            s.valueKinds = [];
+            s.values.forEach((v, i) => {
+              const t = typeOf(v);
+              if (t === "bool") err(v, "returning booleans is not supported yet; return 0/1 or restructure");
+              if (t === "str") err(v, "returning strings is not supported");
+              s.valueKinds[i] = t;
+              if (t === "fixed") {
+                if (i === 0 && fn.retKind !== "fixed") { fn.retKind = "fixed"; changed = true; }
+                if (fn.retKinds[i] !== "fixed") { fn.retKinds[i] = "fixed"; changed = true; }
+              } else if (!fn.retKinds[i]) { fn.retKinds[i] = "int"; }
+            });
+            break;
+          }
           if (s.value) {
             const t = typeOf(s.value);
             if (t === "bool") err(s.value, "returning booleans is not supported yet; return 0/1 or restructure");

@@ -99,10 +99,10 @@ export function parse(tokens, file) {
           if (!at("end") && !at("eof") && !at("else") && !at("elseif") && !at("until")) {
             value = expression();
             if (at(",")) {
-              error("multiple return values are not supported yet");
-              // consume the extra values so the trailing commas/exprs don't
-              // cascade into "unexpected ','" + "expected a statement"
-              while (at(",")) { next(); expression(); }
+              // multiple return: return a, b, c
+              const values = [value];
+              while (at(",")) { next(); values.push(expression()); }
+              return { kind: "return", value, values, line: tok.line, col: tok.col };
             }
           }
         }
@@ -325,11 +325,16 @@ export function parse(tokens, file) {
       const eq = expect("=", "'=' in multiple assignment");
       const values = [expression()];
       while (at(",")) { next(); values.push(expression()); }
-      if (values.length !== targets.length) {
-        error(`${targets.length} target(s) but ${values.length} value(s)`, eq);
-      }
       for (const t of targets) {
         if (t.kind !== "name") error("cannot assign to this expression", eq);
+      }
+      // a, b, c = f(...) : destructure a multi-return call. Allowed when the RHS
+      // is a single call; check.js verifies the callee returns enough values.
+      if (values.length === 1 && values[0].kind === "call" && targets.length > 1) {
+        return { kind: "multiassign", targets, values, fromCall: true, line: tok.line, col: tok.col };
+      }
+      if (values.length !== targets.length) {
+        error(`${targets.length} target(s) but ${values.length} value(s)`, eq);
       }
       return { kind: "multiassign", targets, values, line: tok.line, col: tok.col };
     }

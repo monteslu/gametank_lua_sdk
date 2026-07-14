@@ -124,6 +124,17 @@ test("array table with fractional values is a fixed array", () => {
   assert.match(c, /long gtl_spd\[3\] = \{\s*32768L, 98304L, 131072L\s*\}/);
 });
 
+test("multiple return: return a,b,c and destructure a,b,c = f()", () => {
+  const c = cOf("local ax=0\nlocal ay=0\nlocal az=0\n" +
+                "function trip(x, y, z)\n  return x, y, z\nend\n" +
+                "function _update60()\n  ax, ay, az = trip(1, 2, 3)\nend\nfunction _draw()\nend\n");
+  assert.match(c, /int gt_mret_1;/);
+  assert.match(c, /int gt_mret_2;/);
+  assert.match(c, /gt_mret_1 = /);            // callee writes extras
+  assert.match(c, /gtl_ay = gt_mret_1;/);     // caller reads them
+  assert.match(c, /gtl_az = gt_mret_2;/);
+});
+
 test("nil-as-sentinel: assign, set, and compare compile to a reserved value", () => {
   const c = cOf("local target = nil\nlocal g = 0\nfunction _update60()\n" +
                 "  target = nil\n  if target != nil then g = 1 end\n  if target == nil then target = g end\n" +
@@ -408,7 +419,8 @@ for (const [name, src, re] of CASES) {
 // each unsupported construct once, with its fix-it, instead of derailing the
 // parser into dozens of downstream noise errors.
 const RECOVERY = [
-  ["multiple return", "function f()\n  return 1, 2, 3\nend\n" + LOOP, /multiple return values/],
+  ["arity mismatch on multi-return destructure",
+   "function f()\n  return 1, 2\nend\nlocal a=0\nlocal b=0\nlocal c=0\nfunction g()\n  a,b,c = f()\nend\n" + LOOP, /returns 2 values but 3 are assigned/],
   ["goto label ::continue::", LOOP + "function f()\n  ::continue::\n  goto continue\nend\n", /goto is not supported/],
   ["array table off top level then more code",
     LOOP + "local a = 0\nlocal b = 0\nfunction f()\n  a = {1,2,3}\n  b = 7\nend\n", /only allowed as a top-level constant/],
