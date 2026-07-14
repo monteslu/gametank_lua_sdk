@@ -77,6 +77,16 @@ test("one-line if shorthand", () => {
   assert.match(c, /} else \{/);
 });
 
+test("if cond do ... end : minifier's 'do' is accepted as 'then'", () => {
+  // PICO-8 tolerates `do` where `then` belongs; some minifiers emit it. Both
+  // the plain if and the elseif clause must accept it.
+  const c = cOf("local x = 0\nfunction _update60()\n" +
+                "  if x > 0 do x = 1 elseif x < 0 do x = 2 else x = 3 end\nend\nfunction _draw()\nend\n");
+  assert.match(c, /if \(\(gtl_x > 0\)\)/);
+  assert.match(c, /else if \(\(gtl_x < 0\)\)/);
+  assert.match(c, /else \{/);
+});
+
 test("one-line while shorthand", () => {
   const c = cOf("local x = 10\nfunction _update60()\n  while (x > 0) x -= 1\nend\nfunction _draw()\nend\n");
   assert.match(c, /while \(\(gtl_x > 0\)\)/);

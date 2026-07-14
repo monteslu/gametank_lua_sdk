@@ -203,9 +203,14 @@ export function parse(tokens, file) {
     const parenCond = at("(");
     const cond = expression();
 
+    // Some PICO-8 minifiers emit `if cond do ... end` / `elseif cond do ...`
+    // (PICO-8's parser tolerates `do` where `then` belongs). When the block form
+    // uses `do`, skip the one-line-shorthand path and treat `do` as `then` below
+    // (see expectThen) so a whole minified cart doesn't cascade off every `if`.
+
     // PICO-8 one-line shorthand: `if (cond) stmt [else stmt]` - parenthesized
     // condition, no `then`, body ends at end of line.
-    if (parenCond && !at("then")) {
+    if (parenCond && !at("then") && !at("do")) {
       if (peek().line !== tok.line || at("eof")) {
         error("expected 'then' (or a same-line statement for the `if (cond) stmt` shorthand)");
         return { kind: "if", clauses: [{ cond, body: { kind: "block", stmts: [] } }], elseBody: null, line: tok.line, col: tok.col };
@@ -225,8 +230,11 @@ export function parse(tokens, file) {
       return { kind: "if", clauses: [{ cond, body }], elseBody, line: tok.line, col: tok.col };
     }
 
+    // accept `then` or the minifier's `do` after an if/elseif condition
+    const expectThen = () => { if (at("do")) next(); else expect("then"); };
+
     const clauses = [];
-    expect("then");
+    expectThen();
     let body = block(["elseif", "else", "end"]);
     clauses.push({ cond, body });
     let elseBody = null;
@@ -234,7 +242,7 @@ export function parse(tokens, file) {
       if (at("elseif")) {
         next();
         const c = expression();
-        expect("then");
+        expectThen();
         body = block(["elseif", "else", "end"]);
         clauses.push({ cond: c, body });
         continue;
