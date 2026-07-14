@@ -28,6 +28,33 @@ export function parse(tokens, file) {
     while (!at("eof") && !types.includes(peek().type)) pos++;
   }
 
+  // Consume tokens through the `end` that closes the CURRENT block, honoring
+  // nesting (function/if/for/while/do all open blocks that close with `end`).
+  // We're called sitting on the `function` keyword of an anonymous function we
+  // can't parse; skip its whole body so recovery lands cleanly after `end`.
+  function skipBalancedEnd() {
+    let depth = 0;
+    while (!at("eof")) {
+      const t = peek().type;
+      if (t === "function" || t === "if" || t === "for" || t === "while" || t === "do") depth++;
+      else if (t === "end") { depth--; pos++; if (depth <= 0) return; continue; }
+      pos++;
+    }
+  }
+
+  // Consume through the `}` that closes the current table literal (we enter
+  // sitting just after its `{`), honoring nested braces. Used to recover from a
+  // table form the codegen can't represent without spraying downstream errors.
+  function skipBalancedBrace() {
+    let depth = 1;
+    while (!at("eof")) {
+      const t = peek().type;
+      if (t === "{") depth++;
+      else if (t === "}") { depth--; pos++; if (depth <= 0) return; continue; }
+      pos++;
+    }
+  }
+
   // ---- statements ----------------------------------------------------------
 
   function block(enders) {
@@ -382,6 +409,14 @@ export function parse(tokens, file) {
         expr = { kind: "call", callee: expr, args, line: paren.line, col: paren.col };
         continue;
       }
+      // paren-less call with a single string or table argument: sfx"3",
+      // print"hi", add{...}. PICO-8 idiom, "trivial grammar, heavily used"
+      // (PICO8.md). Only a name/member is callable this way.
+      if ((at("string") || at("{")) && (expr.kind === "name" || expr.kind === "member")) {
+        const arg = primary();   // the string literal or table constructor
+        expr = { kind: "call", callee: expr, args: [arg], line: expr.line, col: expr.col };
+        continue;
+      }
       if (at("[")) {
         const brk = next();
         const index = expression();
@@ -425,6 +460,22 @@ export function parse(tokens, file) {
       }
       case "{": {
         next();
+        // gtlua tables are structs: fixed named byte/word fields ({x=1, y=2}).
+        // Array-style ({1,2,3}) and computed-key ([i]=v) tables are a different
+        // data model the codegen has no representation for - reject the whole
+        // literal with ONE clear error (skip to the matching `}`, no cascade)
+        // rather than mis-parsing it into a spray of downstream errors. A struct
+        // field is `name = ...`; anything else in the first slot means an
+        // array/computed table: `[k]=`, a bare value, or a nested table element.
+        const firstIsStructField = at("name") && peek(1).type === "=";
+        if (!at("}") && !firstIsStructField) {
+          const bad = at("[")
+            ? "computed-key tables ([k]=v) are not supported; gtlua tables are structs with named fields ({x=1, y=2})"
+            : "array-style tables ({1,2,3} or {{...},{...}}) are not supported; gtlua tables are structs with named fields ({x=1, y=2})";
+          error(bad, tok);
+          skipBalancedBrace();
+          return { kind: "table", fields: [], line: tok.line, col: tok.col };
+        }
         const fields = [];
         while (!at("}") && !at("eof")) {
           const fname = expect("name", "field name");
@@ -436,11 +487,14 @@ export function parse(tokens, file) {
         expect("}");
         return { kind: "table", fields, line: tok.line, col: tok.col };
       }
-      case "function":
+      case "function": {
         error("anonymous functions are not supported (no closures); define a named function at top level", tok);
-        sync(["end", "eof"]);
-        if (at("end")) next();
+        // Skip the whole function body, matching nested block openers to their
+        // `end` so one closure yields ONE error, not a cascade off the wrong
+        // `end` (function/if/for/while/do all close with `end`).
+        skipBalancedEnd();
         return { kind: "number", value: 0, fixed: 0, isInt: true, line: tok.line, col: tok.col };
+      }
       case "?":
         error("'?' print shorthand is not supported yet (print lands with strings)", tok);
         next();

@@ -16,10 +16,16 @@ const KEYWORDS = new Set([
 
 // PICO-8 button glyphs -> btn()/btnp() indices. The emoji include optional
 // variation selectors (U+FE0F); match longest-first.
+// P8SCII: the raw single-byte control forms for the six buttons as they sit in
+// a .p8/.p8.png cart before any UTF-8 rendering (left=8b right=91 up=94 down=83
+// O=8e X=97) - accept those too so imported carts lex without a pre-pass.
+const P8SCII = [[0x8b, 0], [0x91, 1], [0x94, 2], [0x83, 3], [0x8e, 4], [0x97, 5]]
+  .map(([code, v]) => [String.fromCharCode(code), v]);
 const GLYPHS = [
   ["⬅️", 0], ["⬅", 0], ["➡️", 1], ["➡", 1],
   ["⬆️", 2], ["⬆", 2], ["⬇️", 3], ["⬇", 3],
   ["🅾️", 4], ["🅾", 4], ["❎", 5], ["❌", 5],
+  ...P8SCII,
 ];
 
 /** Convert a JS number (value) to 16.16 bits, wrapped to signed 32-bit. */
@@ -164,6 +170,27 @@ export function lex(src, file) {
       else advance();
       tokens.push({ type: "string", value: text, line: startLine, col: startCol });
       continue;
+    }
+
+    // long string: [[ ... ]] (and the [=[ ... ]=] level form). Spans newlines,
+    // no escape processing - PICO-8 carts use these for level grids and credits.
+    if (ch === "[" && (src[i + 1] === "[" || src[i + 1] === "=")) {
+      let eq = 0;
+      while (src[i + 1 + eq] === "=") eq++;
+      if (src[i + 1 + eq] === "[") {
+        const open = `[${"=".repeat(eq)}[`;
+        const close = `]${"=".repeat(eq)}]`;
+        advance(open.length);
+        // Lua drops a leading newline immediately after the opening bracket
+        if (src[i] === "\r") advance();
+        if (src[i] === "\n") advance();
+        let text = "";
+        const end = src.indexOf(close, i);
+        if (end === -1) { err("unterminated long string", startLine, startCol); i = src.length; }
+        else { text = src.slice(i, end); advance(end - i); advance(close.length); }
+        tokens.push({ type: "string", value: text, line: startLine, col: startCol });
+        continue;
+      }
     }
 
     // operators, longest first

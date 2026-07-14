@@ -45,6 +45,31 @@ test("!= is ~=", () => {
   assert.match(c, /gtl_x != 2/);
 });
 
+test("paren-less string call desugars to a normal call", () => {
+  // sugar for f("hi") - PICO-8 idiom, "trivial grammar, heavily used". The
+  // grammar must produce the SAME AST as the parenthesized form, so both spell
+  // the identical diagnostic (here: print's cursor form isn't supported yet).
+  const bare = errorsOf('function _update60()\nend\nfunction _draw()\n  print"hi"\nend\n');
+  const paren = errorsOf('function _update60()\nend\nfunction _draw()\n  print("hi")\nend\n');
+  assert.deepEqual(bare, paren);
+  assert.ok(bare.length > 0);
+});
+
+test("long string [[ ... ]] lexes as a string", () => {
+  // spans newlines; used for level grids / credits
+  const src = 'local g = ""\nfunction _update60()\nend\nfunction _draw()\n  g = [[\nab\ncd]]\n  print(g)\nend\n';
+  const errs = errorsOf(src);
+  assert.ok(!errs.some((m) => /unexpected '\['/.test(m)), `long string should lex:\n  ${errs.join("\n  ")}`);
+});
+
+test("raw P8SCII button glyph lexes as its btn index", () => {
+  // the single control byte 0x8b (left arrow) == constant 0, as in a .p8.png cart
+  const leftGlyph = String.fromCharCode(0x8b);
+  const src = `local x = 0\nfunction _update60()\n  if (btn(${leftGlyph})) x -= 1\nend\nfunction _draw()\nend\n`;
+  const r = compile(src, "t.lua");
+  assert.equal(r.ok, true, JSON.stringify(r.diagnostics, null, 2));
+});
+
 test("one-line if shorthand", () => {
   const c = cOf("local x = 0\nfunction _update60()\n  if (btn(0)) x -= 1\n  if (btn(1)) x += 1 else x = 0\nend\nfunction _draw()\nend\n");
   // constant-button btn() emits an inline zp pad-word bit test, not a call
@@ -335,6 +360,9 @@ const CASES = [
   ["nil", LOOP + "local z = nil\n", /nil is not supported/],
   ["strings outside print", LOOP + 'local q = 0\nfunction f()\n  q = "hi"\nend\n', /only be used in print/],
   ["closures", "function _update60()\n  function inner() end\nend\nfunction _draw()\nend\n", /no closures/],
+  ["array-style table", LOOP + "local q = 0\nfunction f()\n  q = {1, 2, 3}\nend\n", /array-style tables/],
+  ["computed-key table", LOOP + "local q = 0\nfunction f()\n  q = {[0]=1}\nend\n", /computed-key tables/],
+  ["table of tables", LOOP + "local q = 0\nfunction f()\n  q = { {x=1}, {x=2} }\nend\n", /array-style tables/],
   ["int condition", "local x = 1\nfunction _update60()\n  if x then\n    x = 0\n  end\nend\nfunction _draw()\nend\n", /conditions must be boolean/],
   ["undeclared assignment", "function _update60()\n  y = 1\nend\nfunction _draw()\nend\n", /not declared.*no implicit globals/],
   ["'or' value idiom", LOOP + "local a = 1\nlocal b = 2\nfunction f()\n  a = a or b\nend\n", /needs boolean operands/],
