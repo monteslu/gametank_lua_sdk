@@ -488,8 +488,13 @@ export function parse(tokens, file) {
         expr = { kind: "index", object: expr, index, line: brk.line, col: brk.col };
         continue;
       }
+      // method calls a:b() need OOP the static model can't represent: `b` would
+      // dispatch on the receiver's type (worldunder calls a:update/b:update on
+      // different object types), and a pool element can't be passed as a `self`
+      // whose fields are readable (pool fields are SoA arrays indexed by slot,
+      // not a passable object). So this stays unsupported - see GTLUA_CORPUS_B.
       if (at(":")) {
-        error("method calls (a:b()) are not supported");
+        error("method calls (a:b()) are not supported: gtlua has no objects to dispatch on - rewrite b as a top-level function b(a, ...) and call it directly");
         next();
         if (at("name")) next();
         continue;
