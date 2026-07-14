@@ -252,7 +252,7 @@ function makeFrameTableC(env, framesPath, banked) {
 // A --frames foo.gsi adds a frame table (for sprf) alongside, in the same bank.
 const GTG_BOTTOM_BANK = 1;   // composing games park the sheet's bottom half here
 
-function makeGSheetC(env, sheetPath, banked, framesPath, composes) {
+function makeGSheetC(env, sheetPath, banked, framesPath, composes, split) {
   const quads = discoverQuadrants(env, sheetPath);
   // SHEET-segment (bank 2) declarations, and a separate B1RODATA (bank 1) chunk
   // for a composing game's sheet bottom-half (so a full native sheet doesn't have
@@ -273,7 +273,9 @@ function makeGSheetC(env, sheetPath, banked, framesPath, composes) {
     // loads GRAM rows 64-127 at boot. A full 16 KB sheet + the compose code
     // won't fit ONE 16 KB bank, so we spend a second bank (size is free as long
     // as the whole cart fits the 2 MB FLASH2M).
-    if (composes && i === 0) {
+    if (composes && split && i === 0) {
+      // bg/track composing: the SPLIT layout (top raw in bank 2 with the compose
+      // code + serving GRAM rows 0-63; bottom packbits in bank 1 -> rows 64-127).
       const top = bytes.slice(0, GTG_COMPOSE_BYTES);
       const bot = packbits(bytes.slice(GTG_COMPOSE_BYTES));
       sheetDecls.push(`static const unsigned char gsheet_raw[${top.length}] = {${top.join(",")}};`);
@@ -281,6 +283,15 @@ function makeGSheetC(env, sheetPath, banked, framesPath, composes) {
       calls.push(`gt_gsheet_load_top(gsheet_raw, 0);`);
       calls.push(`gt_gsheet_ptr = gsheet_raw;`);
       b1Calls.push(`gt_gsheet_load_bottom(gsheet0b, ${bot.length}U);`);
+    } else if (composes && !split && i === 0) {
+      // sspr-only: load GRAM the NORMAL packed way (correct for imported sheets)
+      // AND emit the raw top-8KB ROM copy the scaler reads via gt_gsheet_ptr.
+      const top = bytes.slice(0, GTG_COMPOSE_BYTES);
+      const pk = packbits(bytes);
+      sheetDecls.push(`static const unsigned char gsheet_raw[${top.length}] = {${top.join(",")}};`);
+      sheetDecls.push(`static const unsigned char gsheet${i}[${pk.length}] = {${pk.join(",")}};`);
+      calls.push(`gt_gsheet_load_packed(gsheet${i}, ${pk.length}U, ${i});`);
+      calls.push(`gt_gsheet_ptr = gsheet_raw;`);
     } else {
       const pk = packbits(bytes);
       sheetDecls.push(`static const unsigned char gsheet${i}[${pk.length}] = {${pk.join(",")}};`);
@@ -333,9 +344,9 @@ function injectSongs(cSource, songs, banked) {
     `gt_music_init(); gt_song_bank(gt_songbank_tab, ${songs.length}U);`);
 }
 
-function makeSheetC(env, sheetPath, banked, framesPath, composes) {
+function makeSheetC(env, sheetPath, banked, framesPath, composes, split) {
   if (!sheetPath) return `void gt_sheet_init(void) {}\n`;
-  if (isGtgSheet(env, sheetPath)) return makeGSheetC(env, sheetPath, banked, framesPath, composes);
+  if (isGtgSheet(env, sheetPath)) return makeGSheetC(env, sheetPath, banked, framesPath, composes, split);
   const n = env.size(sheetPath);
   fail(`--sheet expects a native .gtg sprite sheet (16384 bytes/quadrant; got ${n}). ` +
     `Convert a PICO-8 cart or a PNG with: gtlua gfx import <in> -o sheet.gtg`);
@@ -752,12 +763,22 @@ export async function build(entry, opts, env) {
   // and compiles the 8bpp decode path (GT_GSHEET_COMPOSE).
   // scaled sspr() ALSO re-reads the raw sheet (the software scaler reads source
   // pixels from gt_gsheet_ptr), so it needs the same readable-ROM-sheet emit.
-  const readsRawSheet = result.c.includes("gt_bg_compose(") ||
-    result.c.includes("gt_bg_tile(") || result.c.includes("gt_bg_coln(") ||
-    result.c.includes("gt_p8_sspr") || usesTrack;
+  // gt.bg_compose / bg_tile / bg_coln / track paint a GRAM page from the sheet's
+  // top-8KB raw bytes and use the SPLIT sheet load (top raw -> GRAM rows 0-63 +
+  // gt_gsheet_ptr, bottom packbits -> rows 64-127). sspr() ALSO reads the sheet
+  // (its scaler needs gt_gsheet_ptr) but does NOT want the split - the split's
+  // half-and-half GRAM load garbles an imported (PICO-8-origin) sheet that spr()/
+  // map() then draw. So: bg/track = split; sspr-only = the normal FULL packed
+  // GRAM load PLUS the readable ROM copy for the scaler.
+  const bgReadsSheet = result.c.includes("gt_bg_compose(") ||
+    result.c.includes("gt_bg_tile(") || result.c.includes("gt_bg_coln(") || usesTrack;
+  const readsRawSheet = bgReadsSheet || result.c.includes("gt_p8_sspr");
   const gsheetCompose = gtgSheet && readsRawSheet;   // native .gtg + reads raw
+  // split load only when a bg/track engine needs the top-8KB-in-one-bank layout;
+  // sspr-only keeps the proven full packed GRAM load (+ a readable ROM copy).
+  const gsheetSplit = gtgSheet && bgReadsSheet;
   env.writeFile(B(`${name}.c`), result.c);
-  env.writeFile(B("sheet.c"), makeSheetC(env, sheetPath, false, framesPath, gsheetCompose));
+  env.writeFile(B("sheet.c"), makeSheetC(env, sheetPath, false, framesPath, gsheetCompose, gsheetSplit));
 
   // 2. compile + assemble everything.
   // main.c is always needed (its .s feeds the FLASH2M function-size model).
@@ -774,7 +795,7 @@ export async function build(entry, opts, env) {
       ...(usesAtlas ? ["-DGT_BG_ATLAS"] : []),
       ...((result.c.includes("gt_bg_compose(") || usesTrack) ? ["-DGT_BG_COMPOSE_ON"] : []),
       ...(usesTrack ? ["-DGT_TRACK_CACHE"] : []),
-      ...(gsheetCompose ? ["-DGT_GSHEET_COMPOSE"] : []),
+      ...(gsheetSplit ? ["-DGT_GSHEET_COMPOSE"] : []),
     ]);
     if (usesAudio) cc(env.sdkFile("gt_audio.c"), B("gt_audio.s"));
     if (usesMusic) cc(env.sdkFile("gt_music.c"), B("gt_music.s"));
@@ -886,11 +907,11 @@ export async function build(entry, opts, env) {
     }
   };
   foldRodataSizes(result.c, sizes);
-  const sheetBytes = sheetPath ? gtgSheetRomBytes(env, sheetPath, gsheetCompose) : 0;
+  const sheetBytes = sheetPath ? gtgSheetRomBytes(env, sheetPath, gsheetSplit) : 0;
   const placement = initialPlacement(result.callGraph);
 
   as(env.sdkFile("gt_bank.s"), B("gt_bank.o"));
-  env.writeFile(B("sheet.c"), makeSheetC(env, sheetPath, true, framesPath, gsheetCompose));
+  env.writeFile(B("sheet.c"), makeSheetC(env, sheetPath, true, framesPath, gsheetCompose, gsheetSplit));
   cc(B("sheet.c"), B("sheet.s"));
   as(B("sheet.s"), B("sheet.o"));
 
@@ -915,7 +936,7 @@ export async function build(entry, opts, env) {
                   ...(usesAtlas ? ["-DGT_BG_ATLAS"] : []),
                   ...((result.c.includes("gt_bg_compose(") || usesTrack) ? ["-DGT_BG_COMPOSE_ON"] : []),
                   ...(usesTrack ? ["-DGT_TRACK_CACHE"] : []),
-                  ...(gsheetCompose ? ["-DGT_GSHEET_COMPOSE"] : []),
+                  ...(gsheetSplit ? ["-DGT_GSHEET_COMPOSE"] : []),
                   "-o", B("gt_bg.s"), env.sdkFile("gt_bg.c")]);
     as(B("gt_bg.s"), B("gt_bg.o"));
   }

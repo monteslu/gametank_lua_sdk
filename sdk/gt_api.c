@@ -766,7 +766,9 @@ void gt_p8_map(unsigned char *map, int mapw,
         int py = sy + j * 8;
         for (i = 0; i < cw; i++) {
             unsigned char t = row[i];
-            if (t) gt_p8_spr(t, sx + i * 8, py, 8, 8, 0);
+            /* w/h are in CELLS (gt_p8_spr scales <<3 to pixels): one 8x8 tile
+             * = 1 cell, NOT 8. Passing 8 blits a 64x64 region per tile. */
+            if (t) gt_p8_spr(t, sx + i * 8, py, 1, 1, 0);
         }
     }
 }
@@ -859,6 +861,10 @@ void gt_p8_sspr(int sx, int sy, int sw, int sh, int dx, int dy, int dw, int dh, 
 #else
         gt_sspr_z();
 #endif
+        /* CRITICAL: sspr ran in CPU-write-VRAM mode. Hand the pipeline back to
+         * the blitter, else every following spr()/map()/fill this frame stages
+         * into the queue while DMA is still in CPU mode and renders as garbage. */
+        bg_pipeline_restore();
     }
 }
 #endif /* GT_SSPR */

@@ -1540,7 +1540,12 @@ export function emit(chunk, symbols, file, opts = {}) {
         if (banked && rbanks.size > 1 && [...rbanks].filter((b) => b !== "fixed").length > 1) {
           throw new Error(`hexdata '${name}' is read from functions in different banks (${[...rbanks].join(", ")}) - banked blobs need a single home; wrap the reads in one function`);
         }
-        const home = banked ? ([...rbanks].find((b) => b !== "fixed") ?? "fixed") : "fixed";
+        // the imported tilemap is read by the map()/mget() BUILTINS from any
+        // bank (every call site is a "reader"), so it can't live in one switched
+        // bank - it must be FIXED (always mapped), else map() reads garbage tile
+        // indices from whatever bank happens to be live and blits noise.
+        const home = name === "__p8map" ? "fixed"
+          : (banked ? ([...rbanks].find((b) => b !== "fixed") ?? "fixed") : "fixed");
         const seg = { b0: "B0RODATA", b1: "B1RODATA", b2: "B2RODATA", b3: "B3RODATA", b4: "B4RODATA", b5: "B5RODATA" }[home];
         const rows = [];
         for (let k = 0; k < g.hexdata.length; k += 16) {
