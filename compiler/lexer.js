@@ -182,7 +182,18 @@ export function lex(src, file) {
       const quote = ch;
       advance();
       let text = "";
-      while (i < src.length && src[i] !== quote && src[i] !== "\n") { text += src[i]; advance(); }
+      // Backslash escapes: a \<char> is TWO source chars that must NOT terminate
+      // the string (a bare \" or \\ would otherwise close it early). We keep the
+      // escape sequence verbatim in the token - emit re-escapes for C output and
+      // P8SCII/glyph passes read the raw \^ codes - so \" \\ \n etc. pass through.
+      while (i < src.length && src[i] !== quote && src[i] !== "\n") {
+        if (src[i] === "\\" && i + 1 < src.length) {
+          text += src[i]; advance();
+          text += src[i]; advance();     // consume the escaped char, whatever it is
+          continue;
+        }
+        text += src[i]; advance();
+      }
       if (src[i] !== quote) err("unterminated string");
       else advance();
       tokens.push({ type: "string", value: text, line: startLine, col: startCol });

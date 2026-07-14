@@ -45,6 +45,18 @@ test("!= is ~=", () => {
   assert.match(c, /gtl_x != 2/);
 });
 
+test("constant integer exponent expands to repeated multiplication", () => {
+  // x^2 -> x*x (gtlua has no float pow; carts use ^2 for distance-squared).
+  const c = cOf("local d = 0\nlocal a = 3\nfunction _update60()\n  d = a ^ 2\nend\nfunction _draw()\nend\n");
+  assert.match(c, /gtl_a \* gtl_a/);
+});
+
+test("string with escaped quote does not terminate early", () => {
+  // a \" inside a string must not close it (ghostwave's big print blob).
+  const c = cOf('local s = 0\nfunction _update60()\nend\nfunction _draw()\n  print("a\\"b")\nend\n');
+  assert.ok(c.includes("a"));   // compiled without a lexer error
+});
+
 test("paren-less string call desugars to a normal call", () => {
   // sugar for f("hi") - PICO-8 idiom. The grammar must produce the SAME AST as
   // the parenthesized form. print("hi") is now the valid cursor form, so both
@@ -452,7 +464,7 @@ const CASES = [
   ["undeclared assignment", "function _update60()\n  y = 1\nend\nfunction _draw()\nend\n", /not declared.*no implicit globals/],
   ["'or' value idiom", LOOP + "local a = 1\nlocal b = 2\nfunction f()\n  a = a or b\nend\n", /needs boolean operands/],
   ["goto", LOOP + "function f()\n  goto top\nend\n", /goto is not supported/],
-  ["exponent", LOOP + "local p = 2\nfunction f()\n  p = p ^ 2\nend\n", /exponent/],
+  ["exponent (non-constant power)", LOOP + "local p = 2\nlocal n = 3\nfunction f()\n  p = p ^ n\nend\n", /exponent/],
   ["string concat", LOOP + "local a = 1\nfunction f()\n  a = a .. 2\nend\n", /concatenation is not supported yet/],
   ["non-constant top-level init", "local r = rnd(4)\n" + LOOP, /constant expression/],
   ["out-of-range literal", "local r = 99999\n" + LOOP, /outside the 16.16 range/],

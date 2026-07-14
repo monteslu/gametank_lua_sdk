@@ -411,12 +411,41 @@ export function parse(tokens, file) {
     return power();
   }
 
+  // a side-effect-free base can be safely duplicated for x^n -> x*x*... - names,
+  // literals, field/index reads, and arithmetic over those (so (a-b)^2 works).
+  // A call is NOT duplicable (could have side effects / be costly).
+  function isDuplicable(e) {
+    if (!e) return false;
+    switch (e.kind) {
+      case "name": case "number": return true;
+      case "member": return isDuplicable(e.object);
+      case "index": return isDuplicable(e.object) && isDuplicable(e.index);
+      case "binop": return isDuplicable(e.left) && isDuplicable(e.right);
+      case "neg": case "bnot": case "not": return isDuplicable(e.expr);
+      default: return false;
+    }
+  }
+
   function power() {
     const base = suffixed();
     if (at("^")) {
-      error("'^' (exponent) is not supported; multiply explicitly or use shifts");
-      next();
-      unary();
+      const caret = next();
+      const exp = unary();
+      // gtlua has no float pow; expand a CONSTANT small integer exponent into
+      // repeated multiplication (x^2 -> x*x). This is the only ^ real carts use
+      // (distance-squared, etc). Non-constant or big exponents stay an error.
+      if (exp.kind === "number" && exp.isInt && exp.value >= 1 && exp.value <= 8) {
+        if (!isDuplicable(base)) {
+          error("'^' needs a simple base (a variable or field) so it can expand to repeated multiplication; assign the base to a local first", caret);
+          return base;
+        }
+        let acc = base;
+        for (let k = 1; k < exp.value; k++) {
+          acc = { kind: "binop", op: "*", left: acc, right: base, line: caret.line, col: caret.col };
+        }
+        return acc;
+      }
+      error("'^' (exponent) supports only a constant integer power 1..8 (expands to repeated multiplication); multiply explicitly or use shifts", caret);
     }
     return base;
   }
