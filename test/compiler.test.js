@@ -143,6 +143,13 @@ test("bitwise function forms alias the operators (band/bor/shl/shr)", () => {
   assert.match(c, /gtl_a >> 1/);
 });
 
+test("sspr() emits gt_p8_sspr with dw/dh defaulting to 0 (= source size)", () => {
+  const c = cOf("function _update60()\nend\nfunction _draw()\n  cls()\n" +
+                "  sspr(80,8,8,8,50,9,16,16)\n  sspr(0,0,8,8,100,100)\nend\n");
+  assert.match(c, /gt_p8_sspr\(80, 8, 8, 8, 50, 9, 16, 16,/);   // scaled
+  assert.match(c, /gt_p8_sspr\(0, 0, 8, 8, 100, 100, 0, 0,/);   // unscaled (dw/dh 0)
+});
+
 test("map() draws the imported tilemap; mget() reads a cell", () => {
   const c = cOf("local __p8map = hexdata(\"01020304\")\nfunction _update60()\nend\n" +
                 "function _draw()\n  cls()\n  map(0, 0, 0, 0, 16, 4)\n  local t = mget(2, 0)\nend\n");

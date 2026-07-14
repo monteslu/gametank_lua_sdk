@@ -771,6 +771,157 @@ void gt_p8_map(unsigned char *map, int mapw,
     }
 }
 
+#ifdef GT_SSPR
+/* PICO-8 sspr(sx,sy,sw,sh, dx,dy,[dw,dh]): draw a sw x sh source rect from the
+ * sheet, scaled to dw x dh at (dx,dy). The GameTank blitter is strictly 1:1
+ * (no hardware scaling), so we scale in SOFTWARE - but "degraded" and CACHED:
+ *
+ *   1. round dw/sw and dh/sh to ONE nearest-integer scale S (1..4). Non-integer
+ *      stretches snap to the nearest clean multiple (fine for the UI/overlay
+ *      use these carts make of it).
+ *   2. cache key = (sx, sy, sw, sh, S). If already built, skip to the blit.
+ *   3. on a miss, CPU-write the S:1 nearest-neighbor expansion ONCE into a
+ *      reserved GRAM cache sheet (group SSPR_GROUP): each source pixel becomes
+ *      an SxS block. Source pixels come from gt_gsheet_ptr (the raw .gtg bytes;
+ *      only present in composing builds - the same dependency bg_compose has).
+ *   4. blit the cached scaled sprite to (dx,dy) as a normal 1:1 spr() - free.
+ *
+ * The cache means the per-pixel expansion runs once per (sprite,scale); every
+ * later draw is just a hardware blit. (Phase 2: the fill inner loop -> asm.) */
+#define SSPR_GROUP 4              /* a free 256x256 GRAM cache atlas (groups 0-3 used) */
+#define SSPR_SLOTS 8             /* distinct (sprite,scale) entries cached at once */
+struct sspr_ent { unsigned char sx, sy, sw, sh, s, gx, gy, used; };
+static struct sspr_ent sspr_cache[SSPR_SLOTS];
+static unsigned char sspr_next;  /* round-robin eviction cursor */
+
+/* nearest integer scale of dst/src, clamped 1..4 (0 dst -> 1) */
+static unsigned char sspr_scale(unsigned char src, int dst) {
+    int s;
+    if (dst <= 0 || src == 0) return 1;
+    s = (dst + (src >> 1)) / src;      /* round to nearest */
+    if (s < 1) s = 1;
+    if (s > 4) s = 4;
+    return (unsigned char)s;
+}
+
+/* find or build a cache slot for (sx,sy,sw,sh,S); returns its index */
+static unsigned char sspr_build(unsigned char sx, unsigned char sy,
+                                unsigned char sw, unsigned char sh, unsigned char s) {
+    unsigned char i, slot;
+    unsigned char dw = (unsigned char)(sw * s), dh = (unsigned char)(sh * s);
+    unsigned char row, col, k;
+    const unsigned char *src = gt_gsheet_ptr;
+
+    for (i = 0; i < SSPR_SLOTS; i++) {
+        struct sspr_ent *e = &sspr_cache[i];
+        if (e->used && e->sx == sx && e->sy == sy && e->sw == sw && e->sh == sh && e->s == s)
+            return i;
+    }
+    /* miss: claim the next slot (round-robin). Pack cells left-to-right, top-to-
+     * bottom in the 256x256 group as (col*.., row*..); a simple grid of up to
+     * 4 columns of 64px keeps 8 medium sprites without overlap. */
+    slot = sspr_next;
+    sspr_next = (unsigned char)((sspr_next + 1) & (SSPR_SLOTS - 1));
+    {
+        struct sspr_ent *e = &sspr_cache[slot];
+        e->sx = sx; e->sy = sy; e->sw = sw; e->sh = sh; e->s = s;
+        e->gx = (unsigned char)((slot & 3) * 64);
+        e->gy = (unsigned char)((slot >> 2) * 64);
+        e->used = 1;
+    }
+    if (!src) return slot;   /* non-composing build: no readable source, leave blank */
+
+    /* latch the cache group/quadrant for CPU GRAM writes (font_upload idiom) */
+    await_drawing();
+    flags_mirror = DMA_NMI | DMA_ENABLE | DMA_IRQ | DMA_GCARRY | frameflip;
+    *dma_flags = flags_mirror;
+    *bank_reg = bankflip | SSPR_GROUP | BANK_CLIP_X | BANK_CLIP_Y;
+    vram[GX] = (sspr_cache[slot].gx & 0x80) ? 0x80 : 0;
+    vram[GY] = (sspr_cache[slot].gy & 0x80) ? 0x80 : 0;
+    vram[VX] = 200; vram[VY] = 200;
+    vram[WIDTH] = 1; vram[HEIGHT] = 1;
+    gt_draw_busy = 1;
+    vram[START] = 1;
+    await_drawing();
+    flags_mirror = DMA_NMI | frameflip;      /* GRAM write mode */
+    *dma_flags = flags_mirror;
+
+    /* fill: each source pixel (sy+row, sx+col) -> an SxS block in the cache cell.
+     * dst byte address in the 128x128 quadrant = ((gy&0x7f)+dy)*128 + (gx&0x7f)+dx.
+     * HOT loop, cache-filled once (Phase 2 lowers this to asm). */
+    {
+        unsigned char gy0 = sspr_cache[slot].gy & 0x7f;
+        unsigned char gx0 = sspr_cache[slot].gx & 0x7f;
+        for (row = 0; row < sh; row++) {
+            const unsigned char *srow = src + (unsigned int)((sy + row) * 128 + sx);
+            unsigned int drow = ((unsigned int)(gy0 + row * s) << 7) + gx0;
+            /* build one expanded row: each src byte written s times across */
+            unsigned int di = drow;
+            for (col = 0; col < sw; col++) {
+                unsigned char b = srow[col];
+                for (k = 0; k < s; k++) vram[di++] = b;
+            }
+            /* duplicate that row down s-1 more times (128-stride copy) */
+            for (k = 1; k < s; k++) {
+                unsigned int di2 = drow + ((unsigned int)k << 7);
+                unsigned char x2;
+                for (x2 = 0; x2 < dw; x2++) vram[di2 + x2] = vram[drow + x2];
+            }
+        }
+    }
+    (void)dh;
+    bg_pipeline_restore();
+    return slot;
+}
+
+void gt_p8_sspr(int sx, int sy, int sw, int sh, int dx, int dy, int dw, int dh, int flip) {
+    unsigned char s, slot;
+    if (sw <= 0 || sh <= 0) return;
+    if (dw <= 0) dw = sw;
+    if (dh <= 0) dh = sh;
+    /* one integer scale for both axes: nearest of the two (degraded - keeps the
+     * cache small; real carts use a uniform 2x/3x/4x anyway) */
+    s = sspr_scale((unsigned char)sw, dw);
+    { unsigned char sy2 = sspr_scale((unsigned char)sh, dh);
+      if (sy2 > s) s = sy2; }
+    if (s == 1) {
+        /* unscaled: a plain arbitrary-rect blit straight from the sheet at pixel
+         * (sx,sy) - no cache needed. GX/GY are pixel coords in the sheet quadrant. */
+        unsigned char w = (unsigned char)sw, h = (unsigned char)sh;
+        if (dx <= -(int)w || dx > 127 || dy <= -(int)h || dy > 127) return;
+        gt_ent[0] = QF_SPR;
+        gt_ent[1] = (unsigned char)dx;
+        gt_ent[2] = (unsigned char)dy;
+        gt_ent[3] = (unsigned char)sx;
+        gt_ent[4] = (unsigned char)sy;
+        gt_ent[5] = (unsigned char)(w | ((flip & 1) ? 0x80 : 0));
+        gt_ent[6] = (unsigned char)(h | ((flip & 2) ? 0x80 : 0));
+        gt_ent[7] = gt_qbank;            /* the current sheet group */
+        gt_draw_mode = MODE_NONE;
+        gt_q_push();
+        return;
+    }
+    slot = sspr_build((unsigned char)sx, (unsigned char)sy,
+                      (unsigned char)sw, (unsigned char)sh, s);
+    /* blit the cached scaled cell (group SSPR_GROUP) to (dx,dy) */
+    {
+        struct sspr_ent *e = &sspr_cache[slot];
+        unsigned char w = (unsigned char)(sw * s), h = (unsigned char)(sh * s);
+        if (dx <= -(int)w || dx > 127 || dy <= -(int)h || dy > 127) return;
+        gt_ent[0] = QF_SPR;
+        gt_ent[1] = (unsigned char)dx;
+        gt_ent[2] = (unsigned char)dy;
+        gt_ent[3] = e->gx;
+        gt_ent[4] = e->gy;
+        gt_ent[5] = (unsigned char)(w | ((flip & 1) ? 0x80 : 0));
+        gt_ent[6] = (unsigned char)(h | ((flip & 2) ? 0x80 : 0));
+        gt_ent[7] = (unsigned char)(bankflip | SSPR_GROUP | BANK_CLIP_X | BANK_CLIP_Y);
+        gt_draw_mode = MODE_NONE;
+        gt_q_push();
+    }
+}
+#endif /* GT_SSPR */
+
 /* current fill color for the argless draw-core hot path (staging out, no
  * cc65 arg-push). Set by callers before box_raw/hspan_raw/fill_clipped_z. */
 static unsigned char fc_col;

@@ -1080,6 +1080,18 @@ export function emit(chunk, symbols, file, opts = {}) {
         // mget(x,y) -> the tile index at map cell (x,y) in the 128-wide array
         return `gtl___p8map[(${argAt(e, 1, "int", "0")}) * 128 + (${argAt(e, 0, "int", "0")})]`;
       }
+      case "sspr": {
+        // sspr(sx,sy,sw,sh, dx,dy, [dw,dh], [flipx,flipy]) -> gt_p8_sspr.
+        // dw/dh default to 0 (the C fn reads that as "= sw/sh"); flips pack into
+        // one arg (bit0=X, bit1=Y).
+        const sxv = argAt(e, 0, "int", "0"), syv = argAt(e, 1, "int", "0");
+        const swv = argAt(e, 2, "int", "8"), shv = argAt(e, 3, "int", "8");
+        const dxv = argAt(e, 4, "int", "0"), dyv = argAt(e, 5, "int", "0");
+        const dwv = argAt(e, 6, "int", "0"), dhv = argAt(e, 7, "int", "0");
+        const fx = e.args[8] ? `((${argAt(e, 8, "int", "0")}) ? 1 : 0)` : "0";
+        const fy = e.args[9] ? `((${argAt(e, 9, "int", "0")}) ? 2 : 0)` : "0";
+        return `gt_p8_sspr(${sxv}, ${syv}, ${swv}, ${shv}, ${dxv}, ${dyv}, ${dwv}, ${dhv}, ${fx} | ${fy})`;
+      }
       default: return "0";
     }
   }

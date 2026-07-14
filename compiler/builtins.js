@@ -34,6 +34,12 @@ export const BUILTINS = {
   // optional in PICO-8 (default 0,0,0,0,128,32-ish); we require none.
   map:      { params: [["int", true], ["int", true], ["coord", true], ["coord", true], ["int", true], ["int", true]], ret: "void", special: "map" },
   mget:     { params: [["int", false], ["int", false]], ret: "int", special: "mget" },
+  // PICO-8 sspr(sx,sy,sw,sh, dx,dy, [dw,dh], [flip_x,flip_y]): scaled sheet blit.
+  // dw/dh default to sw/sh (unscaled). Software nearest-neighbor, rounded to an
+  // integer scale and cached in GRAM (see gt_p8_sspr). flips pack into one arg.
+  sspr:     { params: [["int", false], ["int", false], ["int", false], ["int", false],
+                       ["coord", false], ["coord", false], ["int", true], ["int", true],
+                       ["flip", true], ["flip", true]], ret: "void", special: "sspr" },
 
   // ---- input ---------------------------------------------------------------
   btn:      { params: [["int", false], ["int", true]], ret: "bool", c: "gt_p8_btn" },

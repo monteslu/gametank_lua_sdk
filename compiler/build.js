@@ -700,6 +700,7 @@ export async function build(entry, opts, env) {
     ...(result.c.includes("gt_drift") || result.c.includes("gt_chain") ? ["-DGT_FLAKES"] : []),
     ...(result.c.includes("gt_canvas_view(") ? ["-DGT_CANVAS"] : []),
     ...(result.c.includes("gt_tiles_draw") ? ["-DGT_TILES"] : []),
+    ...(result.c.includes("gt_p8_sspr") ? ["-DGT_SSPR"] : []),
     ...((result.c.includes("gt_phys_step") || result.c.includes("gt_phys_drag") || result.c.includes("gt_phys_draw") || result.c.includes("gt_phys_bounds") || result.c.includes("gt_phys_sprite") || result.c.includes("gt_parts_step")) ? ["-DGT_BALLS"] : []),
     ...((result.c.includes("gt_pool_move") || result.c.includes("gt_pool_decay") || result.c.includes("gt_pool_anim") || result.c.includes("gt_pool_edraw") || result.c.includes("gt_pool_sprs")) ? ["-DGT_POOLMV"] : []),
     // gt_track_props lives in gt_api.c behind GT_CHUNKS (shares the chunk decode);
