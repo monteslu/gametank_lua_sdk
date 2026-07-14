@@ -59,11 +59,18 @@ Under the hood the compiler still infers narrow u8/i16 types where values
 provably stay integral (the 6502 needs that for speed) - inference is an
 optimization, never a semantic change.
 
-### Keep from stock-Lua-via-PICO-8 (already planned, priority confirmed)
+### Keep from stock-Lua-via-PICO-8 (already planned)
 
-Multiple assignment/returns (`x,y = 64,32`), numeric `for` with fractional and
-negative steps (exact 16.16 step accumulation), floored `%`, paren-less calls
-(`sfx"3"`, `print"hi"` - trivial grammar, heavily used).
+| Feature | Status |
+|---|---|
+| multiple **assignment** `x,y = 64,32` (swap-safe, RHS evaluated first) | ✅ v0.2 |
+| numeric `for` with fractional and negative steps (exact 16.16 accumulation) | ✅ |
+| floored `%` | ✅ |
+| paren-less calls `sfx"3"`, `add(p,{..})` (trivial grammar, heavily used) | ✅ v0.2.6 |
+| long strings `[[ ... ]]` and `[=[ ]=]` (level grids, credits) | ✅ v0.2.6 |
+| raw P8SCII button bytes (0x83..0x97) alongside the UTF-8 glyphs | ✅ v0.2.6 |
+| multiple **return** values `x,y = f()` | 🔵 v0.5 (needs multi-value ABI) |
+| `print(str)` cursor form / `?expr` shorthand | 🔵 v0.5 (needs a runtime text cursor) |
 
 ### Stays cut (compiled subset) - with the P8-dev-facing story
 
@@ -71,6 +78,7 @@ negative steps (exact 16.16 step accumulation), floored `%`, paren-less calls
 |---|---|---|
 | `x = x or default` (nil idiom) | cut - no nil | declare with an initial value; `and/or` value-selection on non-bools is rejected |
 | closures / `function` values in tables | cut | named functions + `e.kind` tag fields (the *other* common P8 pattern) |
+| array `{1,2,3}` / computed-key `{[k]=v}` / nested `{{..},{..}}` tables | cut - structs only | one clear error, no cascade; `array(n)`/`array8(n)` for indexed data, structs for entities |
 | metatables / OOP `__index` | cut | structs (tables with fixed fields) cover the common case |
 | coroutines | cut | state-machine field + `if/elseif` (the compiled idiom for cutscenes) |
 | `goto` (tweetcart loop) | cut | `_draw()` is the loop; not needed outside golf |

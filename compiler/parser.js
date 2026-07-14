@@ -98,7 +98,12 @@ export function parse(tokens, file) {
             !at("end") && !at("eof") && !at("else") && !at("elseif") && !at("until") && !isStatementStart(peek()))) {
           if (!at("end") && !at("eof") && !at("else") && !at("elseif") && !at("until")) {
             value = expression();
-            if (at(",")) error("multiple return values are not supported yet");
+            if (at(",")) {
+              error("multiple return values are not supported yet");
+              // consume the extra values so the trailing commas/exprs don't
+              // cascade into "unexpected ','" + "expected a statement"
+              while (at(",")) { next(); expression(); }
+            }
           }
         }
         return { kind: "return", value, line: tok.line, col: tok.col };
@@ -112,8 +117,21 @@ export function parse(tokens, file) {
       }
       case "goto":
         error("goto is not supported (the runtime owns the main loop; use _draw())");
-        sync(["end", "eof"]);
+        // consume the target label name so it doesn't read as a bare statement
+        next();
+        if (at("name")) next();
         return null;
+      case ":":
+        // a `::label::` goto-label (lexed as : : name : :). goto is cut, so the
+        // label is dead - skip it quietly to the closing `::` (no cascade).
+        if (peek(1).type === ":") {
+          next(); next();               // opening ::
+          if (at("name")) next();       // label name
+          if (at(":")) next();          // closing ::
+          if (at(":")) next();
+          return null;
+        }
+        return exprStatement();   // a lone ':' - let exprStatement report it
       default:
         return exprStatement();
     }

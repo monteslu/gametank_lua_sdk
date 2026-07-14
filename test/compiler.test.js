@@ -380,3 +380,22 @@ for (const [name, src, re] of CASES) {
       `expected an error matching ${re}\ngot:\n  ${errs.join("\n  ") || "(none)"}`);
   });
 }
+
+// ---- non-cascading recovery: a cut feature = ONE error, not a spray ---------
+// The whole point of the recovery work: importing a PICO-8 cart should surface
+// each unsupported construct once, with its fix-it, instead of derailing the
+// parser into dozens of downstream noise errors.
+const RECOVERY = [
+  ["multiple return", "function f()\n  return 1, 2, 3\nend\n" + LOOP, /multiple return values/],
+  ["goto label ::continue::", LOOP + "function f()\n  ::continue::\n  goto continue\nend\n", /goto is not supported/],
+  ["array table then more code",
+    LOOP + "local a = 0\nlocal b = 0\nfunction f()\n  a = {1,2,3}\n  b = 7\nend\n", /array-style tables/],
+];
+for (const [name, src, re] of RECOVERY) {
+  test(`recovery: ${name} yields few errors`, () => {
+    const errs = errorsOf(src);
+    assert.ok(errs.some((m) => re.test(m)), `expected ${re}\ngot:\n  ${errs.join("\n  ")}`);
+    // the cut feature must not cascade: at most 2 errors total for these snippets
+    assert.ok(errs.length <= 2, `expected <=2 errors (no cascade), got ${errs.length}:\n  ${errs.join("\n  ")}`);
+  });
+}

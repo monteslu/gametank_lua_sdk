@@ -98,10 +98,12 @@ exactly like a PICO-8 game that can't hold its target rate.
 | `a != b` | ✅ | alias of `~=` |
 | `if (c) stmt else stmt` | ✅ | one-line if / while, parens required |
 | `+= -= *= \= %=` | ✅ | LHS evaluated **once** (P8 does it twice) |
-| `x,y = 64,32` | ✅ | multiple assignment / return |
+| `x,y = 64,32` | ✅ | multiple **assignment** (swap-safe, RHS first) |
+| `x,y = f()` | 🔵 | multiple **return** values - v0.5 |
 | `for i=1,10,2` | ✅ | fractional & negative steps ok |
-| `sfx"3"  print"hi"` | ✅ | paren-less string calls |
-| `🅾️ ❎ ⬅️ ➡️ ⬆️ ⬇️` | ✅ | glyphs → constants 0–5 |
+| `sfx"3"  add(p,{..})` | ✅ | paren-less string / table calls |
+| `[[ long string ]]` | ✅ | multi-line string (level grids, credits) |
+| `🅾️ ❎ ⬅️ ➡️ ⬆️ ⬇️` | ✅ | glyphs → constants 0–5 (raw P8SCII bytes too) |
 
 ## Number model
 
@@ -179,6 +181,15 @@ redraw-tinted path.
 | `del(ps,e)` | ✅ | delete-while-iterating ok |
 | `for e in all(ps) do` | ✅ | insertion order |
 | `array(n)` / `array8(n)` | 🟡➕ | fixed / byte-wide arrays |
+| `{x=1, y=2}` (struct) | ✅ | tables are structs: fixed **named** fields |
+| `{1,2,3}` / `{[k]=v}` | ❌ | array / map tables - one clear error, no cascade |
+
+**Tables are structs, not arrays or maps.** A table is a fixed set of named
+byte/word fields (`{x=1, y=2}`); there is no array-style `{1,2,3}`, no
+computed-key `{[k]=v}`, and no table-of-tables `{{..},{..}}` - those are a
+dynamic data model the compiled runtime has no representation for. Each gets one
+clear compile error (not a cascade). Use `array(n)`/`array8(n)` for indexed
+numeric data, and a `pool` of structs for entities.
 
 **Cut (compiled subset):** nil / `x or default`, closures, metatables/OOP,
 coroutines. Use named functions + a `kind` field + `if/elseif` state machines -
@@ -201,9 +212,10 @@ Zero-authoring built-ins: `sfx(0)`=jump, 1=pickup, 2=shoot, 3=explode, 4=blip,
 
 | Call | | Notes |
 |---|:--:|---|
-| `print(str,[x,y],[c])` | ✅ | returns right-edge x (4×6 font) |
-| `?expr` | ✅ | print shorthand |
-| `s = "hello"` | ✅ | string literals |
+| `print(str,x,y,[c])` | ✅ | x,y **required** (4×6 font); returns right-edge x |
+| `print(str)` | 🔵 | cursor form (auto x,y advance) - v0.5, needs runtime cursor |
+| `?expr` | 🔵 | print shorthand - lands with the cursor form |
+| `s = "hello"` | ✅ | string literals (short and `[[ long ]]`) |
 | `s .. s2` | 🔵 | runtime concat - v0.5 |
 | `sub tostr tonum chr ord split` | 🔵 | v0.5 |
 
