@@ -81,6 +81,7 @@ constants 0–5 in source.
 | `_update()` | ✅ | logic @ 30 fps (every 2nd vsync) - **the default; prefer this** |
 | `_update60()` | ✅ | logic @ 60 fps (per vsync) - light carts only |
 | `_draw()` | ✅ | 1× per visible frame |
+| `run()` / `reset()` | ✅ | restart from **power-on** (full crt0 reset - restores all initializers, re-enters the program; not just `_init()`) |
 
 No cartridge loop / `goto` tweetcart form - `_draw()` **is** the loop. Same
 fixed-timestep model as PICO-8 (no `dt`; move by a constant per frame). Unlike
@@ -99,10 +100,12 @@ exactly like a PICO-8 game that can't hold its target rate.
 | `if (c) stmt else stmt` | ✅ | one-line if / while, parens required |
 | `+= -= *= \= %=` | ✅ | LHS evaluated **once** (P8 does it twice) |
 | `x,y = 64,32` | ✅ | multiple **assignment** (swap-safe, RHS first) |
-| `x,y = f()` | 🔵 | multiple **return** values - v0.5 |
+| `x,y = f()` | ✅ | multiple **return** values; `o.x,o.y = a,b` multi-member too |
 | `for i=1,10,2` | ✅ | fractional & negative steps ok |
+| `if c do .. end` | ✅ | accepted as `if c then` (minifier form) |
 | `sfx"3"  add(p,{..})` | ✅ | paren-less string / table calls |
-| `[[ long string ]]` | ✅ | multi-line string (level grids, credits) |
+| `[[ long string ]]` | ✅ | multi-line string `[[..]]` / `[=[..]=]` (level grids, credits) |
+| `"a \"q\" \n"` | ✅ | backslash string escapes (`\"` `\\` `\n`) lex correctly |
 | `🅾️ ❎ ⬅️ ➡️ ⬆️ ⬇️` | ✅ | glyphs → constants 0–5 (raw P8SCII bytes too) |
 
 ## Number model
@@ -128,6 +131,7 @@ free (Lexaloffle designed it for exactly this class of machine).
 |---|:--:|---|
 | `cls([c])` | ✅ | blitter full-screen fill |
 | `spr(n,x,y,[w,h],[fx,fy])` | ✅ | 8×8 cell 0–255; flips are hardware |
+| `sprf(frame,x,y,[fx,fy])` | ✅➕ | named `.gsi` frame (any size/offset) - no P8 equivalent |
 | `rectfill / rect(x0,y0,x1,y1,c)` | ✅ | inclusive corners (P8 gotcha kept) |
 | `circfill / circ(x,y,r,c)` | ✅ | blitter row-run fills |
 | `line(x0,y0,x1,y1,c)` | ✅ | CPU Bresenham |
@@ -135,7 +139,7 @@ free (Lexaloffle designed it for exactly this class of machine).
 | `sset(x,y,c)` | ✅ | write a sheet pixel (bake sprites) |
 | `camera([x,y])` | ✅ | sticky draw offset |
 | `color(c)` | ✅ | |
-| `sspr(...)` | 🟡 | unscaled rect blit works; **scaled = compile error** |
+| `sspr(sx,sy,sw,sh,dx,dy,[dw,dh],[fx,fy])` | 🟡 | unscaled = 1:1 rect blit; scaled = **software integer nearest-neighbor** (rounds to one factor 1..4), not arbitrary scale |
 | `clip(x,y,w,h)` | 🔵 | screen-edge only today; software-clip v0.3+ |
 | `fillp`, `tline` | ❌ | deferred indefinitely |
 
@@ -169,8 +173,10 @@ redraw-tinted path.
 | `min max(x,y)` · `mid(x,y,z)` | ✅ | |
 | `sin cos(x)` · `atan2(dx,dy)` | ✅ | 256-entry ROM turn table |
 | `rnd(x)` · `srand(x)` | ✅ | 16-bit xorshift; `flr(rnd(n))` exact |
+| `rnd({a,b,c})` | 🟡 | pick a random element - **constant** number list only |
 | `t()` · `time()` | ✅ | frames÷60 as fixed seconds |
-| bitwise `& \| ^^ << >>` … | ✅ | as operators (band/bor/… names → ops) |
+| bitwise `& \| ^^ << >>` … | ✅ | as operators (band/bor/bxor/bnot/shl/shr/lshr names → ops) |
+| `x^n` | 🟡 | **constant** integer power 1..8 → `x*x*…`; no float `pow` |
 
 ## Tables & entities
 
@@ -226,14 +232,16 @@ fast path); no runtime string building yet.
 
 | Call | | Notes |
 |---|:--:|---|
-| `map(tx,ty,sx,sy,tw,th,[lyr])` | 🔵 | v0.4 |
-| `mget / mset(x,y,[v])` | 🔵 | v0.4 |
+| `map(cx,cy,sx,sy,cw,ch)` | 🟡 | draws a `cw×ch` block of the imported `__map__` as `spr()` cells; **tile 0 skipped** (P8 semantics); args optional |
+| `mget(cx,cy)` | ✅ | tile index at map cell `(cx,cy)` |
+| `mset(x,y,[v])` | 🔵 | v0.4 (map is read-only ROM today) |
 | `fget / fset(n,[f],[v])` | 🔵 | tile flags - v0.4 |
 
-**gt has it a different way today:** `gt.bg_compose` pre-paints a tilemap into a
-spare GRAM page once, then `gt.bg_draw` blits the whole page per frame - the
-shipped tilemap path. Ports drive scrolling worlds with `gt.chunks_draw` asm
-engines.
+`map()` is a software `spr()` loop (neither machine has tilemap hardware), the
+same as PICO-8. **For fast scrolling worlds, gt also has it a different way:**
+`gt.bg_compose` pre-paints a tilemap into a spare GRAM page once, then
+`gt.bg_draw` blits the whole page per frame; ports drive big worlds with
+`gt.chunks_draw` asm engines.
 
 ## Cartridge data / save
 

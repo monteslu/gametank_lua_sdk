@@ -33,7 +33,7 @@ no-interpreter model allow, and fails loudly with a fix-it wherever they don't.
 | `!=` | exact alias of `~=` |
 | One-line `if`/`while` shorthand | `if (cond) stmt [else stmt]`, `while (cond) stmt` - parens required, newline ends the body, no `elseif`. The single most common P8 idiom (`if (btn(0)) x-=1`). Implement as grammar, not a text preprocessor - sane subset only. |
 | Compound assignment | full set as operators land: `+= -= *= \= %= ..=` (have `+= -= *=` ⚠ `//=`→`\=`). Evaluate the LHS **once** (documented improvement over P8's evaluate-twice text expansion). |
-| Number literals | hex `0x11.4` fractions and binary `0b101.1` when fixed-point lands; no exponent notation |
+| Number literals | hex `0x11.4` fractions and binary `0b101.1` when fixed-point lands. `x^n` works for a **constant integer power 1..8** (expands to `x*x*…`; the base must be side-effect-free, e.g. `(a-b)^2`) - a non-constant or out-of-range power still errors (there's no float `pow`) |
 | `?` print shorthand | `?expr,...` = `print(expr,...)` - when `print` exists |
 | Button glyphs | accept `⬅️ ➡️ ⬆️ ⬇️ 🅾️ ❎` in source as constants 0–5 (carts are full of them) |
 
@@ -69,7 +69,9 @@ optimization, never a semantic change.
 | paren-less calls `sfx"3"`, `add(p,{..})` (trivial grammar, heavily used) | ✅ v0.2.6 |
 | long strings `[[ ... ]]` and `[=[ ]=]` (level grids, credits) | ✅ v0.2.6 |
 | raw P8SCII button bytes (0x83..0x97) alongside the UTF-8 glyphs | ✅ v0.2.6 |
-| multiple **return** values `x,y = f()` | 🔵 v0.5 (needs multi-value ABI) |
+| multiple **return** values `x,y = f()`; multi-member assign `o.x,o.y = a,b` | ✅ v0.2.6 |
+| `rnd({a,b,c})` picks a random element (constant number list) | ✅ v0.2.6 |
+| string `\` escapes (`\"` `\\` `\n`) and `if cond do … end` (minifier form of `then`) | ✅ v0.2.6 |
 | `print(str)` cursor form / `?expr` shorthand | 🔵 v0.5 (needs a runtime text cursor) |
 
 ### Stays cut (compiled subset) - with the P8-dev-facing story

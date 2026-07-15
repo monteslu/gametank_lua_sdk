@@ -63,6 +63,11 @@ that number until it feels right.
 > `_update60` and can't keep up, it runs in **slow motion** - so only reach for
 > 60 on small, simple games.
 
+Call `run()` (or its alias `reset()`) to restart the cart from **power-on** -
+a full crt0 reset that restores every top-level initializer, zeroes memory, and
+re-enters the program. It's a true reset, not just re-calling `_init()`, so it
+never returns.
+
 ---
 
 ## Controllers
@@ -131,6 +136,8 @@ gt.border(1)             -- overscan border color
 |---|---|
 | `cls([c])` | clear screen (blitter fill), default color 0 |
 | `spr(n, x, y, [w, h], [fx, fy])` | sheet cell `n` (0-255); `w×h` cells; `fx/fy` = hardware flip |
+| `sprf(frame, x, y, [fx, fy])` | draw a **named frame** from the `.gsi` frame table (any size/offset) - vs `spr`'s fixed 8×8 grid |
+| `sspr(sx,sy,sw,sh, dx,dy, [dw,dh], [fx,fy])` | source-rect blit from the sheet; `dw/dh` default to `sw/sh` (unscaled 1:1). Scaled = **software integer nearest-neighbor** (rounds to one factor 1..4), not arbitrary |
 | `rect(x0,y0,x1,y1,c)` / `rectfill(...)` | box outline / filled - **corners inclusive** |
 | `circ(x,y,r,c)` / `circfill(...)` | circle outline / filled |
 | `line(x0,y0,x1,y1,c)` | line (CPU Bresenham) |
@@ -204,6 +211,12 @@ local r = flr(rnd(6))               -- integer 0..5, exact
 ```
 
 Bitwise ops are operators: `& | ^^ << >> >>>` (`>>` arithmetic, `>>>` logical).
+The PICO-8 **function** spellings also work and compile to the same operators
+(zero cost): `band bor bxor bnot` → `& | ^^ ~`, `shl shr lshr` → `<< >> >>>`.
+
+`x^n` raises to a **constant integer power 1..8** (expands to `x*x*…`; the base
+must be side-effect-free). There's no float `pow` - anything else errors.
+`rnd({a, b, c})` picks a random element of a constant number list.
 
 ---
 
@@ -217,13 +230,17 @@ while (n > 0) n -= 1                  -- one-line while
 x += 1   y -= 2   hp *= 2   n %= 8    -- LHS evaluated once
 a, b = b, a                          -- multiple assignment / swap
 x, y = spawn()                       -- multiple return
+o.x, o.y = a, b                      -- multi-member assign
 
 for i = 1, 10 do ... end             -- fractional & negative steps ok
 for i = 10, 1, -1 do ... end
+if cond do ... end                   -- accepted as `if cond then` (minifier form)
 
 a != b        -- same as a ~= b
 a \ b         -- floored int divide flr(a/b) - use a power-of-two divisor
-sfx"3"  print"hi"                    -- paren-less string calls
+sfx"3"  print"hi"  add(p,{..})       -- paren-less string / table calls
+s = [[ long string ]]                -- long strings [[..]] / [=[..]=]
+"a \"quote\" and \n"                 -- backslash escapes lex correctly
 // a line comment                    -- (as well as Lua's --)
 ```
 
@@ -323,6 +340,23 @@ The **blitter** is a hardware rectangle/sprite copier. `cls`, `spr`,
 `rect/circ fill`, and every `gt.*` draw engine feed it. It can only write to the
 framebuffer, so static backgrounds are pre-painted into spare video RAM once
 (`gt.bg_*`) and blitted back whole each frame.
+
+---
+
+## Map / tiles
+
+An imported tilemap (`__map__`, a byte array of tile indices) draws through two
+PICO-8-style calls - a plain `spr()` loop, the same as PICO-8 (neither machine
+has tilemap hardware):
+
+| Call | Draws |
+|---|---|
+| `map(cx, cy, sx, sy, cw, ch)` | draw a `cw×ch` block of the map from cell `(cx,cy)` to screen `(sx,sy)`; one 8×8 sheet sprite per **non-zero** tile (**tile 0 is skipped**, PICO-8 semantics). All args optional |
+| `mget(cx, cy)` | the tile index at map cell `(cx, cy)` |
+
+> For scrolling worlds, the `gt.bg_*` / `gt.chunks_draw` asm engines are the
+> fast path - they pre-paint a whole page and blit it in one go. `map()` is the
+> straightforward per-tile draw.
 
 ---
 
