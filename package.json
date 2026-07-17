@@ -20,9 +20,9 @@
     "node": ">=24"
   },
   "dependencies": {
-    "romdev-toolchain-cc65": "0.1.3",
+    "luacretro": "^0.0.1",
     "romdev-core-gametank": "0.3.0",
-    "luacretro": "github:monteslu/luacretro"
+    "romdev-toolchain-cc65": "0.1.3"
   },
   "optionalDependencies": {
     "@kmamal/sdl": "^0.11.13"
