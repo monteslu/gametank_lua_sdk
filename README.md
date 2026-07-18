@@ -6,10 +6,11 @@ Make games for the [**GameTank**](https://gametank.zone/) - Clyde Shaffer's open
 8-bit console (65C02 CPU, hardware blitter, a 128×128 screen) - by writing Lua
 instead of 6502 assembly or C.
 
-Write games in a **PICO-8-flavored Lua** dialect. The SDK compiles it to C,
-builds it with cc65 against a bundled GameTank runtime, and produces a `.gtr`
-cartridge (a flat 32 KB EEPROM, or a 2 MB FLASH2M banked cart for bigger games -
-chosen automatically) that runs in the
+Write games in a **PICO-8-flavored Lua** dialect. The SDK **ahead-of-time
+compiles** your Lua to C, builds it with cc65 against a bundled GameTank runtime,
+and produces a `.gtr` cartridge (a flat 32 KB EEPROM, or a 2 MB FLASH2M banked
+cart for bigger games - chosen automatically). No interpreter, no VM: your Lua
+becomes native 65C02 machine code, so the cartridge runs at full speed in the
 [emulator](https://github.com/clydeshaffer/GameTankEmulator), on
 [gametank.zone](https://gametank.zone/), and on real hardware via
 [GTFO](https://github.com/clydeshaffer/gtfo).
