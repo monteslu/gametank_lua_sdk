@@ -28,5 +28,38 @@
   "scripts": {
     "test": "node --test 'test/**/*.test.js'",
     "bench": "node bench/run.mjs"
+  },
+  "description": "Write GameTank games in a PICO-8-flavored Lua that ahead-of-time compiles to native 65C02. Bundled cc65 WASM toolchain + emulator, .gtr cartridges, no native tools.",
+  "keywords": [
+    "lua",
+    "pico-8",
+    "pico8",
+    "gamedev",
+    "game-development",
+    "retro",
+    "retrogaming",
+    "homebrew",
+    "rom",
+    "wasm",
+    "webassembly",
+    "ahead-of-time",
+    "aot",
+    "gametank",
+    "6502",
+    "65c02",
+    "cc65",
+    "fantasy-console",
+    "8-bit",
+    "cartridge",
+    "gtr",
+    "blitter"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/monteslu/gametank_lua_sdk.git"
+  },
+  "homepage": "https://github.com/monteslu/gametank_lua_sdk#readme",
+  "bugs": {
+    "url": "https://github.com/monteslu/gametank_lua_sdk/issues"
   }
 }
