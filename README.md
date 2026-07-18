@@ -1,5 +1,7 @@
 # GameTank Lua SDK
 
+[![npm version](https://img.shields.io/npm/v/gtlua.svg)](https://www.npmjs.com/package/gtlua) [![npm downloads](https://img.shields.io/npm/dm/gtlua.svg)](https://www.npmjs.com/package/gtlua)
+
 Make games for the [**GameTank**](https://gametank.zone/) - Clyde Shaffer's open
 8-bit console (65C02 CPU, hardware blitter, a 128×128 screen) - by writing Lua
 instead of 6502 assembly or C.
