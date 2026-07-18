@@ -46,7 +46,7 @@ node bin/gtlua.js run examples/hello/main.lua
 ```
 
 <p align="center">
-  <img src="docs/img/hello.png" width="384" alt="hello gametank: a yellow smiley face on a dark blue screen">
+  <img src="https://raw.githubusercontent.com/monteslu/gametank_lua_sdk/main/docs/img/hello.png" width="384" alt="hello gametank: a yellow smiley face on a dark blue screen">
 </p>
 
 Or compile it to a `.gtr` cartridge (to run in an emulator or flash to hardware):
