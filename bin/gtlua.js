@@ -25,6 +25,21 @@ import { build } from "../compiler/build.js";
 const REPO = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const SDK = path.join(REPO, "sdk");
 
+// Locate the romdev-toolchain-cc65 package dir via Node module resolution, so it
+// works whether npm nested it under this SDK or HOISTED it to the consumer's
+// top-level node_modules (the flattened-install case a REPO-relative path
+// misses). Falls back to the REPO-local path for a source checkout.
+function cc65PackageDir() {
+  try {
+    // The package's exports map exposes "./wasm/*" but NOT "./package.json", so
+    // resolve a known exported file and walk up to the package root (…/wasm/x).
+    const wasmGlue = fileURLToPath(import.meta.resolve("romdev-toolchain-cc65/wasm/cc65.js"));
+    return path.dirname(path.dirname(wasmGlue));   // …/romdev-toolchain-cc65
+  } catch {
+    return path.join(REPO, "node_modules", "romdev-toolchain-cc65");
+  }
+}
+
 function fail(msg) {
   console.error(msg);
   process.exit(1);
@@ -54,7 +69,7 @@ function nativeToolchain(home) {
 // each). lib/asminc still resolve out of the installed package's share tree for
 // callers that read tc.lib / tc.asminc directly.
 function wasmToolchain() {
-  const share = path.join(REPO, "node_modules", "romdev-toolchain-cc65", "share", "cc65");
+  const share = path.join(cc65PackageDir(), "share", "cc65");
   return {
     kind: "wasm",
     cc65: ["cc65"], ca65: ["ca65"], ld65: ["ld65"],   // tool name; execTool routes by kind
@@ -64,7 +79,7 @@ function wasmToolchain() {
 }
 
 function wasmToolchainInstalled() {
-  return existsSync(path.join(REPO, "node_modules", "romdev-toolchain-cc65", "wasm", "cc65.js"));
+  return existsSync(path.join(cc65PackageDir(), "wasm", "cc65.js"));
 }
 
 // Selection order (first hit wins), with explicit override via GTLUA_TOOLCHAIN:
