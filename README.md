@@ -70,8 +70,11 @@ PICO-8-style indices `0-15` (`0` black, `1` dark-blue, `10` yellow, `14` pink);
   want the source-clone path - the SDK uses it automatically when present. See
   "Build backends" below.)
 
-`gtlua run` opens a window via the optional `@kmamal/sdl` dependency (pulled by
-`npm install`, prebuilt for the common platforms). On a headless box or an
+`gtlua run` opens a window through
+[`romdev-core-runner`](https://www.npmjs.com/package/romdev-core-runner) - the
+one SDL host shared across the whole SDK family and the romdev playtest tool.
+The window needs `@kmamal/sdl`, an *optional* dependency of the runner (pulled
+by `npm install`, prebuilt for the common platforms). On a headless box or an
 unsupported platform it falls back to an external GameTank emulator; `gtlua
 build` never needs it.
 
