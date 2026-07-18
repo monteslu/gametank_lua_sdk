@@ -1,12 +1,12 @@
 ; gt_math_stubs.s - FLASH2M fixed-bank far-call stubs for the cold gt_math unit.
 ;
-; The banked build exiles gt_math.c (gt_fsin/gt_fcos/gt_fatan2/gt_p8_rnd/
-; gt_p8_srand/gt_p8_time/gt_time_tick + the 1 KB sine table) out of the
+; The banked build exiles gt_math.c (gt_fsin/gt_fcos/gt_fatan2/gt_rnd/
+; gt_srand/gt_time/gt_time_tick + the 1 KB sine table) out of the
 ; always-mapped FIXED bank into game bank 1 ($8000-$BFFF), reclaiming ~2.2 KB
 ; the quarter-square multiply tables need. These stubs live in the FIXED bank
 ; and own the plain public symbol names, so every caller - game code in any
 ; bank AND fixed-bank SDK code (gt_api's gt_endframe -> gt_time_tick,
-; gt_starfield_init -> gt_p8_rnd) - links to the stub transparently. Each stub
+; gt_starfield_init -> gt_rnd) - links to the stub transparently. Each stub
 ; switches to bank 1, jsr's the real _impl function, restores the caller's
 ; bank, and returns.
 ;
@@ -24,9 +24,9 @@
 .PC02
 .import gt_bank_raw, gt_cur_bank
 .import _gt_fsin_impl, _gt_fcos_impl, _gt_fatan2_impl
-.import _gt_p8_rnd_impl, _gt_p8_rnd_int_impl, _gt_p8_srand_impl, _gt_p8_time_impl, _gt_time_tick_impl
+.import _gt_rnd_impl, _gt_rnd_int_impl, _gt_srand_impl, _gt_time_impl, _gt_time_tick_impl
 .export _gt_fsin, _gt_fcos, _gt_fatan2
-.export _gt_p8_rnd, _gt_p8_rnd_int, _gt_p8_srand, _gt_p8_time, _gt_time_tick
+.export _gt_rnd, _gt_rnd_int, _gt_srand, _gt_time, _gt_time_tick
 
 GT_MATH_BANK = 1
 
@@ -62,8 +62,8 @@ label:
         GT_MATH_STUB _gt_fsin,      _gt_fsin_impl
         GT_MATH_STUB _gt_fcos,      _gt_fcos_impl
         GT_MATH_STUB _gt_fatan2,    _gt_fatan2_impl
-        GT_MATH_STUB _gt_p8_rnd,    _gt_p8_rnd_impl
-GT_MATH_STUB _gt_p8_rnd_int, _gt_p8_rnd_int_impl
-        GT_MATH_STUB _gt_p8_srand,  _gt_p8_srand_impl
-        GT_MATH_STUB _gt_p8_time,   _gt_p8_time_impl
+        GT_MATH_STUB _gt_rnd,    _gt_rnd_impl
+GT_MATH_STUB _gt_rnd_int, _gt_rnd_int_impl
+        GT_MATH_STUB _gt_srand,  _gt_srand_impl
+        GT_MATH_STUB _gt_time,   _gt_time_impl
         GT_MATH_STUB _gt_time_tick, _gt_time_tick_impl

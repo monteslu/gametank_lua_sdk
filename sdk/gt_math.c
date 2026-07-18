@@ -15,7 +15,7 @@
  *
  * The rodata-name pragma is set BEFORE including gt_sintab.h so the 1 KB table
  * lands in B1RODATA too, not just the function code. gt_fmul/gt_fdiv (called by
- * gt_fatan2/gt_p8_rnd) stay in the FIXED bank, so an impl in bank 1 calls them
+ * gt_fatan2/gt_rnd) stay in the FIXED bank, so an impl in bank 1 calls them
  * with a plain jsr - the fixed window is always mapped. gt_math functions never
  * call each other, so there are no bank1->bank1 intra-unit calls to bridge. */
 #ifdef GT_BANKED
@@ -29,10 +29,10 @@
 #define gt_fsin     GT_M(gt_fsin)
 #define gt_fcos     GT_M(gt_fcos)
 #define gt_fatan2   GT_M(gt_fatan2)
-#define gt_p8_rnd   GT_M(gt_p8_rnd)
-#define gt_p8_rnd_int GT_M(gt_p8_rnd_int)
-#define gt_p8_srand GT_M(gt_p8_srand)
-#define gt_p8_time  GT_M(gt_p8_time)
+#define gt_rnd   GT_M(gt_rnd)
+#define gt_rnd_int GT_M(gt_rnd_int)
+#define gt_srand GT_M(gt_srand)
+#define gt_time  GT_M(gt_time)
 #define gt_time_tick GT_M(gt_time_tick)
 
 #include "gt_fixed.h"
@@ -133,12 +133,12 @@ unsigned int __fastcall__ gt_rng_next(void);
 /* rnd consumed as an integer with an integral range - the emitter routes
  * flr(rnd(n))/int-context rnd here: one 16x32 runtime multiply instead of
  * the full fixed multiply. Bit-identical to flr(rnd(n)) by construction. */
-int gt_p8_rnd_int(int n) {
+int gt_rnd_int(int n) {
     unsigned int s = gt_rng_next();
     if (n <= 0) return 0;
 #ifdef GT_NUM8
     /* frac(8bit)*n >> 8 == the 8.8 fixed multiply of raw ints. Route through the
-     * zp fmul entry (like gt_p8_rnd) - nothing between here and the call touches
+     * zp fmul entry (like gt_rnd) - nothing between here and the call touches
      * fa/fb - dropping the C-stack marshalling from every flr(rnd(n)). */
     fa = (int)(s & 0xFFU);
     fb = n;
@@ -153,7 +153,7 @@ int gt_p8_rnd_int(int n) {
 }
 
 #ifdef GT_NUM8
-int gt_p8_rnd(int x) {
+int gt_rnd(int x) {
     unsigned int s = gt_rng_next();
     if (x <= 0) return 0;
     /* fraction in [0,1) from 8 random bits: rnd(x) = frac * x. Route through the
@@ -165,19 +165,19 @@ int gt_p8_rnd(int x) {
     return gt_fmul_zp();
 }
 
-void gt_p8_srand(int seed) {
+void gt_srand(int seed) {
     gt_rng_state = (unsigned int)seed;
     if (gt_rng_state == 0) gt_rng_state = 0xABCDU;
 }
 #else
-long gt_p8_rnd(long x) {
+long gt_rnd(long x) {
     unsigned int s = gt_rng_next();
     if (x <= 0) return 0;
     /* fraction in [0,1) from 16 random bits, scaled: rnd(x) = frac * x */
     return gt_fmul((long)s, x);
 }
 
-void gt_p8_srand(long seed) {
+void gt_srand(long seed) {
     gt_rng_state = (unsigned int)(seed >> 16) ^ (unsigned int)seed;
     if (gt_rng_state == 0) gt_rng_state = 0xABCDU;
 }
@@ -195,7 +195,7 @@ void gt_time_tick(void) {
     if (gt_time_rem >= 60) { gt_time_rem -= 60; gt_time_acc += 1; }
 }
 
-int gt_p8_time(void) { return gt_time_acc; }
+int gt_time(void) { return gt_time_acc; }
 #else
 long gt_time_acc = 0;
 static unsigned char gt_time_rem = 0;
@@ -207,5 +207,5 @@ void gt_time_tick(void) {
     if (gt_time_rem >= 60) { gt_time_rem -= 60; gt_time_acc += 1; }
 }
 
-long gt_p8_time(void) { return gt_time_acc; }
+long gt_time(void) { return gt_time_acc; }
 #endif

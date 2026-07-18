@@ -729,7 +729,7 @@ export async function build(entry, opts, env) {
     ...(result.c.includes("gt_drift") || result.c.includes("gt_chain") ? ["-DGT_FLAKES"] : []),
     ...(result.c.includes("gt_canvas_view(") ? ["-DGT_CANVAS"] : []),
     ...(result.c.includes("gt_tiles_draw") ? ["-DGT_TILES"] : []),
-    ...(result.c.includes("gt_p8_sspr") ? ["-DGT_SSPR"] : []),
+    ...(result.c.includes("gt_sspr") ? ["-DGT_SSPR"] : []),
     ...((result.c.includes("gt_phys_step") || result.c.includes("gt_phys_drag") || result.c.includes("gt_phys_draw") || result.c.includes("gt_phys_bounds") || result.c.includes("gt_phys_sprite") || result.c.includes("gt_parts_step")) ? ["-DGT_BALLS"] : []),
     ...((result.c.includes("gt_pool_move") || result.c.includes("gt_pool_decay") || result.c.includes("gt_pool_anim") || result.c.includes("gt_pool_edraw") || result.c.includes("gt_pool_sprs")) ? ["-DGT_POOLMV"] : []),
     // gt_track_props lives in gt_api.c behind GT_CHUNKS (shares the chunk decode);
@@ -772,7 +772,7 @@ export async function build(entry, opts, env) {
   // GRAM load PLUS the readable ROM copy for the scaler.
   const bgReadsSheet = result.c.includes("gt_bg_compose(") ||
     result.c.includes("gt_bg_tile(") || result.c.includes("gt_bg_coln(") || usesTrack;
-  const readsRawSheet = bgReadsSheet || result.c.includes("gt_p8_sspr");
+  const readsRawSheet = bgReadsSheet || result.c.includes("gt_sspr");
   const gsheetCompose = gtgSheet && readsRawSheet;   // native .gtg + reads raw
   // split load only when a bg/track engine needs the top-8KB-in-one-bank layout;
   // sspr-only keeps the proven full packed GRAM load (+ a readable ROM copy).
@@ -817,7 +817,7 @@ export async function build(entry, opts, env) {
   as(env.sdkFile("gt_line.s"), B("gt_line.o"));
   const usesTiles = result.c.includes("gt_tiles_draw");
   if (usesTiles) as(env.sdkFile("gt_tiles.s"), B("gt_tiles.o"));
-  const usesSspr = result.c.includes("gt_p8_sspr");
+  const usesSspr = result.c.includes("gt_sspr");
   if (usesSspr) as(env.sdkFile("gt_sspr.s"), B("gt_sspr.o"));
   const usesBalls = (result.c.includes("gt_phys_step") || result.c.includes("gt_phys_drag") || result.c.includes("gt_phys_draw") || result.c.includes("gt_phys_bounds") || result.c.includes("gt_phys_sprite") || result.c.includes("gt_parts_step"));
   if (usesBalls) as(env.sdkFile("gt_balls.s"), B("gt_balls.o"), num8 ? ["-D", "GT_NUM8"] : []);

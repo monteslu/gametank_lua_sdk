@@ -13,12 +13,12 @@ const TARGET = {
   caps: {
     zpFastcall: true, zpUserFn: true, fixedZp: true,
     banked: true, nativeDiv: false, colorBake: true, framebuffer: true,
-    prefix: "", finalRename: false,
+    prefix: "gt", finalRename: true,
   },
   harness: {
     signature: "void main(void)",
     init: ["gt_init", "gt_sheet_init"],
-    onAudio: "gt_audio_init", onMusic: "gt_music_init", onFps30: "gt_p8_fps30",
+    onAudio: "gt_audio_init", onMusic: "gt_music_init", onFps30: "gt_fps30",
     loopTop: ["gt_update_inputs"], frameEnd: "gt_endframe",
     fps30Style: "runtime", returns: false, includes: ["gt_api.h"],
   },

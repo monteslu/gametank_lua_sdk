@@ -56,13 +56,13 @@ function ind(s, n = 2) {
 }
 
 // Look up a global's RAM address from the build's .lbl map (cc65 emits
-// `al <hexaddr> .<sym>`). gt-lua globals are named `gtl_<name>`. Returns the
+// `al <hexaddr> .<sym>`). gt-lua globals are named `lcl_<name>`. Returns the
 // unbanked address (bank 0), or null.
 export function globalAddr(buildDir, name) {
   const lbl = path.join(buildDir, "build", "main.lbl");
   let txt;
   try { txt = readFileSync(lbl, "utf8"); } catch { return null; }
-  const m = txt.match(new RegExp(`^al\\s+([0-9A-Fa-f]{6})\\s+\\.(?:_)?gtl_${name}\\b`, "m"));
+  const m = txt.match(new RegExp(`^al\\s+([0-9A-Fa-f]{6})\\s+\\.(?:_)?lcl_${name}\\b`, "m"));
   return m ? parseInt(m[1], 16) & 0x1fff : null;
 }
 
@@ -172,7 +172,7 @@ async function baseline(reps, globals, setup, frames, isStatement) {
 //    `local q = 0`. Result = pure cost of evaluating the expression.
 //  - Statement form (`statement:true`): `call` is a full statement (e.g.
 //    "rectfill(10,10,50,50,8)"); diffed against an empty loop body.
-// resultGlobal (optional): a gt-lua global name whose 16-bit value is read back
+// resultGlobal (optional): a luacretro-lua global name whose 16-bit value is read back
 // after the run (for math/int verifiers). The cart must assign it in _draw.
 export async function bench({ name = "", setup = "", call, reps = 64, globals = "", frames = 70, statement = false, resultGlobal = null }) {
   const body = statement ? call : `local q = ${call}`;

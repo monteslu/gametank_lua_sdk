@@ -8,7 +8,7 @@
 ; transparent source pixel (color 0, the colorkey) is simply skipped, so the
 ; background shows through on all S rows for free.
 ;
-; The caller (gt_p8_sspr) has already entered CPU mode (poke-VRAM), clamped the
+; The caller (gt_sspr) has already entered CPU mode (poke-VRAM), clamped the
 ; sprite fully on-screen, and set the zp contract. VRAM is $4000, rows 128
 ; apart: pixel (x,y) = $4000 | (y<<7) | x.
 ;

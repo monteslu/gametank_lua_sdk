@@ -25,10 +25,10 @@ int  gt_ffmod(int a, int b);
 int  gt_fsin(int turns);
 int  gt_fcos(int turns);
 int  gt_fatan2(int dx, int dy);
-int  gt_p8_rnd(int x);
-int  gt_p8_rnd_int(int n);  /* integer-range rnd, no fixed multiply */
-void gt_p8_srand(int seed);
-int  gt_p8_time(void);
+int  gt_rnd(int x);
+int  gt_rnd_int(int n);  /* integer-range rnd, no fixed multiply */
+void gt_srand(int seed);
+int  gt_time(void);
 int  gt_ifdiv(int a, int b);
 int  gt_ifmod(int a, int b);
 int  gt_absi(int x);
@@ -72,10 +72,10 @@ long gt_midf(long a, long b, long c);
 long gt_fsin(long turns);
 long gt_fcos(long turns);
 long gt_fatan2(long dx, long dy);
-long gt_p8_rnd(long x);
-int  gt_p8_rnd_int(int n);  /* integer-range rnd, no fixed multiply */
-void gt_p8_srand(long seed);
-long gt_p8_time(void);
+long gt_rnd(long x);
+int  gt_rnd_int(int n);  /* integer-range rnd, no fixed multiply */
+void gt_srand(long seed);
+long gt_time(void);
 #endif /* GT_NUM8 */
 
 void gt_time_tick(void);

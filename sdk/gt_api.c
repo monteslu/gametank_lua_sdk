@@ -337,10 +337,10 @@ void glyph_cpu(unsigned char gn, int x, int y, unsigned char col) {
 }
 
 #ifdef GT_BANKED
-#define GT_PRINT gt_p8_print_impl
-static int gt_p8_print_impl(const char *str, int x, int y, int c);
+#define GT_PRINT gt_print_impl
+static int gt_print_impl(const char *str, int x, int y, int c);
 #else
-#define GT_PRINT gt_p8_print
+#define GT_PRINT gt_print
 #endif
 #ifdef GT_BANKED
 static
@@ -392,10 +392,10 @@ int GT_PRINT(const char *str, int x, int y, int c) {
  * argument used to widen to long, shift 16, and run the long digit path -
  * ~600 cycles of pure conversion per call, every HUD frame. */
 #ifdef GT_BANKED
-#define GT_PRINT_INT gt_p8_print_int_impl
-static int gt_p8_print_int_impl(int v, int x, int y, int c);
+#define GT_PRINT_INT gt_print_int_impl
+static int gt_print_int_impl(int v, int x, int y, int c);
 #else
-#define GT_PRINT_INT gt_p8_print_int
+#define GT_PRINT_INT gt_print_int
 #endif
 #ifdef GT_BANKED
 static
@@ -433,9 +433,9 @@ int GT_PRINT_INT(int v, int x, int y, int c) {
 
 /* print a fixed number: integer part (P8 prints integers bare) */
 #ifdef GT_BANKED
-#define GT_PRINT_NUM gt_p8_print_num_impl
+#define GT_PRINT_NUM gt_print_num_impl
 #else
-#define GT_PRINT_NUM gt_p8_print_num
+#define GT_PRINT_NUM gt_print_num
 #endif
 #ifdef GT_NUM8
 #ifdef GT_BANKED
@@ -470,7 +470,7 @@ int GT_PRINT_NUM(long v, int x, int y, int c) {
 }
 #ifdef GT_BANKED
 #pragma code-name ("CODE")
-int gt_p8_print(const char *str, int x, int y, int c) {
+int gt_print(const char *str, int x, int y, int c) {
     /* the string usually lives in the CALLER'S bank (a B1 draw function's
      * literal pool) - copy it to RAM while that bank is still mapped, THEN
      * switch to the print body's bank. Garbled glyphs otherwise. */
@@ -481,7 +481,7 @@ int gt_p8_print(const char *str, int x, int y, int c) {
     for (i = 0; i < 32 && str[i]; ++i) buf[i] = str[i];
     buf[i] = 0;
     gt_bank(0);
-    r = gt_p8_print_impl(buf, x, y, c);
+    r = gt_print_impl(buf, x, y, c);
     gt_bank(saved_bank);
     return r;
 }
@@ -489,33 +489,33 @@ int gt_p8_print(const char *str, int x, int y, int c) {
 /* print a runtime byte buffer (NUL-terminated ASCII) - the whole string
  * costs ONE call's worth of wrapper (bank round-trip, clip, font setup)
  * instead of one per print(); ports cache composed numbers this way. */
-int gt_p8_print_buf(unsigned char *buf, int off, int x, int y, int c) {
-    return gt_p8_print((char *)buf + off, x, y, c);
+int gt_print_buf(unsigned char *buf, int off, int x, int y, int c) {
+    return gt_print((char *)buf + off, x, y, c);
 }
 #else
-/* flat build: gt_p8_print IS the impl; same one-call contract */
-int gt_p8_print_buf(unsigned char *buf, int off, int x, int y, int c) {
-    return gt_p8_print((char *)buf + off, x, y, c);
+/* flat build: gt_print IS the impl; same one-call contract */
+int gt_print_buf(unsigned char *buf, int off, int x, int y, int c) {
+    return gt_print((char *)buf + off, x, y, c);
 }
 #endif
 #ifdef GT_BANKED
 #ifdef GT_NUM8
-int gt_p8_print_num(int v, int x, int y, int c) {
+int gt_print_num(int v, int x, int y, int c) {
 #else
-int gt_p8_print_num(long v, int x, int y, int c) {
+int gt_print_num(long v, int x, int y, int c) {
 #endif
     unsigned char saved_bank = gt_cur_bank;
     int r;
     gt_bank(0);
-    r = gt_p8_print_num_impl(v, x, y, c);
+    r = gt_print_num_impl(v, x, y, c);
     gt_bank(saved_bank);
     return r;
 }
-int gt_p8_print_int(int v, int x, int y, int c) {
+int gt_print_int(int v, int x, int y, int c) {
     unsigned char saved_bank = gt_cur_bank;
     int r;
     gt_bank(0);
-    r = gt_p8_print_int_impl(v, x, y, c);
+    r = gt_print_int_impl(v, x, y, c);
     gt_bank(saved_bank);
     return r;
 }
@@ -676,10 +676,10 @@ void gt_gspr_frame(int frame, int x, int y, int flip) {
  * Cold (boot-time cell drawing) - the body rides in bank 2 under FLASH2M. */
 #ifdef GT_BANKED
 #pragma code-name ("B0CODE")
-#define GT_SSET_Z gt_p8_sset_z_impl
-static void gt_p8_sset_z_impl(void);
+#define GT_SSET_Z gt_sset_z_impl
+static void gt_sset_z_impl(void);
 #else
-#define GT_SSET_Z gt_p8_sset_z
+#define GT_SSET_Z gt_sset_z
 #endif
 #ifdef GT_BANKED
 static
@@ -693,10 +693,10 @@ void GT_SSET_Z(void) {
 }
 #ifdef GT_BANKED
 #pragma code-name ("CODE")
-void gt_p8_sset_z(void) {
+void gt_sset_z(void) {
     unsigned char saved_bank = gt_cur_bank;
     gt_bank(0);
-    gt_p8_sset_z_impl();
+    gt_sset_z_impl();
     gt_bank(saved_bank);
 }
 #endif
@@ -708,10 +708,10 @@ void gt_p8_sset_z(void) {
  * sides so hardware flips stay correct. */
 #ifdef GT_BANKED
 #pragma code-name ("B0CODE")
-#define GT_SPR_WIDE gt_p8_spr_wide_impl
-static void gt_p8_spr_wide_impl(void);
+#define GT_SPR_WIDE gt_spr_wide_impl
+static void gt_spr_wide_impl(void);
 #else
-#define GT_SPR_WIDE gt_p8_spr_wide
+#define GT_SPR_WIDE gt_spr_wide
 #endif
 #ifdef GT_BANKED
 static
@@ -721,34 +721,34 @@ void GT_SPR_WIDE(void) {
     if (w >= 16) {
         int nl = (f & 1) ? n + 8 : n;
         int nr = (f & 1) ? n : n + 8;
-        gt_p8_spr(nl, x, y, 8, h, f);
-        gt_p8_spr(nr, x + 64, y, w - 8, h, f);
+        gt_spr(nl, x, y, 8, h, f);
+        gt_spr(nr, x + 64, y, w - 8, h, f);
         return;
     }
     {
         int nt = (f & 2) ? n + 128 : n;
         int nb = (f & 2) ? n : n + 128;
-        gt_p8_spr(nt, x, y, w, 8, f);
-        gt_p8_spr(nb, x, y + 64, w, h - 8, f);
+        gt_spr(nt, x, y, w, 8, f);
+        gt_spr(nb, x, y + 64, w, h - 8, f);
     }
 }
 #ifdef GT_BANKED
 #pragma code-name ("CODE")
-void gt_p8_spr_wide(void) {
+void gt_spr_wide(void) {
     unsigned char saved_bank = gt_cur_bank;
     gt_bank(0);
-    gt_p8_spr_wide_impl();
+    gt_spr_wide_impl();
     gt_bank(saved_bank);
 }
 #endif
 
 /* PICO-8 spr: blit sprite cell n (8x8, 16 per row) with transparency.
- * The hot path lives in asm (gt_blitq.s _gt_p8_spr_z): camera-adjust,
+ * The hot path lives in asm (gt_blitq.s _gt_spr_z): camera-adjust,
  * offscreen reject, stage a QF_SPR entry, pump. This is the cdecl shim. */
-void gt_p8_spr(int n, int x, int y, int w, int h, int flip) {
+void gt_spr(int n, int x, int y, int w, int h, int flip) {
     gt_a0 = n; gt_a1 = x; gt_a2 = y; gt_a3 = w; gt_a4 = h;
     gt_a5 = flip;                       /* bit0 = flip X, bit1 = flip Y */
-    gt_p8_spr_z();
+    gt_spr_z();
 }
 
 /* PICO-8 map(cx,cy, sx,sy, cw,ch): draw a cw x ch block of the tilemap,
@@ -758,7 +758,7 @@ void gt_p8_spr(int n, int x, int y, int w, int h, int flip) {
  * index array - which is native to the GameTank blitter (no tilemap hardware
  * needed, and none exists on either machine). `map` is the flat index array
  * (row-major, MAP_W bytes per row); the caller passes MAP_W as the stride. */
-void gt_p8_map(unsigned char *map, int mapw,
+void gt_map(unsigned char *map, int mapw,
                int cx, int cy, int sx, int sy, int cw, int ch) {
     int j, i;
     for (j = 0; j < ch; j++) {
@@ -766,9 +766,9 @@ void gt_p8_map(unsigned char *map, int mapw,
         int py = sy + j * 8;
         for (i = 0; i < cw; i++) {
             unsigned char t = row[i];
-            /* w/h are in CELLS (gt_p8_spr scales <<3 to pixels): one 8x8 tile
+            /* w/h are in CELLS (gt_spr scales <<3 to pixels): one 8x8 tile
              * = 1 cell, NOT 8. Passing 8 blits a 64x64 region per tile. */
-            if (t) gt_p8_spr(t, sx + i * 8, py, 1, 1, 0);
+            if (t) gt_spr(t, sx + i * 8, py, 1, 1, 0);
         }
     }
 }
@@ -805,7 +805,7 @@ static unsigned char sspr_scale(unsigned char src, int dst) {
     return (unsigned char)s;
 }
 
-void gt_p8_sspr(int sx, int sy, int sw, int sh, int dx, int dy, int dw, int dh, int flip) {
+void gt_sspr(int sx, int sy, int sw, int sh, int dx, int dy, int dw, int dh, int flip) {
     unsigned char s;
     (void)flip;   /* flip on scaled sspr is a later add; source is read forward */
     if (sw <= 0 || sh <= 0) return;
@@ -1018,10 +1018,10 @@ void fill_clipped(int x0, int y0, int x1, int y1, unsigned char color) {
 #else
 #pragma code-name ("B0CODE")
 #endif
-#define GT_CLS gt_p8_cls_impl
-static void gt_p8_cls_impl(int c);
+#define GT_CLS gt_cls_impl
+static void gt_cls_impl(int c);
 #else
-#define GT_CLS gt_p8_cls
+#define GT_CLS gt_cls
 #endif
 #ifdef GT_BANKED
 static
@@ -1038,24 +1038,24 @@ void GT_CLS(int c) {
 }
 #ifdef GT_BANKED
 #pragma code-name ("CODE")
-void gt_p8_cls(int c) {
+void gt_cls(int c) {
     unsigned char saved_bank = gt_cur_bank;
     gt_bank(GT_RELIEF_BANK);
-    gt_p8_cls_impl(c);
+    gt_cls_impl(c);
     gt_bank(saved_bank);
 }
 #endif
 
-void gt_p8_camera(int x, int y) { gt_cam_x = x; gt_cam_y = y; }
+void gt_camera(int x, int y) { gt_cam_x = x; gt_cam_y = y; }
 /* color() sets the current draw color. Inlined (not resolve_color(c)) so the hot
  * path is a couple of zp stores instead of a cdecl call: c<0 keeps the current
  * color, else the value IS the GameTank byte. */
-void __fastcall__ gt_p8_color(int c) {
+void __fastcall__ gt_color(int c) {
     if (c < 0) return;
     draw_color = (unsigned char)c;
 }
 
-/* Fallback for the asm fast path in gt_blitq.s (_gt_p8_rectfill_z): handles
+/* Fallback for the asm fast path in gt_blitq.s (_gt_rectfill_z): handles
  * offscreen/reversed/128-span rects. resolve_color is idempotent, so the asm
  * path having peeked at the color first is harmless. */
 #ifdef GT_BANKED
@@ -1064,10 +1064,10 @@ void __fastcall__ gt_p8_color(int c) {
 #else
 #pragma code-name ("B0CODE")
 #endif
-#define GT_RECTFILL_SLOW gt_p8_rectfill_slow_impl
-static void gt_p8_rectfill_slow_impl(void);
+#define GT_RECTFILL_SLOW gt_rectfill_slow_impl
+static void gt_rectfill_slow_impl(void);
 #else
-#define GT_RECTFILL_SLOW gt_p8_rectfill_slow
+#define GT_RECTFILL_SLOW gt_rectfill_slow
 #endif
 #ifdef GT_BANKED
 static
@@ -1082,10 +1082,10 @@ void GT_RECTFILL_SLOW(void) {
 }
 #ifdef GT_BANKED
 #pragma code-name ("CODE")
-void gt_p8_rectfill_slow(void) {
+void gt_rectfill_slow(void) {
     unsigned char saved_bank = gt_cur_bank;
     gt_bank(GT_RELIEF_BANK);
-    gt_p8_rectfill_slow_impl();
+    gt_rectfill_slow_impl();
     gt_bank(saved_bank);
 }
 #endif
@@ -1097,10 +1097,10 @@ void gt_p8_rectfill_slow(void) {
 #else
 #pragma code-name ("B0CODE")
 #endif
-#define GT_RECT_Z gt_p8_rect_z_impl
-static void gt_p8_rect_z_impl(void);
+#define GT_RECT_Z gt_rect_z_impl
+static void gt_rect_z_impl(void);
 #else
-#define GT_RECT_Z gt_p8_rect_z
+#define GT_RECT_Z gt_rect_z
 #endif
 #ifdef GT_BANKED
 static
@@ -1121,17 +1121,17 @@ void GT_RECT_Z(void) {
 }
 #ifdef GT_BANKED
 #pragma code-name ("CODE")
-void gt_p8_rect_z(void) {
+void gt_rect_z(void) {
     unsigned char saved_bank = gt_cur_bank;
     gt_bank(GT_RELIEF_BANK);
-    gt_p8_rect_z_impl();
+    gt_rect_z_impl();
     gt_bank(saved_bank);
 }
 #endif
 
-void gt_p8_rect(int x0, int y0, int x1, int y1, int c) {
+void gt_rect(int x0, int y0, int x1, int y1, int c) {
     gt_a0 = x0; gt_a1 = y0; gt_a2 = x1; gt_a3 = y1; gt_a4 = c;
-    gt_p8_rect_z();
+    gt_rect_z();
 }
 
 void pset_raw(int x, int y, unsigned char col) {
@@ -1140,7 +1140,7 @@ void pset_raw(int x, int y, unsigned char col) {
     vram_row[(unsigned char)y][(unsigned char)x] = col;
 }
 
-void gt_p8_pset_z(void) {
+void gt_pset_z(void) {
     /* a pset is a 1x1 FILL through the blit pipeline: switching to CPU mode
      * here would first drain every queued blit's pixels (~16k cycles with a
      * frame clear in flight) - two decorative psets after the fills used to
@@ -1150,14 +1150,14 @@ void gt_p8_pset_z(void) {
     gt_a4 = gt_a2;
     gt_a2 = gt_a0;
     gt_a3 = gt_a1;
-    gt_p8_rectfill_z();
+    gt_rectfill_z();
 }
 
 /* PICO-8 pget(x,y): read the framebuffer pixel color (a raw GameTank byte). The
  * framebuffer is directly CPU-readable at $4000 | (y<<7) | x; drain any pending
  * blits first so we see the finished frame, not a mid-queue state. Off-screen
  * reads return 0 (PICO-8's out-of-bounds behavior). */
-int gt_p8_pget(int x, int y) {
+int gt_pget(int x, int y) {
     if (x < 0 || x > 127 || y < 0 || y > 127) return 0;
     await_drawing();
     return vram[((unsigned int)y << 7) | (unsigned int)x];
@@ -1173,18 +1173,18 @@ static void gt_cursor_advance(void) {
     gt_cursor_y += 6;
     if (gt_cursor_y > 122) gt_cursor_y = 0;
 }
-int gt_p8_print_cur_int(int v, int c) {
-    int r = gt_p8_print_int(v, gt_cursor_x, gt_cursor_y, c);
+int gt_print_cur_int(int v, int c) {
+    int r = gt_print_int(v, gt_cursor_x, gt_cursor_y, c);
     gt_cursor_advance();
     return r;
 }
-int gt_p8_print_cur_num(long v, int c) {
-    int r = gt_p8_print_num(v, gt_cursor_x, gt_cursor_y, c);
+int gt_print_cur_num(long v, int c) {
+    int r = gt_print_num(v, gt_cursor_x, gt_cursor_y, c);
     gt_cursor_advance();
     return r;
 }
-int gt_p8_print_cur_str(const char *s, int c) {
-    int r = gt_p8_print(s, gt_cursor_x, gt_cursor_y, c);
+int gt_print_cur_str(const char *s, int c) {
+    int r = gt_print(s, gt_cursor_x, gt_cursor_y, c);
     gt_cursor_advance();
     return r;
 }
@@ -1196,7 +1196,7 @@ int gt_p8_print_cur_str(const char *s, int c) {
  * reset, matching PICO-8's run() - the game's own _init() alone would leave
  * top-level globals and runtime state stale. Never returns. */
 void __fastcall__ _init(void);   /* the crt0 STARTUP entry (crt0.s) */
-void gt_p8_run(void) {
+void gt_run(void) {
     __asm__("jmp _init");
 }
 
@@ -1244,15 +1244,15 @@ void GT_SF_INIT(int n, int cfar, int cmid, int cnear) {
     star_n = (unsigned char)n;
     for (i = 0; i < star_n; ++i) {
 #ifdef GT_NUM8
-        star_x[i]    = (unsigned char)(gt_p8_rnd(127 << 8) >> 8);
-        star_row[i]  = (unsigned char)(gt_p8_rnd(127 << 8) >> 8);
+        star_x[i]    = (unsigned char)(gt_rnd(127 << 8) >> 8);
+        star_row[i]  = (unsigned char)(gt_rnd(127 << 8) >> 8);
         star_frac[i] = 0;
-        s = (unsigned char)(8 + (gt_p8_rnd(24 << 8) >> 8));
+        s = (unsigned char)(8 + (gt_rnd(24 << 8) >> 8));
 #else
-        star_x[i]    = (unsigned char)(gt_p8_rnd(128L << 16) >> 16);
-        star_row[i]  = (unsigned char)(gt_p8_rnd(128L << 16) >> 16);
+        star_x[i]    = (unsigned char)(gt_rnd(128L << 16) >> 16);
+        star_row[i]  = (unsigned char)(gt_rnd(128L << 16) >> 16);
         star_frac[i] = 0;
-        s = (unsigned char)(8 + (gt_p8_rnd(24L << 16) >> 16));
+        s = (unsigned char)(8 + (gt_rnd(24L << 16) >> 16));
 #endif
         star_s[i]    = s;
         /* colour by speed tier, baked once (pset colour never changes).
@@ -1346,23 +1346,23 @@ void GT_FL_INIT(int n) {
         fl_sinh[i] = (v & 0x8000U) ? 0xFF : 0;
     }
     for (i = 0; i < fl_n; ++i) {
-        v = gt_p8_rnd_int(128) << 8;
+        v = gt_rnd_int(128) << 8;
         fl_xl[i] = (unsigned char)v;
         fl_xh[i] = (unsigned char)((unsigned int)v >> 8);
-        v = gt_p8_rnd_int(128) << 8;
+        v = gt_rnd_int(128) << 8;
         fl_yl[i] = (unsigned char)v;
         fl_yh[i] = (unsigned char)((unsigned int)v >> 8);
         fl_ph[i] = 0;
         /* speed 64 + rnd(5)*256 in 8.8, like the reference */
-        sp = 64 + (gt_p8_rnd_int(5) << 8);
+        sp = 64 + (gt_rnd_int(5) << 8);
         fl_spdl[i] = (unsigned char)sp;
         fl_spdh[i] = (unsigned char)((unsigned int)sp >> 8);
         { int a = sp >> 5; if (a > 12) a = 12; fl_adv[i] = (unsigned char)a; }
         /* reference pas = flr(rnd(1.25)): 0 four times in five, else 1;
          * the ring W/H field wants size+1 */
-        fl_w[i] = fl_h[i] = (unsigned char)((gt_p8_rnd_int(5) == 4) ? 2 : 1);
+        fl_w[i] = fl_h[i] = (unsigned char)((gt_rnd_int(5) == 4) ? 2 : 1);
         /* GT bytes for old p8 indices 6 (grey) / 7 (white), colorkey-inverted */
-        fl_ci[i]  = (unsigned char)(gt_flat16[6 + gt_p8_rnd_int(2)] ^ 0xFF);
+        fl_ci[i]  = (unsigned char)(gt_flat16[6 + gt_rnd_int(2)] ^ 0xFF);
         fl_rxl[i] = 0xFF; fl_rxh[i] = 0x7F;   /* snow re-enters from the right */
         fl_ry[i]  = 1;                        /* and rerolls its row */
     }
@@ -2009,10 +2009,10 @@ static void line_diag(int x0, int y0, int x1, int y1, unsigned char col) {
 #else
 #pragma code-name ("B0CODE")
 #endif
-#define GT_LINE_Z gt_p8_line_z_impl
-static void gt_p8_line_z_impl(void);
+#define GT_LINE_Z gt_line_z_impl
+static void gt_line_z_impl(void);
 #else
-#define GT_LINE_Z gt_p8_line_z
+#define GT_LINE_Z gt_line_z
 #endif
 #ifdef GT_BANKED
 static
@@ -2028,10 +2028,10 @@ void GT_LINE_Z(void) {
 }
 #ifdef GT_BANKED
 #pragma code-name ("CODE")
-void gt_p8_line_z(void) {
+void gt_line_z(void) {
     unsigned char saved_bank = gt_cur_bank;
     gt_bank(GT_RELIEF_BANK);
-    gt_p8_line_z_impl();
+    gt_line_z_impl();
     gt_bank(saved_bank);
 }
 #endif
@@ -2049,10 +2049,10 @@ void gt_circo_z(void);
 
 #ifdef GT_BANKED
 #pragma code-name ("B2CODE")
-#define GT_CIRCFILL_Z gt_p8_circfill_z_impl
-static void gt_p8_circfill_z_impl(void);
+#define GT_CIRCFILL_Z gt_circfill_z_impl
+static void gt_circfill_z_impl(void);
 #else
-#define GT_CIRCFILL_Z gt_p8_circfill_z
+#define GT_CIRCFILL_Z gt_circfill_z
 #endif
 #ifdef GT_BANKED
 static
@@ -2074,10 +2074,10 @@ void GT_CIRCFILL_Z(void) {
 }
 #ifdef GT_BANKED
 #pragma code-name ("CODE")
-void gt_p8_circfill_z(void) {
+void gt_circfill_z(void) {
     unsigned char saved_bank = gt_cur_bank;
     gt_bank(2);
-    gt_p8_circfill_z_impl();
+    gt_circfill_z_impl();
     gt_bank(saved_bank);
 }
 #endif
@@ -2085,10 +2085,10 @@ void gt_p8_circfill_z(void) {
 
 #ifdef GT_BANKED
 #pragma code-name ("B2CODE")
-#define GT_CIRC_Z gt_p8_circ_z_impl
-static void gt_p8_circ_z_impl(void);
+#define GT_CIRC_Z gt_circ_z_impl
+static void gt_circ_z_impl(void);
 #else
-#define GT_CIRC_Z gt_p8_circ_z
+#define GT_CIRC_Z gt_circ_z
 #endif
 #ifdef GT_BANKED
 static
@@ -2108,10 +2108,10 @@ void GT_CIRC_Z(void) {
 }
 #ifdef GT_BANKED
 #pragma code-name ("CODE")
-void gt_p8_circ_z(void) {
+void gt_circ_z(void) {
     unsigned char saved_bank = gt_cur_bank;
     gt_bank(2);
-    gt_p8_circ_z_impl();
+    gt_circ_z_impl();
     gt_bank(saved_bank);
 }
 #endif
@@ -2123,10 +2123,10 @@ void gt_p8_circ_z(void) {
 #else
 #pragma code-name ("B0CODE")
 #endif
-#define GT_BORDER gt_p8_border_impl
-static void gt_p8_border_impl(int c);
+#define GT_BORDER gt_border_impl
+static void gt_border_impl(int c);
 #else
-#define GT_BORDER gt_p8_border
+#define GT_BORDER gt_border
 #endif
 #ifdef GT_BANKED
 static
@@ -2141,10 +2141,10 @@ void GT_BORDER(int c) {
 }
 #ifdef GT_BANKED
 #pragma code-name ("CODE")
-void gt_p8_border(int c) {
+void gt_border(int c) {
     unsigned char saved_bank = gt_cur_bank;
     gt_bank(GT_RELIEF_BANK);
-    gt_p8_border_impl(c);
+    gt_border_impl(c);
     gt_bank(saved_bank);
 }
 #endif
@@ -2166,15 +2166,15 @@ void gt_p8_border(int c) {
 #pragma rodata-name ("B0RODATA")
 #endif
 #define GT_UPDATE_INPUTS gt_update_inputs_impl
-#define GT_BTN gt_p8_btn_impl
-#define GT_BTNP gt_p8_btnp_impl
+#define GT_BTN gt_btn_impl
+#define GT_BTNP gt_btnp_impl
 static void gt_update_inputs_impl(void);
-static unsigned char gt_p8_btn_impl(int i, int pl);
-static unsigned char gt_p8_btnp_impl(int i, int pl);
+static unsigned char gt_btn_impl(int i, int pl);
+static unsigned char gt_btnp_impl(int i, int pl);
 #else
 #define GT_UPDATE_INPUTS gt_update_inputs
-#define GT_BTN gt_p8_btn
-#define GT_BTNP gt_p8_btnp
+#define GT_BTN gt_btn
+#define GT_BTNP gt_btnp
 #endif
 
 /* held/newpress words live in zp (gt_blitq.s) so btn()/btnp() with constant
@@ -2259,19 +2259,19 @@ void gt_update_inputs(void) {
     gt_update_inputs_impl();
     gt_bank(saved_bank);
 }
-unsigned char gt_p8_btn(int i, int pl) {
+unsigned char gt_btn(int i, int pl) {
     unsigned char saved_bank = gt_cur_bank;
     unsigned char r;
     gt_bank(GT_INPUT_BANK);
-    r = gt_p8_btn_impl(i, pl);
+    r = gt_btn_impl(i, pl);
     gt_bank(saved_bank);
     return r;
 }
-unsigned char gt_p8_btnp(int i, int pl) {
+unsigned char gt_btnp(int i, int pl) {
     unsigned char saved_bank = gt_cur_bank;
     unsigned char r;
     gt_bank(GT_INPUT_BANK);
-    r = gt_p8_btnp_impl(i, pl);
+    r = gt_btnp_impl(i, pl);
     gt_bank(saved_bank);
     return r;
 }
@@ -2314,7 +2314,7 @@ static void flip_pages(void) {
     gt_draw_mode = MODE_NONE;
 }
 
-void gt_p8_fps30(void) { fps30 = 1; }
+void gt_fps30(void) { fps30 = 1; }
 
 void gt_init(void) {
     unsigned char i;
@@ -2338,10 +2338,10 @@ void gt_init(void) {
     *bank_reg = banks_mirror;
     __asm__("CLI");
     /* power-on VRAM is noise: clear both pages so frame 0 is deterministic */
-    gt_p8_cls(0);
+    gt_cls(0);
     await_drawing();
     flip_pages();
-    gt_p8_cls(0);
+    gt_cls(0);
     await_drawing();
     flip_pages();
 }

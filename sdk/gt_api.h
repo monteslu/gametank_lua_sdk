@@ -55,33 +55,33 @@ void __fastcall__ gt_q_pump(void);   /* start next blit if idle (any ctx) */
 /* --- lifecycle --- */
 void gt_init(void);
 void gt_endframe(void);
-void gt_p8_fps30(void);         /* _update() mode: 30 fps logic+draw */
+void gt_fps30(void);         /* _update() mode: 30 fps logic+draw */
 void gt_time_tick(void);        /* advanced by gt_endframe (gt_math.c) */
 
 /* --- input: PICO-8 button indices ---
  * 0=left 1=right 2=up 3=down 4=O(GT A) 5=X(GT B) 6=GT C 7=START */
 void gt_update_inputs(void);
-unsigned char gt_p8_btn(int i, int pl);
-unsigned char gt_p8_btnp(int i, int pl);
+unsigned char gt_btn(int i, int pl);
+unsigned char gt_btnp(int i, int pl);
 
 /* --- drawing (PICO-8 semantics; camera offset applies to all) --- */
-void gt_p8_cls(int c);
-void gt_p8_camera(int x, int y);
-void __fastcall__ gt_p8_color(int c);
+void gt_cls(int c);
+void gt_camera(int x, int y);
+void __fastcall__ gt_color(int c);
 
 /* zp-ABI entry points: args in gt_a0..gt_a5 (see the block above).
  * The cdecl versions above remain as thin wrappers for call sites whose
  * argument expressions could themselves draw (user-function calls). */
-void gt_p8_pset_z(void);       /* a0=x a1=y a2=c */
-void gt_p8_rect_z(void);       /* a0=x0 a1=y0 a2=x1 a3=y1 a4=c */
-void gt_p8_rectfill_z(void);   /* a0=x0 a1=y0 a2=x1 a3=y1 a4=c (asm fast path) */
-void gt_p8_rectfill_slow(void); /* C fallback: offscreen/reversed/128-span */
-void gt_p8_circ_z(void);       /* a0=cx a1=cy a2=r a3=c */
-void gt_p8_circfill_z(void);   /* a0=cx a1=cy a2=r a3=c */
-void gt_p8_line_z(void);       /* a0=x0 a1=y0 a2=x1 a3=y1 a4=c */
-void gt_p8_spr_z(void);
-void gt_p8_spr_wide(void);  /* 128px-span splitter (asm punts here) */        /* a0=n a1=x a2=y a3=w a4=h */
-void gt_p8_sset_z(void);       /* a0=x a1=y a2=c */
+void gt_pset_z(void);       /* a0=x a1=y a2=c */
+void gt_rect_z(void);       /* a0=x0 a1=y0 a2=x1 a3=y1 a4=c */
+void gt_rectfill_z(void);   /* a0=x0 a1=y0 a2=x1 a3=y1 a4=c (asm fast path) */
+void gt_rectfill_slow(void); /* C fallback: offscreen/reversed/128-span */
+void gt_circ_z(void);       /* a0=cx a1=cy a2=r a3=c */
+void gt_circfill_z(void);   /* a0=cx a1=cy a2=r a3=c */
+void gt_line_z(void);       /* a0=x0 a1=y0 a2=x1 a3=y1 a4=c */
+void gt_spr_z(void);
+void gt_spr_wide(void);  /* 128px-span splitter (asm punts here) */        /* a0=n a1=x a2=y a3=w a4=h */
+void gt_sset_z(void);       /* a0=x a1=y a2=c */
 void gt_parallax_init(int n, int cfar, int cmid, int cnear); /* seed n stars; colors -1 = classic tiers */
 void gt_parallax_move(int mode);   /* scroll: 0=drift 1=1x 2=2x */
 void gt_parallax_draw(void);
@@ -161,18 +161,18 @@ void gt_gspr(int gx, int gy, int w, int h, int x, int y);  /* blit FROM canvas *
 /* the 16 GT bytes the PICO-8 palette maps to; the compose flat-fill index table */
 extern const unsigned char gt_flat16[16];
 extern const unsigned char *gt_gsheet_ptr;   /* raw 8bpp .gtg quadrant for compose, or NULL */
-void gt_p8_rect(int x0, int y0, int x1, int y1, int c);
-void gt_p8_border(int c);
+void gt_rect(int x0, int y0, int x1, int y1, int c);
+void gt_border(int c);
 void gt_autocls_set(int c);    /* frame clear during the post-flip vsync wait */
 void gt_mark(int n);           /* benchmark cycle marker (writes GT_MARK_ADDR); test-only */
-int gt_p8_print(const char *str, int x, int y, int c);
+int gt_print(const char *str, int x, int y, int c);
 #ifdef GT_NUM8
-int gt_p8_print_num(int v, int x, int y, int c);
+int gt_print_num(int v, int x, int y, int c);
 #else
-int gt_p8_print_num(long v, int x, int y, int c);
+int gt_print_num(long v, int x, int y, int c);
 #endif
-int gt_p8_print_int(int v, int x, int y, int c);
-int gt_p8_print_buf(unsigned char *buf, int off, int x, int y, int c);
+int gt_print_int(int v, int x, int y, int c);
+int gt_print_buf(unsigned char *buf, int off, int x, int y, int c);
 /* native .gtg quadrant loader: 128x128 8bpp raw CAPTURE bytes, packbits in ROM,
  * into GRAM quadrant `quad` (0=NW 1=NE 2=SW 3=SE). See gt_api.c / docs/GRAPHICS.md. */
 void gt_gsheet_load_packed(const unsigned char *p, unsigned int plen, unsigned char quad);
@@ -207,14 +207,14 @@ void gt_music(int n, int loop);
 /* .gtm2 native FM song (Clyde's format); song(n) in Lua. See gt_music.h. */
 void gt_gtm2_play(const unsigned char *song, unsigned char loop);
 void gt_gtm2_stop(void);
-void gt_p8_spr(int n, int x, int y, int w, int h, int flip);
-void gt_p8_map(unsigned char *map, int mapw, int cx, int cy, int sx, int sy, int cw, int ch);
-void gt_p8_sspr(int sx, int sy, int sw, int sh, int dx, int dy, int dw, int dh, int flip);
-int gt_p8_pget(int x, int y);
-void gt_p8_run(void);
-int gt_p8_print_cur_int(int v, int c);
-int gt_p8_print_cur_num(long v, int c);
-int gt_p8_print_cur_str(const char *s, int c);
+void gt_spr(int n, int x, int y, int w, int h, int flip);
+void gt_map(unsigned char *map, int mapw, int cx, int cy, int sx, int sy, int cw, int ch);
+void gt_sspr(int sx, int sy, int sw, int sh, int dx, int dy, int dw, int dh, int flip);
+int gt_pget(int x, int y);
+void gt_run(void);
+int gt_print_cur_int(int v, int c);
+int gt_print_cur_num(long v, int c);
+int gt_print_cur_str(const char *s, int c);
 
 /* PCM audio path (gt_pcm.c) - bit-exact sample playback via the ACP PCM
  * firmware. Only linked when the game calls pcm_init(). */

@@ -37,18 +37,18 @@ for (const ex of ["pad-square", "orbit", "mathcheck", "audio"]) {
 
 test("// is a comment, backslash is floor division", () => {
   const c = cOf("local x = 8 // like this\nfunction _update60()\n  x = x \\ 2\nend\n" + "function _draw()\nend\n");
-  assert.match(c, /gtl_x >> 1/);
+  assert.match(c, /lcl_x >> 1/);
 });
 
 test("!= is ~=", () => {
   const c = cOf("local x = 1\nfunction _update60()\n  if x != 2 then\n    x = 2\n  end\nend\nfunction _draw()\nend\n");
-  assert.match(c, /gtl_x != 2/);
+  assert.match(c, /lcl_x != 2/);
 });
 
 test("constant integer exponent expands to repeated multiplication", () => {
   // x^2 -> x*x (gtlua has no float pow; carts use ^2 for distance-squared).
   const c = cOf("local d = 0\nlocal a = 3\nfunction _update60()\n  d = a ^ 2\nend\nfunction _draw()\nend\n");
-  assert.match(c, /gtl_a \* gtl_a/);
+  assert.match(c, /lcl_a \* lcl_a/);
 });
 
 test("string with escaped quote does not terminate early", () => {
@@ -73,9 +73,9 @@ test("paren-less string call desugars to a normal call", () => {
 
 test("print cursor form: print(v) and print(v, color) compile", () => {
   const c = cOf('local n = 5\nfunction _update60()\nend\nfunction _draw()\n  print(n)\n  print(n, 8)\n  print("hi")\nend\n');
-  assert.match(c, /gt_p8_print_cur_int\(gtl_n, -1\)/);   // print(n)
-  assert.match(c, /gt_p8_print_cur_int\(gtl_n, /);        // print(n, color)
-  assert.match(c, /gt_p8_print_cur_str\("hi", -1\)/);     // print("hi")
+  assert.match(c, /gt_print_cur_int\(lcl_n, -1\)/);   // print(n)
+  assert.match(c, /gt_print_cur_int\(lcl_n, /);        // print(n, color)
+  assert.match(c, /gt_print_cur_str\("hi", -1\)/);     // print("hi")
 });
 
 test("long string [[ ... ]] lexes as a string", () => {
@@ -105,14 +105,14 @@ test("if cond do ... end : minifier's 'do' is accepted as 'then'", () => {
   // the plain if and the elseif clause must accept it.
   const c = cOf("local x = 0\nfunction _update60()\n" +
                 "  if x > 0 do x = 1 elseif x < 0 do x = 2 else x = 3 end\nend\nfunction _draw()\nend\n");
-  assert.match(c, /if \(\(gtl_x > 0\)\)/);
-  assert.match(c, /else if \(\(gtl_x < 0\)\)/);
+  assert.match(c, /if \(\(lcl_x > 0\)\)/);
+  assert.match(c, /else if \(\(lcl_x < 0\)\)/);
   assert.match(c, /else \{/);
 });
 
 test("one-line while shorthand", () => {
   const c = cOf("local x = 10\nfunction _update60()\n  while (x > 0) x -= 1\nend\nfunction _draw()\nend\n");
-  assert.match(c, /while \(\(gtl_x > 0\)\)/);
+  assert.match(c, /while \(\(lcl_x > 0\)\)/);
 });
 
 test("spr without flip: 5 args, no flip packing", () => {
@@ -120,7 +120,7 @@ test("spr without flip: 5 args, no flip packing", () => {
   // zp-fastcall staging: n,x,y in a0..a2, w/h default to 1, flips default to 0
   assert.match(c, /gt_a0 = 1/);
   assert.match(c, /gt_a5 = 0 \| \(0 << 1\)/);   // both flips off
-  assert.match(c, /gt_p8_spr_z\(\)/);
+  assert.match(c, /gt_spr_z\(\)/);
 });
 
 test("spr with flip_x/flip_y packs into gt_a5", () => {
@@ -133,10 +133,10 @@ test("print bakes its color index to the GameTank byte (like every draw call)", 
   // regression: print used to pass the raw 0-15 index, so resolve_color (which
   // expects an already-baked byte) rendered every non-white print color wrong.
   const c = cOf('function _draw()\n  print("hi", 20, 20, 14)\nend\n');
-  assert.match(c, /gt_p8_print\("hi", 20, 20, 94\)/);   // 14 (pink) -> 0x5E = 94
+  assert.match(c, /gt_print\("hi", 20, 20, 94\)/);   // 14 (pink) -> 0x5E = 94
   // no color arg -> -1 (use draw_color), unchanged
   const c2 = cOf('function _draw()\n  print("x", 1, 1)\nend\n');
-  assert.match(c2, /gt_p8_print\("x", 1, 1, -1\)/);
+  assert.match(c2, /gt_print\("x", 1, 1, -1\)/);
 });
 
 test("button glyphs lex as indices", () => {
@@ -148,36 +148,36 @@ test("button glyphs lex as indices", () => {
 
 test("constant array table {1,2,3} becomes a fixed C array", () => {
   const c = cOf("local colors = {1, 2, 3, 4}\nlocal r = 0\nfunction _update60()\n  r = colors[1]\nend\nfunction _draw()\nend\n");
-  assert.match(c, /unsigned char gtl_colors\[4\] = \{\s*1, 2, 3, 4\s*\}/);
-  assert.match(c, /gtl_r = gtl_colors\[0\]/);   // colors[1] folds to [0]
+  assert.match(c, /unsigned char lcl_colors\[4\] = \{\s*1, 2, 3, 4\s*\}/);
+  assert.match(c, /lcl_r = lcl_colors\[0\]/);   // colors[1] folds to [0]
 });
 
 test("array table with fractional values is a fixed array", () => {
   const c = cOf("local spd = {0.5, 1.5, 2.0}\nlocal r = 0\nfunction _update60()\n  r = spd[1]\nend\nfunction _draw()\nend\n");
-  assert.match(c, /long gtl_spd\[3\] = \{\s*32768L, 98304L, 131072L\s*\}/);
+  assert.match(c, /long lcl_spd\[3\] = \{\s*32768L, 98304L, 131072L\s*\}/);
 });
 
 test("bitwise function forms alias the operators (band/bor/shl/shr)", () => {
   const c = cOf("local a=13\nlocal b=0\nfunction _update60()\n" +
                 "  b = band(a, 3)\n  b = bor(a, 4)\n  b = shl(a, 2)\n  b = shr(a, 1)\nend\nfunction _draw()\nend\n");
-  assert.match(c, /gtl_a & 3/);
-  assert.match(c, /gtl_a \| 4/);
-  assert.match(c, /gtl_a << 2/);
-  assert.match(c, /gtl_a >> 1/);
+  assert.match(c, /lcl_a & 3/);
+  assert.match(c, /lcl_a \| 4/);
+  assert.match(c, /lcl_a << 2/);
+  assert.match(c, /lcl_a >> 1/);
 });
 
-test("sspr() emits gt_p8_sspr with dw/dh defaulting to 0 (= source size)", () => {
+test("sspr() emits gt_sspr with dw/dh defaulting to 0 (= source size)", () => {
   const c = cOf("function _update60()\nend\nfunction _draw()\n  cls()\n" +
                 "  sspr(80,8,8,8,50,9,16,16)\n  sspr(0,0,8,8,100,100)\nend\n");
-  assert.match(c, /gt_p8_sspr\(80, 8, 8, 8, 50, 9, 16, 16,/);   // scaled
-  assert.match(c, /gt_p8_sspr\(0, 0, 8, 8, 100, 100, 0, 0,/);   // unscaled (dw/dh 0)
+  assert.match(c, /gt_sspr\(80, 8, 8, 8, 50, 9, 16, 16,/);   // scaled
+  assert.match(c, /gt_sspr\(0, 0, 8, 8, 100, 100, 0, 0,/);   // unscaled (dw/dh 0)
 });
 
 test("map() draws the imported tilemap; mget() reads a cell", () => {
   const c = cOf("local __p8map = hexdata(\"01020304\")\nfunction _update60()\nend\n" +
                 "function _draw()\n  cls()\n  map(0, 0, 0, 0, 16, 4)\n  local t = mget(2, 0)\nend\n");
-  assert.match(c, /gt_p8_map\(gtl___p8map, 128, 0, 0, 0, 0, 16, 4\)/);
-  assert.match(c, /gtl___p8map\[.*128.*2/);   // mget(2,0) -> [0*128+2]
+  assert.match(c, /gt_map\(lcl___p8map, 128, 0, 0, 0, 0, 16, 4\)/);
+  assert.match(c, /lcl___p8map\[.*128.*2/);   // mget(2,0) -> [0*128+2]
 });
 
 test("multiple assignment to struct fields (o.x, o.y = a, b)", () => {
@@ -195,23 +195,23 @@ test("multiple return: return a,b,c and destructure a,b,c = f()", () => {
   assert.match(c, /int gt_mret_1;/);
   assert.match(c, /int gt_mret_2;/);
   assert.match(c, /gt_mret_1 = /);            // callee writes extras
-  assert.match(c, /gtl_ay = gt_mret_1;/);     // caller reads them
-  assert.match(c, /gtl_az = gt_mret_2;/);
+  assert.match(c, /lcl_ay = gt_mret_1;/);     // caller reads them
+  assert.match(c, /lcl_az = gt_mret_2;/);
 });
 
 test("nil-as-sentinel: assign, set, and compare compile to a reserved value", () => {
   const c = cOf("local target = nil\nlocal g = 0\nfunction _update60()\n" +
                 "  target = nil\n  if target != nil then g = 1 end\n  if target == nil then target = g end\n" +
                 "end\nfunction _draw()\nend\n");
-  assert.match(c, /int gtl_target = -32768;/);          // starts nil
-  assert.match(c, /gtl_target != -32768/);              // != nil
-  assert.match(c, /gtl_target == -32768/);              // == nil
+  assert.match(c, /int lcl_target = -32768;/);          // starts nil
+  assert.match(c, /lcl_target != -32768/);              // != nil
+  assert.match(c, /lcl_target == -32768/);              // == nil
 });
 
 test("array8 declares byte elements and reads back as ints", () => {
   const c = cOf("local a = array8(16)\nlocal r = 0\nfunction _update60()\n  a[1] = 200\n  r = a[1] + 100\nend\nfunction _draw()\nend\n");
-  assert.match(c, /unsigned char gtl_a\[16\];/);
-  assert.match(c, /gtl_r = \(gtl_a\[0\] \+ 100\)/);   // a[1] folds to [0] at compile time
+  assert.match(c, /unsigned char lcl_a\[16\];/);
+  assert.match(c, /lcl_r = \(lcl_a\[0\] \+ 100\)/);   // a[1] folds to [0] at compile time
 });
 
 test("array8 rejects fixed stores loudly", () => {
@@ -240,7 +240,7 @@ test("gt.rgb(byte) passes a raw byte through (no 0x100 flag)", () => {
 test("a static 0-15 color literal bakes to its GameTank byte", () => {
   // cls(1) is PICO-8 dark-blue; P8_PALETTE[1] = 0xA9 = 169. No runtime index.
   const c = cOf("function _update60()\nend\nfunction _draw()\n  cls(1)\nend\n");
-  assert.match(c, /gt_p8_cls\(169\)/);
+  assert.match(c, /gt_cls\(169\)/);
 });
 
 test("gt.rgb(r,g,b) with a non-constant is a loud error", () => {
@@ -250,21 +250,21 @@ test("gt.rgb(r,g,b) with a non-constant is a loud error", () => {
 
 test("multiple assignment evaluates RHS first (swap works)", () => {
   const c = cOf("local a, b = 1, 2\nfunction _update60()\n  a, b = b, a\nend\nfunction _draw()\nend\n");
-  assert.match(c, /int L_t0 = gtl_b;/);
-  assert.match(c, /gtl_a = L_t0;/);
+  assert.match(c, /int L_t0 = lcl_b;/);
+  assert.match(c, /lcl_a = L_t0;/);
 });
 
 // ---- number model ----------------------------------------------------------------
 
 test("fractional literals make a variable fixed (long)", () => {
   const c = cOf("local v = 1.5\nlocal n = 3\n" + LOOP);
-  assert.match(c, /^long gtl_v = 98304L;/m);
-  assert.match(c, /^int gtl_n = 3;$/m);
+  assert.match(c, /^long lcl_v = 98304L;/m);
+  assert.match(c, /^int lcl_n = 3;$/m);
 });
 
 test("kind inference widens through assignment", () => {
   const c = cOf("local v = 1\nfunction _update60()\n  v += 0.5\nend\nfunction _draw()\nend\n");
-  assert.match(c, /^long gtl_v = 65536L;/m);
+  assert.match(c, /^long lcl_v = 65536L;/m);
 });
 
 test("/ always produces fixed; general / uses the fixed-divide runtime", () => {
@@ -276,12 +276,12 @@ test("/ always produces fixed; general / uses the fixed-divide runtime", () => {
 test("nested fixed divide falls back to the cdecl gt_fdiv (zp slots would collide)", () => {
   const c = cOf("local a = 3.5\nlocal b = 2.5\nlocal c2 = 5.5\nlocal r = 0.0\nfunction _update60()\n  r = a / (b / c2)\nend\nfunction _draw()\nend\n");
   // outer op is cdecl (its rhs nests a divide); inner op is the zp fastcall
-  assert.match(c, /gt_fdiv\(gtl_a, \(fa = gtl_b, fb = gtl_c2, gt_fdiv_zp\(\)\)\)/);
+  assert.match(c, /gt_fdiv\(lcl_a, \(fa = lcl_b, fb = lcl_c2, gt_fdiv_zp\(\)\)\)/);
 });
 
 test("/ by power-of-two constant becomes a shift", () => {
   const c = cOf("local a = 3.5\nlocal r = 0.0\nfunction _update60()\n  r = a / 4\nend\nfunction _draw()\nend\n");
-  assert.match(c, /gtl_a >> 2/);
+  assert.match(c, /lcl_a >> 2/);
   assert.doesNotMatch(c, /gt_fdiv/);
 });
 
@@ -291,33 +291,33 @@ test("a fixed multiply whose operand transitively touches fa/fb stays cdecl", ()
   // These MUST emit the cdecl gt_fmul (args marshalled at call time), never zp.
   const c = cOf("local a = 0.5\nlocal b = 2.5\nlocal c2 = 0.75\nlocal r = 0.0\n" +
     "function _update60()\n  r = a * sqrt(b)\n  r = a * (b % c2)\nend\nfunction _draw()\nend\n");
-  assert.match(c, /gt_fmul\(gtl_a, gt_fsqrt\(gtl_b\)\)/);      // NOT (fa=.., gt_fmul_zp())
-  assert.match(c, /gt_fmul\(gtl_a, gt_ffmod\(gtl_b, gtl_c2\)\)/);
+  assert.match(c, /gt_fmul\(lcl_a, gt_fsqrt\(lcl_b\)\)/);      // NOT (fa=.., gt_fmul_zp())
+  assert.match(c, /gt_fmul\(lcl_a, gt_ffmod\(lcl_b, lcl_c2\)\)/);
   // and the staged form must NOT wrap either of those runtime calls
-  assert.doesNotMatch(c, /fa = gtl_a, fb = gt_f(sqrt|fmod)/);
+  assert.doesNotMatch(c, /fa = lcl_a, fb = gt_f(sqrt|fmod)/);
 });
 
 test("fixed multiply goes through the zp fastcall; int multiply stays native", () => {
   const c = cOf("local f = 1.5\nlocal i = 3\nlocal r = 0.0\nlocal s = 0\nfunction _update60()\n  r = f * f\n  s = i * i\nend\nfunction _draw()\nend\n");
   // fixed*fixed, non-nested -> fa/fb stores + argless gt_fmul_zp()
-  assert.match(c, /fa = gtl_f, fb = gtl_f, gt_fmul_zp\(\)/);
-  assert.match(c, /\(gtl_i \* gtl_i\)/);
+  assert.match(c, /fa = lcl_f, fb = lcl_f, gt_fmul_zp\(\)/);
+  assert.match(c, /\(lcl_i \* lcl_i\)/);
 });
 
 test("% by power of two masks; general int % is floored", () => {
   const c = cOf("local a = 9\nlocal b = 4\nlocal r = 0\nfunction _update60()\n  r = a % 8\n  r = a % b\nend\nfunction _draw()\nend\n");
-  assert.match(c, /gtl_a & 7/);
-  assert.match(c, /gt_ifmod\(gtl_a, gtl_b\)/);
+  assert.match(c, /lcl_a & 7/);
+  assert.match(c, /gt_ifmod\(lcl_a, lcl_b\)/);
 });
 
 test("polymorphic min/mid pick int or fixed variants", () => {
   const c = cOf("local i = 1\nlocal f = 0.5\nlocal r = 0\nlocal q = 0.0\nfunction _update60()\n  r = min(i, 3)\n  q = mid(0, f, 1)\nend\nfunction _draw()\nend\n");
   // int min of pure args inlines as a ternary (no cdecl call in hot loops).
   // a literal RHS keeps the direct compare; the ternary picks A/B unchanged.
-  assert.match(c, /\(gtl_i < 3\) \? \(gtl_i\) : \(3\)/);
+  assert.match(c, /\(lcl_i < 3\) \? \(lcl_i\) : \(3\)/);
   assert.doesNotMatch(c, /gt_mini/);
   // fixed variants still go through the runtime (long ternaries would bloat)
-  assert.match(c, /gt_midf\(0L, gtl_f, 65536L\)/);
+  assert.match(c, /gt_midf\(0L, lcl_f, 65536L\)/);
 });
 
 test("num8 var-vs-var min/max routes the ternary condition through subtract-vs-zero", () => {
@@ -329,19 +329,19 @@ test("num8 var-vs-var min/max routes the ternary condition through subtract-vs-z
       "function _update60()\n  r = max(a, b)\n  r = min(a, b)\nend\nfunction _draw()\nend\n",
     "t.lua", { num8: true },
   ).c;
-  assert.match(c, /\(\(gtl_a - \(gtl_b\)\) > 0\) \? \(gtl_a\) : \(gtl_b\)/);
-  assert.match(c, /\(\(gtl_a - \(gtl_b\)\) < 0\) \? \(gtl_a\) : \(gtl_b\)/);
+  assert.match(c, /\(\(lcl_a - \(lcl_b\)\) > 0\) \? \(lcl_a\) : \(lcl_b\)/);
+  assert.match(c, /\(\(lcl_a - \(lcl_b\)\) < 0\) \? \(lcl_a\) : \(lcl_b\)/);
 });
 
 test("min/mid with impure args still call the runtime (no double evaluation)", () => {
   const c = cOf("local r = 0\nfunction gimme()\n  r += 1\n  return r\nend\nfunction _update60()\n  r = min(gimme(), 3)\n  r = mid(gimme(), 0, 7)\nend\nfunction _draw()\nend\n");
-  assert.match(c, /gt_mini\(gtl_gimme\(\), 3\)/);
-  assert.match(c, /gt_midi\(gtl_gimme\(\), 0, 7\)/);
+  assert.match(c, /gt_mini\(lcl_gimme\(\), 3\)/);
+  assert.match(c, /gt_midi\(lcl_gimme\(\), 0, 7\)/);
 });
 
 test("flr of fixed floors via shift; ceil adds the fraction", () => {
   const c = cOf("local f = 2.5\nlocal r = 0\nfunction _update60()\n  r = flr(f)\n  r = ceil(f)\nend\nfunction _draw()\nend\n");
-  assert.match(c, /\(int\)\(gtl_f >> 16\)/);
+  assert.match(c, /\(int\)\(lcl_f >> 16\)/);
   assert.match(c, /0xFFFFL\) >> 16\)/);
 });
 
@@ -353,23 +353,23 @@ const POOL = "local ps = pool(8)\nlocal total = 0\n" +
 
 test("pool declares a high-water mark alongside used/n", () => {
   const c = cOf(POOL);
-  assert.match(c, /unsigned char gtl_ps_hi;/);
+  assert.match(c, /unsigned char lcl_ps_hi;/);
 });
 
 test("pool iteration scans [0.._hi), not the full capacity", () => {
   const c = cOf(POOL);
   // the forall loop bounds on _hi (the watermark), never the literal size 8
-  assert.match(c, /for \(L_p\d+ = 0; L_p\d+ < gtl_ps_hi; \+\+L_p\d+\)/);
+  assert.match(c, /for \(L_p\d+ = 0; L_p\d+ < lcl_ps_hi; \+\+L_p\d+\)/);
   assert.doesNotMatch(c, /for \(L_p\d+ = 0; L_p\d+ < 8;/);
 });
 
 test("add() allocates O(1): free-chain pop, else the watermark slot", () => {
   const c = cOf(POOL);
   // pop the +1-encoded free chain (links ride the first field array) ...
-  assert.match(c, /if \(gtl_ps_free\) \{ L_s\d+ = \(unsigned char\)\(gtl_ps_free - 1\);/);
+  assert.match(c, /if \(lcl_ps_free\) \{ L_s\d+ = \(unsigned char\)\(lcl_ps_free - 1\);/);
   // ... else append at the watermark, growing it
-  assert.match(c, /else L_s\d+ = gtl_ps_hi;/);
-  assert.match(c, /if \(L_s\d+ >= gtl_ps_hi\) gtl_ps_hi = L_s\d+ \+ 1;/);
+  assert.match(c, /else L_s\d+ = lcl_ps_hi;/);
+  assert.match(c, /if \(L_s\d+ >= lcl_ps_hi\) lcl_ps_hi = L_s\d+ \+ 1;/);
   // capacity is still the hard ceiling on placement
   assert.match(c, /if \(L_s\d+ < 8\)/);
 });
@@ -377,9 +377,9 @@ test("add() allocates O(1): free-chain pop, else the watermark slot", () => {
 test("del() pushes the free chain and snaps hi + chain on empty", () => {
   const c = cOf(POOL);
   // freed slot joins the chain through its first field's storage
-  assert.match(c, /gtl_ps_free = \(unsigned char\)\(\w+ \+ 1\)/);
+  assert.match(c, /lcl_ps_free = \(unsigned char\)\(\w+ \+ 1\)/);
   // pool emptying resets both the watermark and the chain
-  assert.match(c, /--gtl_ps_n == 0 \? \(gtl_ps_hi = 0, gtl_ps_free = 0\) : 0/);
+  assert.match(c, /--lcl_ps_n == 0 \? \(lcl_ps_hi = 0, lcl_ps_free = 0\) : 0/);
 });
 
 // ---- gt.* extras -------------------------------------------------------------------
@@ -439,12 +439,12 @@ test("gt.note (the low-level primitive) still works and does NOT pull in the tra
 
 test("_update() selects 30fps mode in the harness", () => {
   const c = cOf("function _update()\nend\nfunction _draw()\nend\n");
-  assert.match(c, /gt_p8_fps30\(\);/);
+  assert.match(c, /gt_fps30\(\);/);
 });
 
 test("_update60 harness runs at 60 (no fps30)", () => {
   const c = cOf(LOOP);
-  assert.doesNotMatch(c, /gt_p8_fps30/);
+  assert.doesNotMatch(c, /gt_fps30/);
 });
 
 const CASES = [

@@ -29,9 +29,9 @@
 .import   _gt_draw_mode
 .import   _frameflip
 .import   _draw_color
-.import   _gt_p8_rectfill_slow
-.import   _gt_p8_spr_wide
-.export   _gt_p8_rectfill_z
+.import   _gt_rectfill_slow
+.import   _gt_spr_wide
+.export   _gt_rectfill_z
 .export   _gt_rng_next
 .export   _gt_rng_state
 .exportzp _gt_a0, _gt_a1, _gt_a2, _gt_a3, _gt_a4, _gt_a5
@@ -43,7 +43,7 @@
 .export   _gt_ent
 .export   _gt_p0, _gt_p1, _gt_p2, _gt_p3, _gt_p4
 .export   _gt_q_kick, _gt_q_push, _gt_q_pump
-.export   _gt_p8_spr_z
+.export   _gt_spr_z
 .export   _irq_int
 
 DMA_Flags = $2007
@@ -278,7 +278,7 @@ _gt_rng_next:
         RTS
 
 ; ---------------------------------------------------------------------------
-; gt_p8_rectfill_z: the hot fill call, fast path fully in asm.
+; gt_rectfill_z: the hot fill call, fast path fully in asm.
 ;   gt_a0=x0 gt_a1=y0 gt_a2=x1 gt_a3=y1 gt_a4=color
 ; Resolve the color (negative = keep current draw_color; else the value IS the
 ; GameTank byte), camera-adjust all four coordinates, and when everything is
@@ -289,7 +289,7 @@ _gt_rng_next:
 ; ---------------------------------------------------------------------------
 QF_RECT = $CD                   ; NMI|ENABLE|IRQ|COLORFILL|OPAQUE
 
-_gt_p8_rectfill_z:
+_gt_rectfill_z:
         ; ---- color: negative keeps draw_color; else the low byte IS the color ----
         LDA _gt_a4+1
         BMI @ckeep
@@ -391,11 +391,11 @@ _gt_p8_rectfill_z:
         STZ _gt_ent+4
         STZ _gt_draw_mode       ; MODE_NONE: flags register now queue-owned
         JMP _gt_q_push
-@slow:  JMP _gt_p8_rectfill_slow
+@slow:  JMP _gt_rectfill_slow
 @off:   RTS                     ; fully offscreen: no entry
 
 ; ---------------------------------------------------------------------------
-; gt_p8_spr_z: the hot per-entity draw call, fully in asm.
+; gt_spr_z: the hot per-entity draw call, fully in asm.
 ;   gt_a0=n  gt_a1=x  gt_a2=y  gt_a3=w  gt_a4=h   (P8 spr semantics)
 ; Camera-adjust (16-bit), reject fully-offscreen, stage a QF_SPR entry,
 ; fall into gt_q_push. w/h use their low bytes (P8 cells are 1..16; 0 -> 1).
@@ -403,7 +403,7 @@ _gt_p8_rectfill_z:
 ; ---------------------------------------------------------------------------
 QF_SPR = $55                    ; DMA_NMI|DMA_ENABLE|DMA_IRQ|DMA_GCARRY
 
-_gt_p8_spr_z:
+_gt_spr_z:
         ; ---- 16-cell (128px) spans overflow the 7-bit blit counters and the
         ; hardware wraps them to zero-width garbage: punt to the C splitter,
         ; which redraws as two 64px halves through this same path. ----
@@ -413,7 +413,7 @@ _gt_p8_spr_z:
         LDA _gt_a4
         CMP #16
         BCC @norm
-@wide:  JMP _gt_p8_spr_wide
+@wide:  JMP _gt_spr_wide
 @norm:
         ; ---- claim a ring slot NOW and stage into it directly: push's
         ; 8-byte gt_ent->ring copy (+ its checks) disappears per sprite.
