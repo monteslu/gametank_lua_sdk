@@ -226,10 +226,7 @@ function gtgSheetBytes(env, sheetPath) {
 // bank 2), plus any further quadrants packbits'd.
 function gtgSheetRomBytes(env, sheetPath, composes) {
   if (!composes) return gtgSheetBytes(env, sheetPath);
-  const quads = discoverQuadrants(env, sheetPath);
-  let n = GTG_COMPOSE_BYTES + (SHEET_EXT ? SHEET_EXT.length : 0);
-  for (const q of quads.slice(1)) n += packbits(Array.from(env.readFile(q))).length;
-  return n;
+  return GTG_COMPOSE_BYTES + (SHEET_EXT ? SHEET_EXT.length : 0);
 }
 
 // Bake a .gsi frame table into a C array for the runtime. .gsi gx/gy are
@@ -303,6 +300,16 @@ function makeGSheetC(env, sheetPath, banked, framesPath, composes, split) {
       sheetDecls.push(`static const unsigned char gsheet${i}[${pk.length}] = {${pk.join(",")}};`);
       calls.push(`gt_gsheet_load_packed(gsheet${i}, ${pk.length}U, ${i});`);
       calls.push(`gt_gsheet_ptr = gsheet_raw;`);
+    } else if (composes && split && i > 0) {
+      // extra quadrants of a composing-split sheet: bank 1 with the bottom
+      // half (bank 2 is squeezed by the raw top + --sheetext + compose code).
+      // Only the quadrant's BOTTOM 8 KB is loaded (art must sit in rows
+      // 64-127): the loaders callable under bank 1 are the FIXED-bank pair
+      // enter_gram_mode_q + gt_gsheet_load_bottom (load_packed is B2CODE).
+      const pk = packbits(bytes.slice(GTG_COMPOSE_BYTES));
+      b1Decls.push(`static const unsigned char gsheet${i}b[${pk.length}] = {${pk.join(",")}};`);
+      b1Calls.push(`enter_gram_mode_q(${i});`);
+      b1Calls.push(`gt_gsheet_load_bottom(gsheet${i}b, ${pk.length}U);`);
     } else {
       const pk = packbits(bytes);
       sheetDecls.push(`static const unsigned char gsheet${i}[${pk.length}] = {${pk.join(",")}};`);

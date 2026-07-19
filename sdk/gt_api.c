@@ -171,7 +171,9 @@ void GT_ENTER_GRAM(unsigned char quad) {
 }
 #ifdef GT_BANKED
 #pragma code-name ("CODE")
-static void enter_gram_mode_q(unsigned char quad) {
+/* public: sheet.c's extra-quadrant boot loads latch a quadrant from bank-1
+ * context (the wrapper handles its own bank dance, callable from anywhere) */
+void enter_gram_mode_q(unsigned char quad) {
     unsigned char saved_bank = gt_cur_bank;
     gt_bank(0);
     enter_gram_mode_q_impl(quad);

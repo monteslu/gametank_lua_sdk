@@ -181,6 +181,7 @@ void gt_gsheet_load_packed(const unsigned char *p, unsigned int plen, unsigned c
  * the packbits bottom into GRAM rows 64-127. See gt_api.c / makeGSheetC. */
 void gt_gsheet_load_top(const unsigned char *raw, unsigned char quad);
 void gt_gsheet_load_bottom(const unsigned char *p, unsigned int plen);
+void enter_gram_mode_q(unsigned char quad);   /* fixed-bank quadrant latch */
 /* .gsi frame tables: register a flat ROM array of 6-byte {vxo,vyo,w,h,gx,gy}
  * records (quadrant bit7 baked into gx/gy by the build), then draw by index. */
 void gt_frames_register(const unsigned char *tab, unsigned int nframes);
