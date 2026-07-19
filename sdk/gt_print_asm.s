@@ -68,17 +68,24 @@ rowoff: .byte 0, 5, 10
 
 .proc _gt_print_z
 loop:   lda     _gt_a1+1        ; x high: any nonzero means x < 0 or > 255
-        bne     done
+        bne     dn1
         lda     _gt_a1
         cmp     #126
-        bcs     done            ; x > 125
+        bcs     dn1             ; x > 125
         lda     (_gt_a0)        ; next char (65C02 (zp) mode)
-        beq     done
+        beq     dn1
+        bra     go
+dn1:    jmp     done
+go:
         bpl     ok
         lda     #' '            ; bytes >= 128 print as space
 ok:     tay
         lda     glyphmap,y
         tay                     ; Y = glyph number
+        cpy     #36             ; space: no blit, just advance (HUD rows are
+        bne     noskip          ; space-padded; a blank 3x5 blit costs ~400
+        jmp     advance         ; cycles of queue+IRQ wall time each)
+noskip:
         ; ---- claim a ring slot ----
 slot:   lda     _gt_qhead
         clc
@@ -124,6 +131,7 @@ free:   ldx     _gt_qhead
         sta     _gt_qhead
         jsr     _gt_q_pump
         ; ---- advance: str++, x += 4 ----
+advance:
         inc     _gt_a0
         bne     :+
         inc     _gt_a0+1
@@ -131,9 +139,10 @@ free:   ldx     _gt_qhead
         clc
         adc     #4
         sta     _gt_a1
-        bcc     loop
-        inc     _gt_a1+1
-        bra     loop
+        bcs     :+
+        jmp     loop
+:       inc     _gt_a1+1
+        jmp     loop
 done:   rts
 .endproc
 
