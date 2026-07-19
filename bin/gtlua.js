@@ -236,6 +236,8 @@ if (cmd === "build") {
   const framesPath = fIdx !== -1 ? rest[fIdx + 1] : undefined;
   const gIdx = rest.indexOf("--songs");
   const songsPaths = gIdx !== -1 ? rest[gIdx + 1].split(",").filter(Boolean) : [];
+  const xIdx = rest.indexOf("--sheetext");
+  const sheetExtPath = xIdx !== -1 ? rest[xIdx + 1] : undefined;
   const nIdx = rest.indexOf("--num8");
   const valueOf = (i) => (i === -1 ? -2 : i + 1);   // index of a flag's value arg
   const entry = rest.filter((a, i) =>
@@ -243,9 +245,10 @@ if (cmd === "build") {
     i !== sIdx && i !== valueOf(sIdx) &&
     i !== fIdx && i !== valueOf(fIdx) &&
     i !== gIdx && i !== valueOf(gIdx) &&
+    i !== xIdx && i !== valueOf(xIdx) &&
     i !== nIdx)[0];
-  if (!entry) fail("usage: gtlua build <main.lua> [--sheet foo.gtg] [--frames foo.gsi] [--songs a.gtm2,b.gtm2] [--num8] [-o game.gtr]");
-  await runBuild(entry, { outPath, sheetPath, num8: nIdx !== -1, framesPath, songsPaths });
+  if (!entry) fail("usage: gtlua build <main.lua> [--sheet foo.gtg] [--frames foo.gsi] [--songs a.gtm2,b.gtm2] [--sheetext ext.bin] [--num8] [-o game.gtr]");
+  await runBuild(entry, { outPath, sheetPath, num8: nIdx !== -1, framesPath, songsPaths, sheetExtPath });
   if (_closeWorker) _closeWorker();
 } else if (cmd === "run") {
   // build then play in a window (bundled core), no external emulator needed.

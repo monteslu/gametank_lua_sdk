@@ -227,7 +227,7 @@ function gtgSheetBytes(env, sheetPath) {
 function gtgSheetRomBytes(env, sheetPath, composes) {
   if (!composes) return gtgSheetBytes(env, sheetPath);
   const quads = discoverQuadrants(env, sheetPath);
-  let n = GTG_COMPOSE_BYTES;   // raw top only; bottom half is in bank 1
+  let n = GTG_COMPOSE_BYTES + (SHEET_EXT ? SHEET_EXT.length : 0);
   for (const q of quads.slice(1)) n += packbits(Array.from(env.readFile(q))).length;
   return n;
 }
@@ -256,6 +256,11 @@ function makeFrameTableC(env, framesPath, banked) {
 // A --frames foo.gsi adds a frame table (for sprf) alongside, in the same bank.
 const GTG_BOTTOM_BANK = 1;   // composing games park the sheet's bottom half here
 
+// --sheetext: raw GT-palette cell rows appended to gsheet_raw so composing
+// games can reference cells 128+ (bg_coln/bg_tile address the full 16K range;
+// rows 64+ of the "sheet" resolve into this extension). Set per build.
+let SHEET_EXT = null;
+
 function makeGSheetC(env, sheetPath, banked, framesPath, composes, split) {
   const quads = discoverQuadrants(env, sheetPath);
   // SHEET-segment (bank 2) declarations, and a separate B1RODATA (bank 1) chunk
@@ -281,6 +286,7 @@ function makeGSheetC(env, sheetPath, banked, framesPath, composes, split) {
       // bg/track composing: the SPLIT layout (top raw in bank 2 with the compose
       // code + serving GRAM rows 0-63; bottom packbits in bank 1 -> rows 64-127).
       const top = bytes.slice(0, GTG_COMPOSE_BYTES);
+      if (SHEET_EXT) top.push(...Array.from(SHEET_EXT));
       const bot = packbits(bytes.slice(GTG_COMPOSE_BYTES));
       sheetDecls.push(`static const unsigned char gsheet_raw[${top.length}] = {${top.join(",")}};`);
       b1Decls.push(`static const unsigned char gsheet0b[${bot.length}] = {${bot.join(",")}};`);
@@ -291,6 +297,7 @@ function makeGSheetC(env, sheetPath, banked, framesPath, composes, split) {
       // sspr-only: load GRAM the NORMAL packed way (correct for imported sheets)
       // AND emit the raw top-8KB ROM copy the scaler reads via gt_gsheet_ptr.
       const top = bytes.slice(0, GTG_COMPOSE_BYTES);
+      if (SHEET_EXT) top.push(...Array.from(SHEET_EXT));
       const pk = packbits(bytes);
       sheetDecls.push(`static const unsigned char gsheet_raw[${top.length}] = {${top.join(",")}};`);
       sheetDecls.push(`static const unsigned char gsheet${i}[${pk.length}] = {${pk.join(",")}};`);
@@ -676,7 +683,11 @@ function rebalance(env, placement, sizes, overflows, sheetBytes, callGraph, uses
  * @param {BuildEnv} env injected filesystem / toolchain / logging primitives
  */
 export async function build(entry, opts, env) {
-  const { outPath, sheetPath, num8 = false, framesPath = undefined, songsPaths = [] } = opts;
+  const { outPath, sheetPath, num8 = false, framesPath = undefined, songsPaths = [],
+          sheetExtPath = undefined } = opts;
+  SHEET_EXT = sheetExtPath ? env.readFile(sheetExtPath) : null;
+  if (SHEET_EXT && SHEET_EXT.length % 1024 !== 0)
+    fail(`--sheetext must be whole 128x8 cell rows (1024-byte multiples); got ${SHEET_EXT.length}`);
   const SDK = env.sdk;
   if (!env.exists(entry)) fail(`no such file: ${entry}`);
   const projDir = env.dirname(entry);
