@@ -89,6 +89,10 @@ const MAP_SEG_BIN = {
   // XL spill code banks (b3 is audio, never a game bin). Empty of SDK, so their
   // sdkLoad sums to 0 and they get full 16KB-margin capacity in the model.
   B4CODE: "b4", B4RODATA: "b4", B5CODE: "b5", B5RODATA: "b5",
+  B6CODE: "b6", B6RODATA: "b6", B7CODE: "b7", B7RODATA: "b7",
+  B8CODE: "b8", B8RODATA: "b8", B9CODE: "b9", B9RODATA: "b9",
+  B10CODE: "b10", B10RODATA: "b10", B11CODE: "b11", B11RODATA: "b11",
+  B12CODE: "b12", B12RODATA: "b12", B13CODE: "b13", B13RODATA: "b13",
   CODE: "fixed", RODATA: "fixed", DATA: "fixed",
 };
 function sdkLoadFromMap(env, mapPath) {
@@ -393,6 +397,10 @@ function initialPlacement(callGraph) {
 // segment name -> placement bin
 const SEG_BIN = { B0CODE: "b0", B1CODE: "b1", B2CODE: "b2", CODE: "fixed", RODATA: "fixed", B0RODATA: "b0", B1RODATA: "b1", B2RODATA: "b2",
   B4CODE: "b4", B4RODATA: "b4", B5CODE: "b5", B5RODATA: "b5",
+  B6CODE: "b6", B6RODATA: "b6", B7CODE: "b7", B7RODATA: "b7",
+  B8CODE: "b8", B8RODATA: "b8", B9CODE: "b9", B9RODATA: "b9",
+  B10CODE: "b10", B10RODATA: "b10", B11CODE: "b11", B11RODATA: "b11",
+  B12CODE: "b12", B12RODATA: "b12", B13CODE: "b13", B13RODATA: "b13",
   // a VECTORS overflow means the fixed window ran past its end
   VECTORS: "fixed", DATA: "fixed" };
 
@@ -464,7 +472,7 @@ function stubbedEdges(placement, callGraph, hot, depths) {
 // fixedHeadroom is the fixed-bank packing margin, owned by build() and passed
 // in (build rebinds it across the ladder rungs).
 function rebalance(env, placement, sizes, overflows, sheetBytes, callGraph, usesBg, usesAudio, usesMusic, usesAtlas, sdkLoad, fixedHeadroom) {
-  const bins = { b0: [], b1: [], b2: [], b4: [], b5: [], fixed: [] };
+  const bins = { b0: [], b1: [], b2: [], b4: [], b5: [], b6: [], b7: [], b8: [], b9: [], b10: [], b11: [], b12: [], b13: [], fixed: [] };
   for (const [name, bin] of Object.entries(placement)) bins[bin].push(name);
   const estUsed = (bin) => bins[bin].reduce((a, n) => a + (sizes.get(n) ?? 0), 0);
 
@@ -489,6 +497,14 @@ function rebalance(env, placement, sizes, overflows, sheetBytes, callGraph, uses
         // XL spill banks: empty of SDK (sdkLoad.b4/b5 are 0), so full capacity
         b4: BANK_SIZE - BANK_MARGIN - sdkLoad.b4,
         b5: BANK_SIZE - BANK_MARGIN - sdkLoad.b5,
+        b6: BANK_SIZE - BANK_MARGIN - (sdkLoad.b6 ?? 0),
+        b7: BANK_SIZE - BANK_MARGIN - (sdkLoad.b7 ?? 0),
+        b8: BANK_SIZE - BANK_MARGIN - (sdkLoad.b8 ?? 0),
+        b9: BANK_SIZE - BANK_MARGIN - (sdkLoad.b9 ?? 0),
+        b10: BANK_SIZE - BANK_MARGIN - (sdkLoad.b10 ?? 0),
+        b11: BANK_SIZE - BANK_MARGIN - (sdkLoad.b11 ?? 0),
+        b12: BANK_SIZE - BANK_MARGIN - (sdkLoad.b12 ?? 0),
+        b13: BANK_SIZE - BANK_MARGIN - (sdkLoad.b13 ?? 0),
         fixed: BANK_SIZE - BANK_MARGIN - sdkLoad.fixed,
       }
     : { // first-attempt estimates (no map yet)
@@ -497,6 +513,14 @@ function rebalance(env, placement, sizes, overflows, sheetBytes, callGraph, uses
         b2: BANK_SIZE - BANK_MARGIN - sheetBytes - B2_SDK_RESERVE,
         b4: BANK_SIZE - BANK_MARGIN,
         b5: BANK_SIZE - BANK_MARGIN,
+        b6: BANK_SIZE - BANK_MARGIN,
+        b7: BANK_SIZE - BANK_MARGIN,
+        b8: BANK_SIZE - BANK_MARGIN,
+        b9: BANK_SIZE - BANK_MARGIN,
+        b10: BANK_SIZE - BANK_MARGIN,
+        b11: BANK_SIZE - BANK_MARGIN,
+        b12: BANK_SIZE - BANK_MARGIN,
+        b13: BANK_SIZE - BANK_MARGIN,
         fixed: estUsed("fixed") + 2500,
       };
 
@@ -544,7 +568,7 @@ function rebalance(env, placement, sizes, overflows, sheetBytes, callGraph, uses
             .filter((t) => capacity[t] - estUsed(t) >= size)
             .sort((x, y) => stubDelta(n, x) - stubDelta(n, y))[0];
           // base banks first; the XL spill banks only if none of them fit
-          const target = pick(["b0", "b1", "b2"]) ?? pick(["b4", "b5"]);
+          const target = pick(["b0", "b1", "b2"]) ?? pick(["b4", "b5", "b6", "b7", "b8", "b9", "b10", "b11", "b12", "b13"]);
           return target ? { n, size, target, net: size - stubDelta(n, target) } : null;
         })
         .filter(Boolean)
@@ -619,7 +643,7 @@ function rebalance(env, placement, sizes, overflows, sheetBytes, callGraph, uses
       const primary = ["b2", bin === "b0" ? "b1" : "b0", "fixed"]
         .filter((t) => t !== bin && !(t === "fixed" && CALLBACKS.has(n)))
         .sort((x, y) => (capacity[y] - estUsed(y)) - (capacity[x] - estUsed(x)));
-      const spill = ["b4", "b5"].filter((t) => t !== bin);
+      const spill = ["b4", "b5", "b6", "b7", "b8", "b9", "b10", "b11", "b12", "b13"].filter((t) => t !== bin);
       const ordered = [...primary, ...spill];
       if (!ordered.length) continue;
       const fitHead = (t) => (capacity[t] - estUsed(t)) >= sz + (t === "fixed" ? fixedHeadroom : 0);
@@ -1299,7 +1323,7 @@ export async function build(entry, opts, env) {
                 if (da !== db) return db - da;
                 return (sizes.get(b2) ?? 0) - (sizes.get(a) ?? 0);
               });
-            const dests = ["b2", "b1", "b0", "fixed", "b4", "b5"].filter((d) => d !== best.target);
+            const dests = ["b2", "b1", "b0", "fixed", ...["b4", "b5", "b6", "b7", "b8", "b9", "b10", "b11", "b12", "b13"]].filter((d) => d !== best.target);
             for (let i = 0; i < Math.min(6, cold.length) && !fitsModel(); i++) {
               applied.push([cold[i], workPlacement[cold[i]] ?? "fixed"]);
               workPlacement[cold[i]] = dests[i % dests.length];
@@ -1364,10 +1388,10 @@ export async function build(entry, opts, env) {
     lastOverflows.map((o) => `${o.segment} over by ${o.bytes}`).join(", "));
 
   // 5. lay the 16 KB pieces into the 2 MB flash image. The XL cfg emits, in
-  //    MEMORY order, BANK0..BANK5 then ROM (the fixed bank) = 7 pieces. Bank n
+  //    MEMORY order, BANK0..BANK13 then ROM (the fixed bank) = 15 pieces. Bank n
   //    goes at n*0x4000; the fixed bank (last piece) goes to bank 127 (0x1FC000).
   const pieces = env.readFile(linked);
-  const XL_PIECES = 7;   // BANK0-5 + fixed
+  const XL_PIECES = 15;  // BANK0-13 + fixed (cfg emits them in MEMORY order)
   if (pieces.length !== XL_PIECES * BANK_SIZE) {
     fail(`unexpected banked link output size ${pieces.length} (expected ${XL_PIECES * BANK_SIZE})`);
   }
@@ -1385,7 +1409,7 @@ export async function build(entry, opts, env) {
   // rebind workPlacement, and saving the original seed object poisoned the
   // next build's starting point with a stale layout
   env.writeFile(B("banks.json"), JSON.stringify(workPlacement, null, 1));
-  const counts = { fixed: 0, b0: 0, b1: 0, b2: 0, b4: 0, b5: 0 };
+  const counts = { fixed: 0, b0: 0, b1: 0, b2: 0, b4: 0, b5: 0, b6: 0, b7: 0, b8: 0, b9: 0, b10: 0, b11: 0, b12: 0, b13: 0 };
   for (const b of Object.values(workPlacement)) counts[b]++;
   const xl = counts.b4 || counts.b5 ? ` bank4:${counts.b4} bank5:${counts.b5}` : "";
   env.log(`${gtr} (${env.size(gtr)} bytes, FLASH2M; ` +
