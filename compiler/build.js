@@ -143,7 +143,7 @@ function functionSizes(env, sPath) {
   const sizes = new Map();
   let name = null, count = 0;
   for (const ln of env.readText(sPath).split("\n")) {
-    const m = ln.match(/^\.proc\s+_gtl_(\w+)/);
+    const m = ln.match(/^\.proc\s+_(?:gtl|lcl)_(\w+)/);
     if (m) { name = m[1]; count = 0; continue; }
     if (ln.startsWith(".endproc")) {
       if (name) sizes.set(name, Math.round(count * 2.0)); // ~2 bytes/line
@@ -742,6 +742,7 @@ export async function build(entry, opts, env) {
     ...((result.c.includes("gt_bg_compose") || usesTrack) ? ["-DGT_BG_COMPOSE_ON"] : []),
     ...(usesAutocls ? ["-DGT_AUTOCLS"] : []),
   ];
+  if (env.debug) env.warn(`[apiDefs] ${apiDefs.join(" ")}`);
   // sfx()/music() pull in the tracker (gt_music.c). Its data + per-frame
   // sequencer are small and read across arbitrary game banks every frame, so
   // it stays in the always-mapped fixed bank (compiled plain, not -DGT_BANKED).
@@ -892,17 +893,33 @@ export async function build(entry, opts, env) {
   // its size: rodata rides the function's bank (the emitter pushes
   // rodata-name with code-name), so the packer must see the full footprint.
   const foldRodataSizes = (cSource, map) => {
+    // hexdata blobs ride the bank of their single reader function (the
+    // emitter homes them there), so charge each blob's bytes to the function
+    // that indexes it - otherwise the packer under-counts that bank by the
+    // whole blob (a 3 KB level blob looked like 0 and placements thrashed).
+    const blobBytes = new Map();
+    for (const m of cSource.matchAll(/const unsigned char (?:gtl|lcl)_(\w+)\[(\d+)\]/g)) {
+      blobBytes.set(m[1], parseInt(m[2], 10));
+    }
+    const charged = new Set();
     let cur = null;
     for (const ln of cSource.split("\n")) {
-      const m = ln.match(/^[\w ]*\bgtl_(\w+)\([^;]*\)$/);
+      const m = ln.match(/^[\w ]*\b(?:gtl|lcl)_(\w+)\([^;]*\)$/);
       if (m && !ln.includes(";")) { cur = m[1]; continue; }
       if (!cur) continue;
       for (const str of ln.matchAll(/"((?:[^"\\]|\\.)*)"/g)) {
         map.set(cur, (map.get(cur) ?? 0) + str[1].length + 1);
       }
-      const lit = ln.match(/static const (int|long) gtl__lit\d+\[(\d+)\]/);
+      const lit = ln.match(/static const (int|long) (?:gtl|lcl)__lit\d+\[(\d+)\]/);
       if (lit) {
         map.set(cur, (map.get(cur) ?? 0) + (lit[1] === "long" ? 4 : 2) * parseInt(lit[2], 10));
+      }
+      for (const ref of ln.matchAll(/\b(?:gtl|lcl)_(\w+)\[/g)) {
+        const b = blobBytes.get(ref[1]);
+        if (b && !charged.has(ref[1])) {
+          charged.add(ref[1]);
+          map.set(cur, (map.get(cur) ?? 0) + b);
+        }
       }
     }
   };
@@ -1032,6 +1049,10 @@ export async function build(entry, opts, env) {
       if (r.placement && saved.size === placeable.size &&
           [...placeable].every((k) => saved.has(k))) {
         replay = r;
+      } else if (env.debug) {
+        env.warn(`[replay] stale layout: saved=${saved.size} placeable=${placeable.size}`);
+        env.warn(`[replay] missing=${[...placeable].filter((k) => !saved.has(k)).join(",")}`);
+        env.warn(`[replay] extra=${[...saved].filter((k) => !placeable.has(k)).join(",")}`);
       }
     } catch { /* corrupt - ignore */ }
   }
@@ -1161,6 +1182,9 @@ export async function build(entry, opts, env) {
       ]);
     };
     const link = compileAndLink(workPlacement);
+    if (env.debug && !link.ok) {
+      env.warn(`[attempt ${attempt}] overflows: ${link.overflows.map((o) => `${o.segment}+${o.bytes}`).join(" ")}`);
+    }
     // re-measure per attempt: the .s parsed before the loop can be stale
     // (previous run's build dir) and the inlining rungs change which
     // functions even exist - a stale map makes the mover shuffle size-0
