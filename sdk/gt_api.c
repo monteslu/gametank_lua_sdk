@@ -600,6 +600,27 @@ void gt_gsheet_load_bottom(const unsigned char *p, unsigned int plen) {
     }
 }
 
+/* expand a FULL packbits'd quadrant from row 0. Fixed-bank like load_bottom
+ * (the blob rides a switched bank); pair with enter_gram_mode_q(quad). */
+#ifdef GT_BANKED
+#pragma code-name ("CODE")
+#endif
+void gt_gsheet_load_full(const unsigned char *p, unsigned int plen) {
+    const unsigned char *end = p + plen;
+    unsigned int vi = 0;
+    unsigned char n, b;
+    while (p < end) {
+        n = *p++;
+        if (n & 0x80) {
+            n &= 0x7F;
+            b = *p++;
+            while (n--) vram[vi++] = b;
+        } else {
+            while (n--) vram[vi++] = *p++;
+        }
+    }
+}
+
 /* ---- frame tables (.gsi) -------------------------------------------------
  * A frame table is a flat ROM array of 6-byte records {vxo, vyo, w, h, gx, gy}
  * (the build bakes the quadrant bit7 into gx/gy so gx/gy are final GRAM source

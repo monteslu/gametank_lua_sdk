@@ -306,10 +306,10 @@ function makeGSheetC(env, sheetPath, banked, framesPath, composes, split) {
       // Only the quadrant's BOTTOM 8 KB is loaded (art must sit in rows
       // 64-127): the loaders callable under bank 1 are the FIXED-bank pair
       // enter_gram_mode_q + gt_gsheet_load_bottom (load_packed is B2CODE).
-      const pk = packbits(bytes.slice(GTG_COMPOSE_BYTES));
-      b1Decls.push(`static const unsigned char gsheet${i}b[${pk.length}] = {${pk.join(",")}};`);
+      const pk = packbits(bytes);
+      b1Decls.push(`static const unsigned char gsheet${i}f[${pk.length}] = {${pk.join(",")}};`);
       b1Calls.push(`enter_gram_mode_q(${i});`);
-      b1Calls.push(`gt_gsheet_load_bottom(gsheet${i}b, ${pk.length}U);`);
+      b1Calls.push(`gt_gsheet_load_full(gsheet${i}f, ${pk.length}U);`);
     } else {
       const pk = packbits(bytes);
       sheetDecls.push(`static const unsigned char gsheet${i}[${pk.length}] = {${pk.join(",")}};`);

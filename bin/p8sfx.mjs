@@ -108,7 +108,7 @@ function convertOne(e) {
   let last = -1;
   for (let k = 0; k < e.notes.length; k++) if (e.notes[k].vol > 0) last = k;
   if (last < 0) return null;
-  const framesPer = (e.speed * 60) / 128;
+  const framesPer = (e.speed * 60) / 120;  /* P8 rows tick at 120/s (SPD/120 s per row) */
   // dominant wave among voiced notes
   const waveCount = {};
   for (let k = 0; k <= last; k++) {
