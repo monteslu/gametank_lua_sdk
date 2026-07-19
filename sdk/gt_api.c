@@ -1490,7 +1490,13 @@ extern int cv_dx;
 void gt_canvas_view_z(void);
 /* height omitted (or <=0) -> full 128 rows; pass e.g. 112 to leave a static
  * HUD band (y>=112) untouched by the restore so its content persists. */
+extern unsigned char cv_y0;
+#pragma zpsym ("cv_y0")
+static unsigned char canvas_top_rows = 0;
+/* leave the top n SCREEN rows untouched by canvas_view (persistent HUD band) */
+void gt_canvas_top(int n) { canvas_top_rows = (unsigned char)n; }
 void gt_canvas_view(int dx, int dy, int opaque, int height) {
+    cv_y0 = canvas_top_rows;
     cv_dx = dx;
     cv_dy = (unsigned char)dy;
     /* NO DMA_PAGE_OUT bit (0x02): the page bit is injected by gt_q_pump's

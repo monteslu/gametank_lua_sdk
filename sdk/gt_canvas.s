@@ -41,6 +41,10 @@ cv_h2:   .res 1                 ; band-2 height (visible height - 64)
 ; stage one QF_COPY: A=GX X=GY, cv_t=W, Y=VX; VY passed in cv_crow? use
 ; explicit: helper args via zp cv2_*
 .segment "ZEROPAGE" : zeropage
+.export _cv_y0
+_cv_y0: .res 1                  ; band-1 top skip (src+dst): rows 0..y0-1 of
+                                ; the SCREEN are left untouched (persistent
+                                ; HUD band). 0 = classic full restore.
 cv_gx:  .res 1
 cv_gy:  .res 1
 cv_w:   .res 1
@@ -127,12 +131,17 @@ full:   lda     #127
         lda     cv_coff
         sta     cv_gx
         lda     cv_crow
+        clc
+        adc     _cv_y0
         sta     cv_gy
         lda     cv_w0
         sta     cv_w
         stz     cv_vx
-        stz     cv_vy
-        lda     cv_t            ; band-1 height
+        lda     _cv_y0
+        sta     cv_vy
+        lda     cv_t            ; band-1 height minus the top skip
+        sec
+        sbc     _cv_y0
         sta     cv_vh
         jsr     cvpiece
         lda     cv_crow
@@ -162,14 +171,20 @@ full:   lda     #127
         ror     a
         clc
         adc     _cv_dy
-        sta     cv_gy           ; crow1
+        sta     cv_crow         ; crow1 (kept for piece D)
+        clc
+        adc     _cv_y0
+        sta     cv_gy
         lda     cv_w0
         sta     cv_vx
-        stz     cv_vy
-        lda     cv_t            ; band-1 height
+        lda     _cv_y0
+        sta     cv_vy
+        lda     cv_t            ; band-1 height minus the top skip
+        sec
+        sbc     _cv_y0
         sta     cv_vh
         jsr     cvpiece
-        lda     cv_gy
+        lda     cv_crow
         clc
         adc     #64
         sta     cv_gy

@@ -149,6 +149,7 @@ export const GT_MEMBERS = {
   // flakes draw through CPU pokes (1x1 fields, frame-tail only)
   drift_draw_range_cpu: { kind: "fn", params: [["int", false], ["int", false], ["int", false], ["int", false]], ret: "void", c: "lc_drift_draw_range_cpu" },
   canvas_view: { kind: "fn", params: [["int", false], ["int", false], ["int", true], ["int", true]], ret: "void", c: "lc_canvas_view" },
+  canvas_top: { kind: "fn", params: [["int", false]], ret: "void", c: "lc_canvas_top" },
   // visible-window tile scan in asm: draws every flag&1 tile of
   // map[j0..j1][i0..i1] (byte tiles, row-major, lvlw wide) as an 8x8 sprite
   tiles_draw: { kind: "fn", params: [["array8", false], ["array8", false], ["int", false], ["int", false], ["int", false], ["int", false], ["int", false]], ret: "void", c: "lc_tiles_draw" },
