@@ -1,19 +1,16 @@
 {
   "name": "gtlua",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "type": "module",
   "bin": {
     "gtlua": "bin/gtlua.js"
   },
   "exports": {
-    "./compiler/index.js": "./compiler/index.js",
-    "./compiler/peephole.js": "./compiler/peephole.js",
-    "./compiler/builtins.js": "./compiler/builtins.js",
-    "./compiler/gt_palette.js": "./compiler/gt_palette.js",
-    "./compiler/gfx.mjs": "./compiler/gfx.mjs",
-    "./compiler/frames.js": "./compiler/frames.js",
-    "./compiler/gtm2.mjs": "./compiler/gtm2.mjs",
+    ".": "./compiler/index.js",
+    "./compiler/*": "./compiler/*",
     "./build": "./compiler/build.js",
+    "./bin/*": "./bin/*",
+    "./sdk/*": "./sdk/*",
     "./package.json": "./package.json"
   },
   "engines": {
